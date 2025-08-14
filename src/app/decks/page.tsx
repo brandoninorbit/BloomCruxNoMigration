@@ -17,7 +17,6 @@ export default function DecksPage() {
         aria-hidden
         className="pointer-events-none fixed bottom-0 right-0 -z-10 w-1/2 h-1/2 bg-gradient-to-tr from-cyan-50 to-blue-100 opacity-20 blur-3xl"
       />
-
       <div className="max-w-4xl mx-auto">
         {/* Greeting */}
         <h2 className="text-3xl font-bold text-[#111418] mb-2">
@@ -125,7 +124,7 @@ export default function DecksPage() {
                 key={f.name}
                 href="#"
                 className="bg-white rounded-xl shadow-md p-5 flex items-center gap-5 hover:shadow-lg hover:-translate-y-1 transition-all duration-300"
-              >
+                legacyBehavior>
                 <div
                   className={`w-12 h-12 flex-shrink-0 rounded-lg ${f.bg} ${f.text} flex items-center justify-center`}
                 >

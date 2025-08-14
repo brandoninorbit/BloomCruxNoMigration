@@ -181,7 +181,7 @@ export default function DashboardClient() {
     header: (
   <Card>
     <CardHeader className="p-4">
-      <Link href="/dashboard" className="block focus:outline-none">
+      <Link href="/dashboard" className="block focus:outline-none" legacyBehavior>
         <div className="group flex items-center justify-between cursor-pointer hover:bg-muted/30 transition-colors rounded-lg px-2 py-1">
           <CardTitle className="group-hover:underline">Commander Overview</CardTitle>
         </div>
@@ -312,7 +312,7 @@ export default function DashboardClient() {
 
                   <div className="flex justify-end gap-2 pt-2">
                     <Button variant="outline" size="sm" asChild>
-                      <Link href={`/decks/${progress.deckId}/study/level-up`}>
+                      <Link href={`/decks/${progress.deckId}/study/level-up`} legacyBehavior>
                         <Rocket className="mr-2 h-4 w-4" />
                         Level Up
                       </Link>
@@ -336,7 +336,7 @@ export default function DashboardClient() {
           )}
         </CardContent>
         <CardFooter className="justify-center">
-          <Link href="/agent-classified" passHref>
+          <Link href="/agent-classified" passHref legacyBehavior>
             <Button variant="link" className="text-xs text-muted-foreground hover:text-foreground">
               ... Agent Classified
             </Button>

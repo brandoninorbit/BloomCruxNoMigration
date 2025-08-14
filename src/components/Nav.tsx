@@ -30,7 +30,7 @@ export default function Nav() {
                 'rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground',
                 pathname === l.href && 'bg-muted text-foreground'
               )}
-            >
+              legacyBehavior>
               {l.label}
             </Link>
           ))}
