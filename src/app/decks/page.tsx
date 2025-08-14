@@ -124,7 +124,7 @@ export default function DecksPage() {
                 key={f.name}
                 href="#"
                 className="bg-white rounded-xl shadow-md p-5 flex items-center gap-5 hover:shadow-lg hover:-translate-y-1 transition-all duration-300"
-                legacyBehavior>
+>
                 <div
                   className={`w-12 h-12 flex-shrink-0 rounded-lg ${f.bg} ${f.text} flex items-center justify-center`}
                 >

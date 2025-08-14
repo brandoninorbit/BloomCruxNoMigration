@@ -7,19 +7,13 @@ function StatCard({ title, value, icon }: { title: string; value: string | numbe
         {icon}
         <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
       </CardHeader>
-        <div className="relative">
-          <Link href="/dashboard" passHref legacyBehavior>
-            <a
-              aria-label="Go to dashboard"
-              tabIndex={0}
-              className="absolute inset-0 z-10"
-              style={{ display: 'block' }}
-            />
-          </Link>
-      <CardContent className="p-2">
-        <div className="text-2xl font-bold">{value}</div>
-      </CardContent>
-        </div>
+      <div className="relative">
+        {/* Make entire card clickable without/anchor */}
+        <Link href="/dashboard" aria-label="Go to dashboard" className="absolute inset-0 z-10 block" />
+        <CardContent className="p-2">
+          <div className="text-2xl font-bold">{value}</div>
+        </CardContent>
+      </div>
     </Card>
   );
 }
@@ -179,51 +173,51 @@ export default function DashboardClient() {
 
   const sectionsMap: Record<DashboardSection, React.ReactNode> = {
     header: (
-  <Card>
-    <CardHeader className="p-4">
-      <Link href="/dashboard" className="block focus:outline-none" legacyBehavior>
-        <div className="group flex items-center justify-between cursor-pointer hover:bg-muted/30 transition-colors rounded-lg px-2 py-1">
-          <CardTitle className="group-hover:underline">Commander Overview</CardTitle>
-        </div>
-      </Link>
-    </CardHeader>
-    <CardContent className="p-4 pt-0">
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-        <div className="flex flex-col gap-6 md:col-span-2">
-          {/* Inline global progress header */}
-          <div className="rounded-xl border bg-white p-4 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-lg font-semibold">Commander Level</div>
-                <div className="text-sm text-muted-foreground">
-                  {globalProgressToDisplay.xp} / {globalProgressToDisplay.xpToNext} XP
+      <Card>
+        <CardHeader className="p-4">
+          {/* New Link API: no */}
+          <Link href="/dashboard" className="block focus:outline-none">
+            <div className="group flex items-center justify-between cursor-pointer hover:bg-muted/30 transition-colors rounded-lg px-2 py-1">
+              <CardTitle className="group-hover:underline">Commander Overview</CardTitle>
+            </div>
+          </Link>
+        </CardHeader>
+        <CardContent className="p-4 pt-0">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+            <div className="flex flex-col gap-6 md:col-span-2">
+              {/* Inline global progress header */}
+              <div className="rounded-xl border bg-white p-4 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-lg font-semibold">Commander Level</div>
+                    <div className="text-sm text-muted-foreground">
+                      {globalProgressToDisplay.xp} / {globalProgressToDisplay.xpToNext} XP
+                    </div>
+                  </div>
+                  <div className="text-right text-sm text-muted-foreground">
+                    Session: {xpStatsToDisplay.sessionXP} • Daily: {xpStatsToDisplay.dailyXP}
+                  </div>
                 </div>
               </div>
-              <div className="text-right text-sm text-muted-foreground">
-                Session: {xpStatsToDisplay.sessionXP} • Daily: {xpStatsToDisplay.dailyXP}
+
+              <div className="grid h-full grid-cols-1 gap-6 sm:grid-cols-2">
+                <StatCard title="Total Cards Reviewed" value={overallStats.reviewed} icon={<BookOpen />} />
+                <StatCard title="Decks Mastered" value={overallStats.masteredDecks} icon={<Award />} />
               </div>
             </div>
+
+            <div className="h-full md:col-span-1">
+              <AgentCard
+                displayName={settingsToDisplay.displayName}
+                level={globalProgressToDisplay.level}
+                tokens={settingsToDisplay.tokens}
+                avatarUrl={null}
+              />
+            </div>
           </div>
-
-          <div className="grid h-full grid-cols-1 gap-6 sm:grid-cols-2">
-            <StatCard title="Total Cards Reviewed" value={overallStats.reviewed} icon={<BookOpen />} />
-            <StatCard title="Decks Mastered" value={overallStats.masteredDecks} icon={<Award />} />
-          </div>
-        </div>
-
-        <div className="h-full md:col-span-1">
-          <AgentCard
-            displayName={settingsToDisplay.displayName}
-            level={globalProgressToDisplay.level}
-            tokens={settingsToDisplay.tokens}
-            avatarUrl={null}
-          />
-        </div>
-      </div>
-    </CardContent>
-  </Card>
-),
-
+        </CardContent>
+      </Card>
+    ),
 
     devControls: devMode ? (
       <Card>
@@ -312,13 +306,17 @@ export default function DashboardClient() {
 
                   <div className="flex justify-end gap-2 pt-2">
                     <Button variant="outline" size="sm" asChild>
-                      <Link href={`/decks/${progress.deckId}/study/level-up`} legacyBehavior>
-                        <Rocket className="mr-2 h-4 w-4" />
-                        Level Up
+                      <Link href={`/decks/${progress.deckId}/study/level-up`}>
+                        <span className="inline-flex items-center gap-2">
+                          <Rocket className="mr-2 h-4 w-4" />
+                          Level Up
+                        </span>
                       </Link>
                     </Button>
                     <Button size="sm" asChild>
-                      <Link href={`/decks/${progress.deckId}/study`}>Continue Study</Link>
+                      <Link href={`/decks/${progress.deckId}/study`}>
+                        <span className="inline-flex items-center gap-2">Continue Study</span>
+                      </Link>
                     </Button>
                   </div>
                 </CollapsibleContent>
@@ -330,17 +328,18 @@ export default function DashboardClient() {
                 No decks found. Create a deck and start studying to see your progress!
               </p>
               <Button asChild className="mb-2">
-                <Link href="/decks">Create a Deck</Link>
+                <Link href="/decks">
+                  <span className="inline-flex items-center gap-2">Create a Deck</span>
+                </Link>
               </Button>
             </div>
           )}
         </CardContent>
         <CardFooter className="justify-center">
-          <Link href="/agent-classified" passHref legacyBehavior>
-            <Button variant="link" className="text-xs text-muted-foreground hover:text-foreground">
-              ... Agent Classified
-            </Button>
-          </Link>
+          {/* Use Button asChild instead of legacy Link wrapper */}
+          <Button variant="link" className="text-xs text-muted-foreground hover:text-foreground" asChild>
+            <Link href="/agent-classified">... Agent Classified</Link>
+          </Button>
         </CardFooter>
       </Card>
     ),
@@ -382,17 +381,17 @@ export default function DashboardClient() {
         </div>
 
         {/* mock data banner */}
-{showExample && (
-  <div className="flex items-center gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4">
-    <Info className="h-5 w-5 text-blue-700" />
-    <div>
-      <div className="font-semibold text-blue-800">Viewing Mock Data</div>
-      <div className="text-sm text-blue-700">
-        This is a preview of the dashboard. Click &quot;Hide Example&quot; to see your real progress.
-      </div>
-    </div>
-  </div>
-)}
+        {showExample && (
+          <div className="flex items-center gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4">
+            <Info className="h-5 w-5 text-blue-700" />
+            <div>
+              <div className="font-semibold text-blue-800">Viewing Mock Data</div>
+              <div className="text-sm text-blue-700">
+                This is a preview of the dashboard. Click &quot;Hide Example&quot; to see your real progress.
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Bonus vault banner */}
         {xpStatsToDisplay.bonusVault > 0 && (
