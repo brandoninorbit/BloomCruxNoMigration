@@ -1,7 +1,93 @@
+"use client";
 import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Pencil } from "lucide-react";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
-export default function DecksPage() {
-  // Server component by default (no "use client")
+// Types and mock data (module scope)
+interface Deck {
+  id: number;
+  folderId: number;
+  tag: string;
+  title: string;
+  locked: boolean;
+  mastery: number; // percentage 0-100
+  bloomLevel: string; // e.g., "Remember", "Understand", "Apply", ...
+}
+
+interface Folder {
+  id: number;
+  name: string;
+  sets: number;
+  color: string; // Tailwind text color class
+  iconBg: string; // Tailwind background class for icon
+}
+
+// Fixed numeric IDs for stable relationships (mock)
+const FOLDER_SCIENCE = 173657;
+const FOLDER_LANGUAGES = 346752;
+const FOLDER_HUMANITIES = 377364;
+
+const MOCK_FOLDERS: Folder[] = [
+  { id: FOLDER_SCIENCE, name: "Science", sets: 4, color: "text-blue-500", iconBg: "bg-blue-100" },
+  { id: FOLDER_LANGUAGES, name: "Languages", sets: 1, color: "text-green-500", iconBg: "bg-green-100" },
+  { id: FOLDER_HUMANITIES, name: "Humanities", sets: 1, color: "text-yellow-500", iconBg: "bg-yellow-100" },
+];
+
+const MOCK_DECKS: Deck[] = [
+  { id: 106351, folderId: FOLDER_SCIENCE, tag: "Biology", title: "Biology 101", locked: false, mastery: 54, bloomLevel: "Understand" },
+  { id: 106464, folderId: FOLDER_SCIENCE, tag: "Chemistry", title: "Organic Chemistry", locked: true, mastery: 0, bloomLevel: "Remember" },
+  { id: 165405, folderId: FOLDER_SCIENCE, tag: "Anatomy", title: "Anatomy", locked: false, mastery: 95, bloomLevel: "Evaluate" },
+  { id: 105676, folderId: FOLDER_SCIENCE, tag: "Physics", title: "Physics 101", locked: false, mastery: 33, bloomLevel: "Apply" },
+  { id: 104562, folderId: FOLDER_LANGUAGES, tag: "Spanish", title: "Spanish Vocabulary", locked: false, mastery: 72, bloomLevel: "Apply" },
+  { id: 102573, folderId: FOLDER_HUMANITIES, tag: "History", title: "World History", locked: false, mastery: 10, bloomLevel: "Remember" },
+];
+
+function DecksPage() {
+  // Client component with typed mock data referenced from module scope
+  const [decks] = useState<Deck[]>(MOCK_DECKS);
+  const [folders, setFolders] = useState<Folder[]>(MOCK_FOLDERS);
+  const [activeFolderId, setActiveFolderId] = useState<number | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState<boolean>(false);
+  const [isNewSetModalOpen, setIsNewSetModalOpen] = useState<boolean>(false);
+  const [folderToEdit, setFolderToEdit] = useState<Folder | null>(null);
+  const [editName, setEditName] = useState<string>("");
+  const [editIconBg, setEditIconBg] = useState<string>("");
+  const [editColor, setEditColor] = useState<string>("");
+
+  useEffect(() => {
+    if (folderToEdit) {
+      setEditName(folderToEdit.name);
+      setEditIconBg(folderToEdit.iconBg);
+      setEditColor(folderToEdit.color);
+    } else {
+      setEditName("");
+      setEditIconBg("");
+      setEditColor("");
+    }
+  }, [folderToEdit]);
+
+  const handleSaveEdit = useCallback(() => {
+    if (!folderToEdit) return;
+    setFolders((prev) =>
+      prev.map((fld) =>
+        fld.id === folderToEdit.id ? { ...fld, name: editName, iconBg: editIconBg, color: editColor } : fld
+      )
+    );
+    setIsEditModalOpen(false);
+    setFolderToEdit(null);
+  }, [folderToEdit, editName, editIconBg, editColor]);
+
+  const activeFolder = useMemo(
+    () => (activeFolderId === null ? null : folders.find((f) => f.id === activeFolderId) ?? null),
+    [activeFolderId, folders]
+  );
+
+  const decksToDisplay = useMemo(() => {
+    if (activeFolderId === null) return decks;
+    return decks.filter((d) => d.folderId === activeFolderId);
+  }, [activeFolderId, decks]);
+
   return (
     <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Soft background accents */}
@@ -52,14 +138,30 @@ export default function DecksPage() {
         {/* Decks */}
         <section className="mt-12">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-2xl font-semibold text-[#111418]">Decks</h3>
+            <h3 className="text-2xl font-semibold text-[#111418]">{activeFolder ? activeFolder.name : "Recent Decks"}</h3>
             <div className="flex items-center gap-4">
-              <Link
-                href="/decks/new"
+              {activeFolder && (
+                <button
+                  type="button"
+                  onClick={() => setActiveFolderId(null)}
+                  className="bg-[#f0f2f4] text-[#111418] font-bold py-2 px-4 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-[#1f8fff] focus:ring-opacity-50 transition-colors"
+                >
+                  Back to Recent
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  if (activeFolderId === null) {
+                    setIsNewSetModalOpen(true);
+                  } else {
+                    console.log(`Navigate to new deck page for folder ID: ${activeFolderId}`);
+                  }
+                }}
                 className="bg-[#f0f2f4] text-[#111418] font-bold py-2 px-4 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-[#1f8fff] focus:ring-opacity-50 transition-colors"
               >
                 New Set
-              </Link>
+              </button>
               <Link
                 href="/decks/folders/new"
                 className="bg-[#1f8fff] text-white font-bold py-2 px-4 rounded-md hover:bg-[#2481f9] focus:outline-none focus:ring-2 focus:ring-[#1f8fff] focus:ring-opacity-50 transition-colors"
@@ -70,13 +172,8 @@ export default function DecksPage() {
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
-            {[
-              { tag: "Biology", title: "Intro to Biology", locked: false },
-              { tag: "Spanish", title: "Spanish Vocabulary", locked: false },
-              { tag: "History", title: "World History", locked: true },
-              { tag: "Chemistry", title: "Organic Chemistry", locked: false },
-            ].map((d) => (
-              <div key={d.title} className="group [perspective:1000px]">
+            {decksToDisplay.map((d) => (
+              <div key={d.id} className="group [perspective:1000px]">
                 <div className="relative w-full aspect-[3/4] bg-white rounded-xl shadow-md transition-all duration-500 group-hover:shadow-xl group-hover:-translate-y-2 [transform-style:preserve-3d] group-hover:[transform:rotateY(3deg)]">
                   <div className="absolute inset-0 bg-gray-100 rounded-xl flex items-center justify-center">
                     {d.locked && (
@@ -115,18 +212,20 @@ export default function DecksPage() {
             Folders
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-            {[
-              { name: "Science", sets: 12, bg: "bg-blue-100", text: "text-blue-500" },
-              { name: "Languages", sets: 8, bg: "bg-green-100", text: "text-green-500" },
-              { name: "Humanities", sets: 15, bg: "bg-yellow-100", text: "text-yellow-500" },
-            ].map((f) => (
-              <Link
-                key={f.name}
-                href="#"
-                className="bg-white rounded-xl shadow-md p-5 flex items-center gap-5 hover:shadow-lg hover:-translate-y-1 transition-all duration-300"
->
+            {folders.map((f) => (
+              <div
+                key={f.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => setActiveFolderId(f.id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") setActiveFolderId(f.id);
+                }}
+                aria-pressed={activeFolderId === f.id}
+                className="group relative bg-white rounded-xl shadow-md p-5 flex items-center gap-5 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 text-left"
+              >
                 <div
-                  className={`w-12 h-12 flex-shrink-0 rounded-lg ${f.bg} ${f.text} flex items-center justify-center`}
+                  className={`w-12 h-12 flex-shrink-0 rounded-lg ${f.iconBg} ${f.color} flex items-center justify-center`}
                 >
                   <svg
                     className="h-6 w-6"
@@ -148,11 +247,110 @@ export default function DecksPage() {
                   <p className="font-semibold text-[#111418]">{f.name}</p>
                   <p className="text-sm text-[#637488]">{f.sets} sets</p>
                 </div>
-              </Link>
+                <button
+                  type="button"
+                  aria-label="Edit folder"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setFolderToEdit(f);
+                    setIsEditModalOpen(true);
+                  }}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 inline-flex items-center rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-slate-700 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                >
+                  <Pencil className="h-4 w-4" />
+                </button>
+              </div>
             ))}
           </div>
+
+          {/* Edit Folder Dialog */}
+          <Dialog open={isEditModalOpen} onOpenChange={(open) => { if (!open) { setIsEditModalOpen(false); setFolderToEdit(null); } }}>
+            <DialogContent className="sm:rounded-2xl">
+              <DialogHeader>
+                <DialogTitle>Edit Folder</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Folder name</label>
+                  <input
+                    type="text"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Folder name"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Icon color</label>
+                  <div className="flex items-center gap-3">
+                    {[
+                      { iconBg: "bg-blue-100", color: "text-blue-500", dot: "bg-blue-500" },
+                      { iconBg: "bg-green-100", color: "text-green-500", dot: "bg-green-500" },
+                      { iconBg: "bg-yellow-100", color: "text-yellow-500", dot: "bg-yellow-500" },
+                      { iconBg: "bg-purple-100", color: "text-purple-500", dot: "bg-purple-500" },
+                      { iconBg: "bg-pink-100", color: "text-pink-500", dot: "bg-pink-500" },
+                      { iconBg: "bg-orange-100", color: "text-orange-500", dot: "bg-orange-500" },
+                      { iconBg: "bg-gray-200", color: "text-gray-500", dot: "bg-gray-500" },
+                    ].map((opt) => {
+                      const selected = editIconBg === opt.iconBg && editColor === opt.color;
+                      return (
+                        <button
+                          key={opt.color}
+                          type="button"
+                          onClick={() => { setEditIconBg(opt.iconBg); setEditColor(opt.color); }}
+                          className={`relative h-8 w-8 rounded-full ${opt.dot} ring-offset-2 focus:outline-none focus:ring-2 focus:ring-blue-500`}
+                          aria-pressed={selected}
+                        >
+                          {selected && <span className="absolute inset-0 rounded-full ring-2 ring-black/70"></span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+              <DialogFooter className="mt-6">
+                <button
+                  type="button"
+                  onClick={() => { setIsEditModalOpen(false); setFolderToEdit(null); }}
+                  className="rounded-md border border-slate-200 bg-white px-4 py-2 text-slate-700 shadow-sm hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveEdit}
+                  className="rounded-md bg-[#2481f9] px-4 py-2 font-semibold text-white hover:opacity-90"
+                >
+                  Save changes
+                </button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {/* Select Folder Dialog */}
+          <Dialog open={isNewSetModalOpen} onOpenChange={(open) => { if (!open) { setIsNewSetModalOpen(false); } }}>
+            <DialogContent className="sm:rounded-2xl">
+              <DialogHeader>
+                <DialogTitle>Select a Folder</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3">
+                {folders.map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => { setActiveFolderId(f.id); setIsNewSetModalOpen(false); }}
+                    className="w-full rounded-md border border-slate-200 bg-white px-4 py-2 text-left text-slate-700 shadow-sm hover:bg-slate-50"
+                  >
+                    {f.name}
+                  </button>
+                ))}
+              </div>
+            </DialogContent>
+          </Dialog>
         </section>
       </div>
     </main>
   );
 }
+
+export default DecksPage;
