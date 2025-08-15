@@ -158,10 +158,6 @@ export default function DashboardClient() {
       showExample ? MOCK_GLOBAL_PROGRESS : { level: 1, xp: 0, xpToNext: 100 },
     [showExample]
   );
-    const userSettings = useMemo<UserSettings>(
-    () => (showExample ? MOCK_SETTINGS : { displayName: 'Agent', tokens: 0 }),
-    [showExample]
-  );
   const xpStats = useMemo<UserXpStats>(
     () =>
       showExample
@@ -245,56 +241,54 @@ export default function DashboardClient() {
           </h2>
           <div
             className="bg-white p-6 rounded-2xl shadow-sm"
-            style={{ minHeight: "28rem" }}
+            style={{ height: "22rem" }}
           >
             <div className="grid grid-cols-3 gap-6 h-full">
-              <div className="flex flex-col justify-center items-center">
-                <div className="flex items-center justify-center space-x-[-3rem]">
-                    <div className="relative w-48 h-48">
+              <div className="flex items-center justify-center space-x-[-3rem]">
+                <div className="relative w-48 h-48">
+                  <ProgressRing
+                    value={globalProgress.xp}
+                    maxValue={globalProgress.xpToNext}
+                    className="text-blue-500"
+                  />
+                  <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <span className="text-2xl font-bold text-gray-900">
+                      {globalProgress.xp}
+                    </span>
+                    <span className="text-sm text-gray-500">
+                      / {globalProgress.xpToNext} XP
+                    </span>
+                  </div>
+                </div>
+                <div className="flex flex-col items-center">
+                  <div className="relative w-32 h-32">
                     <ProgressRing
-                        value={globalProgress.xp}
-                        maxValue={globalProgress.xpToNext}
-                        className="text-blue-500"
+                      value={xpStats.sessionXP}
+                      maxValue={850} // Assuming max daily is 850
+                      className="text-orange-500"
+                      strokeWidth={8}
                     />
                     <div className="absolute inset-0 flex flex-col items-center justify-center">
-                        <span className="text-2xl font-bold text-gray-900">
-                        {globalProgress.xp}
-                        </span>
-                        <span className="text-sm text-gray-500">
-                        / {globalProgress.xpToNext} XP
-                        </span>
+                      <span className="text-lg font-bold text-gray-900">
+                        {xpStats.sessionXP}
+                      </span>
+                      <span className="text-xs text-gray-500">Session XP</span>
                     </div>
+                  </div>
+                  <div className="relative w-24 h-24 mt-2">
+                    <ProgressRing
+                      value={xpStats.dailyXP}
+                      maxValue={850} // Assuming max daily is 850
+                      className="text-teal-500"
+                      strokeWidth={8}
+                    />
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                      <span className="text-md font-bold text-gray-900">
+                        {xpStats.dailyXP}
+                      </span>
+                      <span className="text-xs text-gray-500">Daily XP</span>
                     </div>
-                    <div className="flex flex-col items-center">
-                    <div className="relative w-32 h-32">
-                        <ProgressRing
-                        value={xpStats.sessionXP}
-                        maxValue={850} // Assuming max daily is 850
-                        className="text-orange-500"
-                        strokeWidth={8}
-                        />
-                        <div className="absolute inset-0 flex flex-col items-center justify-center">
-                        <span className="text-lg font-bold text-gray-900">
-                            {xpStats.sessionXP}
-                        </span>
-                        <span className="text-xs text-gray-500">Session XP</span>
-                        </div>
-                    </div>
-                    <div className="relative w-24 h-24 mt-2">
-                        <ProgressRing
-                        value={xpStats.dailyXP}
-                        maxValue={850} // Assuming max daily is 850
-                        className="text-teal-500"
-                        strokeWidth={8}
-                        />
-                        <div className="absolute inset-0 flex flex-col items-center justify-center">
-                        <span className="text-md font-bold text-gray-900">
-                            {xpStats.dailyXP}
-                        </span>
-                        <span className="text-xs text-gray-500">Daily XP</span>
-                        </div>
-                    </div>
-                    </div>
+                  </div>
                 </div>
               </div>
               <div className="flex flex-col space-y-4 justify-center">
@@ -319,12 +313,11 @@ export default function DashboardClient() {
                   <Award className="text-gray-400 text-3xl" />
                 </div>
               </div>
-              <div className="flex items-center justify-center">
-                 <AgentCard 
-                    displayName={userSettings.displayName}
-                    level={globalProgress.level}
-                    tokens={userSettings.tokens}
-                 />
+              <div className="flex items-center justify-center bg-gray-100 rounded-xl">
+                <div className="text-center text-gray-500">
+                  <User className="text-5xl mx-auto" />
+                  <p className="mt-2 text-sm font-medium">Agent Card</p>
+                </div>
               </div>
             </div>
           </div>

@@ -39,7 +39,7 @@ export default function AboutPage() {
 
   return (
     <main className="bg-gray-50 text-gray-800">
-      {/* Popup Modal for Bloom's Taxonomy */}
+      {/* Popup Modal for Bloom&apos;s Taxonomy */}
       {isPopupOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
