@@ -1,40 +1,76 @@
+import { DecksRepo, Deck, Folder } from "@/core/decksRepo";
 
-// src/core/adapters/memory/DecksRepoMemory.ts
-'use client';
-import type { Deck } from '@/core/types';
-import type { DecksRepo } from '@/core/ports/DecksRepo';
+// Example mock data
+const decks: Deck[] = [
+  {
+    id: 1,
+    folderId: 1,
+    tag: "science",
+    title: "Physics Basics",
+    locked: false,
+    mastery: 2,
+    bloomLevel: "Understand"
+  },
+  {
+    id: 2,
+    folderId: 2,
+    tag: "languages",
+    title: "Spanish 101",
+    locked: false,
+    mastery: 1,
+    bloomLevel: "Remember"
+  }
+];
+
+const folders: Folder[] = [
+  {
+    id: 1,
+    name: "Science",
+    sets: 1,
+    color: "blue",
+    iconBg: "bg-blue-100"
+  },
+  {
+    id: 2,
+    name: "Languages",
+    sets: 1,
+    color: "green",
+    iconBg: "bg-green-100"
+  }
+];
 
 export class DecksRepoMemory implements DecksRepo {
-  private decks = new Map<string, Deck>();
-
-  constructor(seed?: Deck[]) {
-    seed?.forEach((d) => this.decks.set(d.id, d));
+  async getDecks(userId?: string): Promise<Deck[]> {
+    if (userId) {
+      // TODO: When login is working, fetch real data for logged-in users
+      throw new Error("getDecks: Real data not implemented for logged-in users yet.");
+    }
+    return decks;
   }
-
-  async list(): Promise<Deck[]> {
-    return Array.from(this.decks.values()).sort((a, b) => b.updatedAt - a.updatedAt);
+  async getFolders(userId?: string): Promise<Folder[]> {
+    if (userId) {
+      // TODO: When login is working, fetch real data for logged-in users
+      throw new Error("getFolders: Real data not implemented for logged-in users yet.");
+    }
+    return folders;
   }
-
-  async get(id: string): Promise<Deck | null> {
-    return this.decks.get(id) ?? null;
+  async createDeck(deck: Omit<Deck, 'id'>, userId?: string): Promise<Deck> {
+    if (userId) {
+      // TODO: When login is working, create real deck for logged-in users
+      throw new Error("createDeck: Real data not implemented for logged-in users yet.");
+    }
+    const newDeck: Deck = { ...deck, id: Date.now() };
+    decks.push(newDeck);
+    return newDeck;
   }
-
-  async create(
-    data: Omit<Deck, 'id' | 'createdAt' | 'updatedAt'>
-  ): Promise<string> {
-    const id = crypto.randomUUID();
-    const now = Date.now();
-    this.decks.set(id, { id, createdAt: now, updatedAt: now, ...data });
-    return id;
+  async createFolder(folder: Omit<Folder, 'id' | 'sets'>, userId?: string): Promise<Folder> {
+    if (userId) {
+      // TODO: When login is working, create real folder for logged-in users
+      throw new Error("createFolder: Real data not implemented for logged-in users yet.");
+    }
+    const newFolder: Folder = { ...folder, id: Date.now(), sets: 0 };
+    folders.push(newFolder);
+    return newFolder;
   }
-
-  async update(id: string, patch: Partial<Deck>): Promise<void> {
-    const existing = this.decks.get(id);
-    if (!existing) return;
-    this.decks.set(id, { ...existing, ...patch, updatedAt: Date.now() });
-  }
-
-  async remove(id: string): Promise<void> {
-    this.decks.delete(id);
-  }
+  // Add more methods as needed
 }

@@ -18,7 +18,7 @@ interface Deck {
 interface Folder {
   id: number;
   name: string;
-  sets: number;
+  decks: number;
   color: string; // Tailwind text color class
   iconBg: string; // Tailwind background class for icon
 }
@@ -29,9 +29,9 @@ const FOLDER_LANGUAGES = 346752;
 const FOLDER_HUMANITIES = 377364;
 
 const MOCK_FOLDERS: Folder[] = [
-  { id: FOLDER_SCIENCE, name: "Science", sets: 4, color: "text-blue-500", iconBg: "bg-blue-100" },
-  { id: FOLDER_LANGUAGES, name: "Languages", sets: 1, color: "text-green-500", iconBg: "bg-green-100" },
-  { id: FOLDER_HUMANITIES, name: "Humanities", sets: 1, color: "text-yellow-500", iconBg: "bg-yellow-100" },
+  { id: FOLDER_SCIENCE, name: "Science", decks: 4, color: "text-blue-500", iconBg: "bg-blue-100" },
+  { id: FOLDER_LANGUAGES, name: "Languages", decks: 1, color: "text-green-500", iconBg: "bg-green-100" },
+  { id: FOLDER_HUMANITIES, name: "Humanities", decks: 1, color: "text-yellow-500", iconBg: "bg-yellow-100" },
 ];
 
 const MOCK_DECKS: Deck[] = [
@@ -49,7 +49,7 @@ function DecksPage() {
   const [folders, setFolders] = useState<Folder[]>(MOCK_FOLDERS);
   const [activeFolderId, setActiveFolderId] = useState<number | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState<boolean>(false);
-  const [isNewSetModalOpen, setIsNewSetModalOpen] = useState<boolean>(false);
+  const [isNewDeckModalOpen, setIsNewDeckModalOpen] = useState<boolean>(false);
   const [folderToEdit, setFolderToEdit] = useState<Folder | null>(null);
   const [editName, setEditName] = useState<string>("");
   const [editIconBg, setEditIconBg] = useState<string>("");
@@ -149,21 +149,14 @@ function DecksPage() {
                   Back to Recent
                 </button>
               )}
-              <button
-                type="button"
-                onClick={() => {
-                  if (activeFolderId === null) {
-                    setIsNewSetModalOpen(true);
-                  } else {
-                    console.log(`Navigate to new deck page for folder ID: ${activeFolderId}`);
-                  }
-                }}
+              <a
+                href="/decks/new"
                 className="bg-[#f0f2f4] text-[#111418] font-bold py-2 px-4 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-[#1f8fff] focus:ring-opacity-50 transition-colors"
               >
-                New Set
-              </button>
+                New Deck
+              </a>
               <Link
-                href="/decks/folders/new"
+                href="/folders/new"
                 className="bg-[#1f8fff] text-white font-bold py-2 px-4 rounded-md hover:bg-[#2481f9] focus:outline-none focus:ring-2 focus:ring-[#1f8fff] focus:ring-opacity-50 transition-colors"
               >
                 New Folder
@@ -173,7 +166,7 @@ function DecksPage() {
 
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
             {decksToDisplay.map((d) => (
-              <div key={d.id} className="group [perspective:1000px]">
+              <div key={d.id} className="group [perspective:1000px] cursor-pointer" onClick={() => window.location.href = `/decks/${d.id}/edit`}>
                 <div className="relative w-full aspect-[3/4] bg-white rounded-xl shadow-md transition-all duration-500 group-hover:shadow-xl group-hover:-translate-y-2 [transform-style:preserve-3d] group-hover:[transform:rotateY(3deg)]">
                   <div className="absolute inset-0 bg-gray-100 rounded-xl flex items-center justify-center">
                     {d.locked && (
@@ -212,55 +205,58 @@ function DecksPage() {
             Folders
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-            {folders.map((f) => (
-              <div
-                key={f.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => setActiveFolderId(f.id)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") setActiveFolderId(f.id);
-                }}
-                aria-pressed={activeFolderId === f.id}
-                className="group relative bg-white rounded-xl shadow-md p-5 flex items-center gap-5 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 text-left"
-              >
+            {folders.map((f) => {
+              const deckCount = decks.filter(d => d.folderId === f.id).length;
+              return (
                 <div
-                  className={`w-12 h-12 flex-shrink-0 rounded-lg ${f.iconBg} ${f.color} flex items-center justify-center`}
-                >
-                  <svg
-                    className="h-6 w-6"
-                    viewBox="0 0 24 24"
-                    xmlns="http://www.w3.org/2000/svg"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    fill="none"
-                    aria-hidden
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
-                    />
-                  </svg>
-                </div>
-                <div>
-                  <p className="font-semibold text-[#111418]">{f.name}</p>
-                  <p className="text-sm text-[#637488]">{f.sets} sets</p>
-                </div>
-                <button
-                  type="button"
-                  aria-label="Edit folder"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setFolderToEdit(f);
-                    setIsEditModalOpen(true);
+                  key={f.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setActiveFolderId(f.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") setActiveFolderId(f.id);
                   }}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 inline-flex items-center rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-slate-700 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                  aria-pressed={activeFolderId === f.id}
+                  className="group relative bg-white rounded-xl shadow-md p-5 flex items-center gap-5 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 text-left"
                 >
-                  <Pencil className="h-4 w-4" />
-                </button>
-              </div>
-            ))}
+                  <div
+                    className={`w-12 h-12 flex-shrink-0 rounded-lg ${f.iconBg} ${f.color} flex items-center justify-center`}
+                  >
+                    <svg
+                      className="h-6 w-6"
+                      viewBox="0 0 24 24"
+                      xmlns="http://www.w3.org/2000/svg"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      fill="none"
+                      aria-hidden
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+                      />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-[#111418]">{f.name}</p>
+                    <p className="text-sm text-[#637488]">{deckCount} decks</p>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="Edit folder"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setFolderToEdit(f);
+                      setIsEditModalOpen(true);
+                    }}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 inline-flex items-center rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-slate-700 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                </div>
+              );
+            })}
           </div>
 
           {/* Edit Folder Dialog */}
@@ -328,7 +324,7 @@ function DecksPage() {
           </Dialog>
 
           {/* Select Folder Dialog */}
-          <Dialog open={isNewSetModalOpen} onOpenChange={(open) => { if (!open) { setIsNewSetModalOpen(false); } }}>
+          <Dialog open={isNewDeckModalOpen} onOpenChange={(open) => { if (!open) { setIsNewDeckModalOpen(false); } }}>
             <DialogContent className="sm:rounded-2xl">
               <DialogHeader>
                 <DialogTitle>Select a Folder</DialogTitle>
@@ -338,7 +334,7 @@ function DecksPage() {
                   <button
                     key={f.id}
                     type="button"
-                    onClick={() => { setActiveFolderId(f.id); setIsNewSetModalOpen(false); }}
+                    onClick={() => { setActiveFolderId(f.id); setIsNewDeckModalOpen(false); }}
                     className="w-full rounded-md border border-slate-200 bg-white px-4 py-2 text-left text-slate-700 shadow-sm hover:bg-slate-50"
                   >
                     {f.name}

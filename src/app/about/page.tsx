@@ -1,5 +1,6 @@
 "use client";
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 
 export default function AboutPage() {
   const [isPopupOpen, setIsPopupOpen] = useState(false);
@@ -188,10 +189,15 @@ export default function AboutPage() {
                 </p>
               </div>
               <div className="order-1 relative z-10 md:order-2">
-                <img
+                {/* TODO: Replace with optimized <Image /> when feature is ready */}
+                <Image
                   alt="Stylized image of flashcards on a board, representing AI-powered content creation."
                   className="rounded-3xl shadow-2xl"
                   src="https://lh3.googleusercontent.com/aida-public/AB6AXuBZXYDhE1Pts8G1eI8k1YO5QvuHOTKE-X7mqv-4sfvxDWmQPKXDOU88zCniHQK6LMOqLdlZ6nU5bW-qxMCs9cwiyp4o8X1WlgsrzBQTkTV_ekVRr1daJIq3QlV_OXZO3ElQKS1E7Bpi3Pk7GmN2Cxm76PxwDawBgTa0b_hnKoGJbtwD7hX3-nlziidfWS29i60d1X5Kd1ZbWx7m4oSFV_wVAonkFzF79r0deOFf4esk4C0STk8nk2EeIcKiJJ1lrzgg5hn3PWKCA911"
+                  width={600}
+                  height={400}
+                  unoptimized
+                  priority
                 />
               </div>
             </div>
@@ -214,10 +220,15 @@ export default function AboutPage() {
                 />
               </svg>
               <div className="relative z-10 md:order-1">
-                <img
+                {/* TODO: Replace with optimized <Image /> when feature is ready */}
+                <Image
                   alt="A chalk drawing on a blackboard that reads 'Adaptive Study Missions Sale', illustrating personalized learning paths."
                   className="rounded-3xl shadow-2xl"
                   src="https://lh3.googleusercontent.com/aida-public/AB6AXuCI0qCiaXIlBv3y_93G3eHUE8wygaRz4pmXmtrvErqrd7S51QWxP_GhYQDAu77IapIL_hswJnusLKeP4aGBWjO8TEVGHKRVbW2WaEY7ieX1QwRoOTW0JGmeWHT_Pjq5oIW6zZk_Wck_Ur2HvZna_chEDhAFOK37F2hxtEqzGjHmHSsUGvD6srE8XC0fUKC8QSv8xogpurokAJRlTpjwp_Wc9gDQr004r0DCyynpCA_Z-A4_fSYqi-B1E-nZArhxuGEu1PGmjDisS9pU"
+                  width={600}
+                  height={400}
+                  unoptimized
+                  priority
                 />
               </div>
               <div className="relative z-10 md:order-2">
@@ -256,10 +267,15 @@ export default function AboutPage() {
                 </p>
               </div>
               <div className="order-1 relative z-10 md:order-2">
-                <img
+                {/* TODO: Replace with optimized <Image /> when feature is ready */}
+                <Image
                   alt="A whiteboard with a bar chart showing upward progress, symbolizing actionable progress tracking."
                   className="rounded-3xl shadow-2xl"
                   src="https://lh3.googleusercontent.com/aida-public/AB6AXuB9nihWnaZGkfGIY2JgXhWGmMXENON_Jdw3as8d_KJrLJPGf4XkQ0UrCfYHn32sJr1nQ9mHsF24beGfCXvKMVB3VXWslU6hac2gbCnAA-C8AWCYYaHZTGZHMe-GzFaMlrlIxjyuUXLZ7yl_wilj8xC45RsXvEFsNI7ZxTSXcIEO6qRVCItsRFBqOrXPYThv3pKs4WvcIrTVOijS0HjClkmWklN25lp2oF79c83LSlw60WjOo8EBEQ21nXO0BHm9xmQDxHLBG7-2pxMv"
+                  width={600}
+                  height={400}
+                  unoptimized
+                  priority
                 />
               </div>
             </div>

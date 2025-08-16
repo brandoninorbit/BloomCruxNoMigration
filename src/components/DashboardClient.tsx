@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 // src/components/DashboardClient.tsx
 "use client";
 import React, { useMemo, useState } from "react";

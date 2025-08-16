@@ -1,0 +1,325 @@
+"use client";
+import { useState } from "react";
+import { useToast } from "@/components/ui/use-toast";
+import Modal from "@/components/ui/Modal";
+import { useRouter } from "next/navigation";
+import { useDeck } from "@/hooks/useDeck";
+
+interface Props {
+  deckId: string;
+  router?: ReturnType<typeof useRouter>;
+}
+
+export default function EditDeckForm({ deckId, router }: Props) {
+  const { deck, setDeck, save, loading } = useDeck(deckId);
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [sources, setSources] = useState<string[]>(deck?.sources ?? []);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [sourceMsg, setSourceMsg] = useState<string>("");
+  const { toast } = useToast();
+
+  // Controlled inputs with safe defaults
+  const title = deck?.title ?? "";
+  const description = deck?.description ?? "";
+
+  // Handle deck not found
+  if (!loading && !deck) {
+    return (
+      <div className="max-w-4xl mx-auto py-10">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center">
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">Deck not found</h2>
+          <p className="text-gray-600 mb-6">The deck you are trying to edit does not exist.</p>
+          <button
+            className="bg-blue-100 text-blue-700 px-4 py-2 rounded-lg font-semibold hover:bg-blue-200 transition-colors"
+            onClick={() => router?.push("/decks")}
+          >
+            Back to Decks
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="max-w-4xl mx-auto py-10 text-center">
+        <div className="inline-block p-8 bg-white rounded-xl shadow-sm border border-gray-200">
+          <span className="text-lg text-gray-600">Loading deck...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Controlled input handlers
+  const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (setDeck) {
+      setDeck({ ...deck!, title: e.target.value });
+    }
+  };
+  const handleDescriptionChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    if (setDeck) {
+      setDeck({ ...deck!, description: e.target.value });
+    }
+  };
+
+  // Save handler
+  const handleSave = async () => {
+    await save();
+    setSourceMsg("Saved changes to deck.");
+    toast({ title: "Deck saved" });
+    router?.push("/decks");
+  };
+
+  // CSV upload handler
+  const handleCsvChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] ?? null;
+    setCsvFile(file);
+    if (file && deck && setDeck) {
+      const current = new Set(sources);
+      if (!current.has(file.name)) {
+        const newSources = [...sources, file.name];
+        setSources(newSources);
+        setDeck({ ...deck, sources: newSources });
+        setSourceMsg(`Added source: ${file.name}`);
+        toast({ title: "Source added", description: file.name });
+      } else {
+        setSourceMsg(`Source already added: ${file.name}`);
+        toast({ title: "Source already added", description: file.name, variant: "destructive" });
+      }
+    }
+  };
+
+  // Remove source handler
+  const handleRemoveSource = (src: string) => {
+    const newSources = sources.filter(s => s !== src);
+    setSources(newSources);
+    if (setDeck) {
+      setDeck({ ...deck!, sources: newSources });
+    }
+    toast({ title: "Source removed", description: src });
+  };
+
+  return (
+    <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-10">
+      <div className="max-w-4xl mx-auto">
+        <div className="flex justify-between items-center mb-8">
+          <h1 className="text-3xl font-bold text-gray-900">Edit Deck</h1>
+          <div className="flex items-center space-x-4">
+            <button
+              className="text-gray-600 font-medium hover:text-gray-900 transition-colors"
+              onClick={() => router?.push("/decks")}
+            >
+              Cancel
+            </button>
+            <button
+              className="bg-blue-600 text-white px-5 py-2.5 rounded-lg font-semibold shadow-sm hover:bg-blue-700 transition-colors"
+              onClick={handleSave}
+            >
+              Save Changes to Deck
+            </button>
+          </div>
+        </div>
+        <div className="p-8 bg-white rounded-xl shadow-sm border border-gray-200 mb-8">
+          <p className="text-sm text-gray-500 mb-4">
+            Editing Deck: <span className="font-semibold text-gray-700">{title || "Untitled"}</span>
+          </p>
+          <div className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="deck-title">Deck Title</label>
+              <input
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow"
+                id="deck-title"
+                type="text"
+                value={title}
+                onChange={handleTitleChange}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="description">Description</label>
+              <textarea
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow"
+                id="description"
+                rows={3}
+                value={description}
+                onChange={handleDescriptionChange}
+              />
+            </div>
+          </div>
+        </div>
+        <div className="grid md:grid-cols-2 gap-8">
+          <div className="p-8 bg-white rounded-xl shadow-sm border border-gray-200">
+            <h2 className="text-xl font-semibold text-gray-900 mb-6">Deck Actions</h2>
+            <div className="flex items-center space-x-4">
+              <button
+                className="flex-1 bg-blue-600 text-white px-5 py-3 rounded-lg font-semibold flex items-center justify-center space-x-2 shadow-sm hover:bg-blue-700 transition-colors"
+                onClick={() => router?.push(`/decks/${deckId}/cards/new`)}
+              >
+                {/* Icon placeholder */}
+                <span className="material-icons">add_circle_outline</span>
+                <span>Add Card</span>
+              </button>
+              <button
+                className="flex-1 border border-gray-300 text-gray-700 px-5 py-3 rounded-lg font-semibold flex items-center justify-center space-x-2 hover:bg-gray-50 transition-colors"
+                // inert for now
+              >
+                <span className="material-icons">star_border</span>
+                <span>Study 1 Starred</span>
+              </button>
+            </div>
+          </div>
+          <div className="p-8 bg-white rounded-xl shadow-sm border border-gray-200">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-semibold text-gray-900">Import From CSV</h2>
+              <button
+                className="bg-blue-100 text-blue-600 px-4 py-2 rounded-full font-semibold text-sm flex items-center space-x-2 hover:bg-blue-200 transition-colors"
+                onClick={() => setModalOpen(true)}
+              >
+                <span className="material-icons text-base">info_outline</span>
+                <span>Instructions</span>
+              </button>
+            </div>
+            <p className="text-gray-600 text-sm mb-4">Upload a CSV and click the instructions button for formatting help.</p>
+            <div className="flex flex-col items-center justify-center w-full">
+              <label
+                className="flex flex-col items-center justify-center w-full h-24 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 transition-colors"
+                htmlFor="csv-upload"
+              >
+                <div className="flex items-center space-x-2 text-gray-500">
+                  <span className="material-icons">cloud_upload</span>
+                  <span className="font-medium">Upload CSV</span>
+                  <span className="text-sm">{csvFile?.name || "No file chosen."}</span>
+                </div>
+                <input
+                  className="hidden"
+                  id="csv-upload"
+                  type="file"
+                  onChange={handleCsvChange}
+                />
+              </label>
+              {sourceMsg && (
+                <span className="mt-2 text-xs text-blue-600">{sourceMsg}</span>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="p-8 bg-white rounded-xl shadow-sm border border-gray-200 mt-8">
+          <h2 className="text-xl font-semibold text-gray-900 mb-6">Deck Sources</h2>
+          <p className="text-gray-600 text-sm mb-4">This deck contains cards imported from the following files.</p>
+          <ul className="space-y-3">
+            {sources.length === 0 ? (
+              <li className="text-gray-500">No sources yet.</li>
+            ) : (
+              sources.map(src => (
+                <li key={src} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
+                  <div className="flex items-center space-x-3">
+                    <span className="material-icons text-gray-500">description</span>
+                    <span className="font-medium text-gray-800">{src}</span>
+                  </div>
+                  <button
+                    className="text-gray-500 hover:text-gray-800"
+                    onClick={() => handleRemoveSource(src)}
+                  >
+                    <span className="material-icons text-xl">delete_outline</span>
+                  </button>
+                </li>
+              ))
+            )}
+          </ul>
+        </div>
+        <div className="p-8 bg-white rounded-xl shadow-sm border border-gray-200 mt-8">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-semibold text-gray-900">Cards in this Deck ({deck?.cards?.length ?? 0})</h2>
+            <button className="text-sm text-gray-600 hover:text-gray-900 font-medium">Remember: {deck?.cards?.filter(c => c.bloomLevel === "Remember").length ?? 0}</button>
+          </div>
+          <div className="text-center py-10">
+            <button className="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold shadow-sm hover:bg-blue-700 transition-colors">
+              Load Cards ({deck?.cards?.length ?? 0})
+            </button>
+          </div>
+        </div>
+      </div>
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)}>
+        <div className="space-y-4 text-sm text-gray-700">
+          <h3 className="text-lg font-semibold text-gray-900">CSV Import — BloomCrux v1</h3>
+          <p>Your CSV must include a header row. <span className="font-medium">CardType</span> is required and must be one of:</p>
+          <p className="font-mono text-xs bg-gray-50 p-2 rounded">MCQ | TwoTierMCQ | Fill | Short | Compare | Sorting | Sequencing | CER</p>
+
+          <div className="p-3 rounded border bg-gray-50">
+            <p className="text-gray-800 font-medium">Common optional columns (all types):</p>
+            <ul className="list-disc pl-6">
+              <li><span className="font-mono">BloomLevel</span> — one of: Remember, Understand, Apply, Analyze, Evaluate, Create.</li>
+              <li><span className="font-mono">SelfCheck</span> — 1 to require manual checking (use for Free-text types), otherwise 0.</li>
+              <li><span className="font-mono">Explanation</span> — feedback shown after answering (where applicable).</li>
+              <li><span className="font-mono">Id</span> — optional stable id (if omitted, one is generated).</li>
+            </ul>
+          </div>
+
+          <hr className="my-4"/>
+
+          <h4 className="font-semibold">MCQ</h4>
+          <p><span className="font-mono">CardType</span> value: <span className="font-mono">MCQ</span></p>
+          <p>Required columns:</p>
+          <p className="font-mono text-xs bg-gray-50 p-2 rounded">CardType, Prompt, A, B, C, D, Answer</p>
+          <p className="text-xs text-gray-600">Answer must be one of A, B, C, D. Optional: Explanation, BloomLevel, SelfCheck (default 0).</p>
+
+          <h4 className="font-semibold">Two-Tier MCQ</h4>
+          <p><span className="font-mono">CardType</span> value: <span className="font-mono">TwoTierMCQ</span></p>
+          <p>Required columns:</p>
+          <p className="font-mono text-xs bg-gray-50 p-2 rounded">CardType, Prompt, A, B, C, D, Answer, Tier2Prompt, Tier2A, Tier2B, Tier2C, Tier2D, Tier2Answer</p>
+          <p className="text-xs text-gray-600">Both Answer fields must be A/B/C/D. Optional: Explanation, BloomLevel, SelfCheck (default 0).</p>
+
+          <h4 className="font-semibold">Fill in the Blank</h4>
+          <p><span className="font-mono">CardType</span> value: <span className="font-mono">Fill</span></p>
+          <p>Required columns:</p>
+          <p className="font-mono text-xs bg-gray-50 p-2 rounded">CardType, Prompt, Answer</p>
+          <p className="text-xs text-gray-600">Use underscores in the prompt for blanks (e.g., “The capital of France is ____.”). Multiple acceptable answers are pipe-separated (e.g., <span className="font-mono">Paris|PARIS</span>). Optional: BloomLevel. Set <span className="font-mono">SelfCheck=0</span> if you want exact-match autograde; otherwise 1.</p>
+
+          <h4 className="font-semibold">Short Answer</h4>
+          <p><span className="font-mono">CardType</span> value: <span className="font-mono">Short</span></p>
+          <p>Required columns:</p>
+          <p className="font-mono text-xs bg-gray-50 p-2 rounded">CardType, Prompt, SuggestedAnswer</p>
+          <p className="text-xs text-gray-600">Free-text response. Usually <span className="font-mono">SelfCheck=1</span>. Optional: BloomLevel.</p>
+
+          <h4 className="font-semibold">Compare / Contrast</h4>
+          <p><span className="font-mono">CardType</span> value: <span className="font-mono">Compare</span></p>
+          <p>Required columns:</p>
+          <p className="font-mono text-xs bg-gray-50 p-2 rounded">CardType, ItemA, ItemB, Pairs</p>
+          <p className="text-xs text-gray-600">Pairs are pipe-separated; each pair is <span className="font-mono">Label;Avalue;Bvalue</span>. Example: <span className="font-mono">Nucleus;No;Yes|DNA shape;Circular;Linear</span>. Optional: BloomLevel, SelfCheck.</p>
+
+          <h4 className="font-semibold">Drag &amp; Drop Sorting</h4>
+          <p><span className="font-mono">CardType</span> value: <span className="font-mono">Sorting</span></p>
+          <p>Required columns:</p>
+          <p className="font-mono text-xs bg-gray-50 p-2 rounded">CardType, Title, Instructions, Categories, Items</p>
+          <p className="text-xs text-gray-600">Categories are pipe-separated. Items are pipe-separated pairs of <span className="font-mono">Item;Category</span>. Example: <span className="font-mono">Insulin;Protein|Starch;Carbohydrate</span>. Optional: BloomLevel, SelfCheck.</p>
+
+          <h4 className="font-semibold">Sequencing</h4>
+          <p><span className="font-mono">CardType</span> value: <span className="font-mono">Sequencing</span></p>
+          <p>Required columns:</p>
+          <p className="font-mono text-xs bg-gray-50 p-2 rounded">CardType, Prompt, Items</p>
+          <p className="text-xs text-gray-600">Items are pipe-separated in the correct order. Example: <span className="font-mono">Prophase|Metaphase|Anaphase|Telophase</span>. Optional: BloomLevel, SelfCheck.</p>
+
+          <h4 className="font-semibold">Claim-Evidence-Reasoning (CER)</h4>
+          <p><span className="font-mono">CardType</span> value: <span className="font-mono">CER</span></p>
+          <p>Required columns:</p>
+          <p className="font-mono text-xs bg-gray-50 p-2 rounded">CardType, Scenario, Prompt, Parts</p>
+          <p className="text-xs text-gray-600">Parts are pipe-separated. Each part is either <span className="font-mono">key;text;sampleAnswer</span> or <span className="font-mono">key;mcq;Option1;Option2;...;correctIndex</span>. Example: <span className="font-mono">claim;text;Red light yields more growth|evidence;mcq;Grew 3cm;Grew 1cm;0|reasoning;text;Chlorophyll absorbs red</span>. Usually <span className="font-mono">SelfCheck=1</span>. Optional: BloomLevel.</p>
+
+          <div className="p-3 rounded border bg-blue-50 text-blue-900">
+            <p className="font-medium">Bloom defaults &amp; XP</p>
+            <ul className="list-disc pl-6">
+              <li>Default Bloom by type: Remember→MCQ/Fill; Understand→Short/Sorting; Apply→Sequencing; Analyze→Compare; Evaluate→TwoTierMCQ/CER; Create→Design/ConceptMap/Experiment (not in v1 templates).</li>
+              <li>Mission complete ≥ 65% correctness; Commander XP = correctness × Bloom multiplier.</li>
+              <li>If a type isn’t autogradable, set <span className="font-mono">SelfCheck=1</span>.</li>
+            </ul>
+          </div>
+
+          <div className="flex items-center justify-between pt-2">
+            <span className="text-xs text-gray-500">Need a starting point? Use the templates below.</span>
+            <a href="https://bloomcrux.s3.amazonaws.com/bloomcrux-csv-templates.zip" className="text-xs font-medium text-blue-600 hover:underline">Download templates (.zip)</a>
+          </div>
+        </div>
+      </Modal>
+    </main>
+  );
+}

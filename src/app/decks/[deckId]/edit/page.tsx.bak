@@ -1,0 +1,74 @@
+"use client";
+
+import { useParams, useRouter } from "next/navigation";
+import EditDeckForm from "@/components/decks/EditDeckForm";
+import useDeck from "@/hooks/useDeck";
+
+export default function EditDeckPage() {
+  const params = useParams<{ deckId: string }>();
+  const deckId = params?.deckId ?? "";
+  const router = useRouter();
+
+  // No id in URL
+  if (!deckId) {
+    return (
+      <div className="p-10">
+        <h1 className="text-2xl font-semibold text-gray-900">No deck selected</h1>
+        <p className="mt-2 text-gray-600">Choose a deck from the Decks page.</p>
+        <button
+          className="mt-4 px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+          onClick={() => router.push("/decks")}
+        >
+          Back to Decks
+        </button>
+      </div>
+    );
+  }
+
+  const { deck, setDeck, save, loading, error } = useDeck(deckId);
+
+  if (loading) {
+    return (
+      <div className="p-10">
+        <div className="h-6 w-48 bg-gray-200 rounded animate-pulse" />
+        <div className="mt-4 h-4 w-80 bg-gray-200 rounded animate-pulse" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-10">
+        <h1 className="text-2xl font-semibold text-gray-900">Something went wrong</h1>
+        <p className="mt-2 text-gray-600">{error}</p>
+        <button
+          className="mt-4 px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+          onClick={() => router.push("/decks")}
+        >
+          Back to Decks
+        </button>
+      </div>
+    );
+  }
+
+  // Not found
+  if (!deck) {
+    return (
+      <div className="p-10">
+        <h1 className="text-2xl font-semibold text-gray-900">Deck not found</h1>
+        <p className="mt-2 text-gray-600">
+          The deck you’re looking for doesn’t exist (or was removed).
+        </p>
+        <button
+          className="mt-4 px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+          onClick={() => router.push("/decks")}
+        >
+          Back to Decks
+        </button>
+      </div>
+    );
+  }
+
+  // Happy path
+  return <EditDeckForm deck={deck} setDeck={setDeck} save={save} deckId={deckId} />;
+}
