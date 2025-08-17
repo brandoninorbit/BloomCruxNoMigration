@@ -14,7 +14,7 @@ function FinalizeContent() {
       // If the client doesn't have a session yet, try to fetch it
       const { data: s } = await supabaseClient.auth.getSession();
       const curr = s.session ?? session ?? null;
-      if (curr?.access_token && curr?.refresh_token) {
+  if (curr?.access_token && curr?.refresh_token) {
         try {
           await fetch("/api/auth/sync", {
             method: "POST",
@@ -23,7 +23,10 @@ function FinalizeContent() {
           });
         } catch {}
       }
-      router.replace(redirect);
+  // Add a finalized=1 marker to avoid middleware loops if server cookies are still missing
+  const target = new URL(redirect, window.location.origin);
+  target.searchParams.set("finalized", "1");
+  router.replace(target.pathname + target.search);
     }
     if (!isLoading) syncIfNeeded();
   }, [isLoading, redirect, router, session, supabaseClient]);

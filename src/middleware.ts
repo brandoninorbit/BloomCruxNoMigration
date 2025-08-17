@@ -25,13 +25,22 @@ export async function middleware(req: NextRequest) {
   const { data: { session } } = await supabase.auth.getSession();
 
   if (!session) {
-    // If no server session, send the user to /auth/finalize to sync client tokens to cookies.
-    // That page will redirect to /login if the client also has no session.
-    const redirect = `${pathname}${url.search}`;
-    const finalizeUrl = new URL(`/auth/finalize`, url.origin);
-    finalizeUrl.searchParams.set("redirect", redirect);
-    const r = NextResponse.redirect(finalizeUrl);
-    r.headers.set("x-bloomcrux-guard", "redirect:no_session");
+    const finalized = url.searchParams.get("finalized") === "1";
+    if (!finalized) {
+      // First attempt: let finalize try to sync client tokens -> server cookies
+      const redirect = `${pathname}${url.search}`;
+      const finalizeUrl = new URL(`/auth/finalize`, url.origin);
+      finalizeUrl.searchParams.set("redirect", redirect);
+      const r = NextResponse.redirect(finalizeUrl);
+      r.headers.set("x-bloomcrux-guard", "redirect:no_session");
+      return r;
+    }
+    // Already finalized but still no session; send to login
+    const loginUrl = new URL(`/login`, url.origin);
+    loginUrl.searchParams.set("redirect", `${pathname}${url.search}`);
+    loginUrl.searchParams.set("reason", "no_session_after_finalize");
+    const r = NextResponse.redirect(loginUrl);
+    r.headers.set("x-bloomcrux-guard", "redirect:no_session_after_finalize");
     return r;
   }
 
