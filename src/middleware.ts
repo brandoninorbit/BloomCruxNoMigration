@@ -25,16 +25,14 @@ export async function middleware(req: NextRequest) {
   const { data: { session } } = await supabase.auth.getSession();
 
   if (!session) {
-    // prevent redirect loop
-    if (pathname !== "/login") {
-      const redirect = `${pathname}${url.search}`;
-      const loginUrl = new URL(`/login`, url.origin);
-      loginUrl.searchParams.set("redirect", redirect);
-      loginUrl.searchParams.set("reason", "no_session");
-      const r = NextResponse.redirect(loginUrl);
-      r.headers.set("x-bloomcrux-guard", "redirect:no_session");
-      return r;
-    }
+    // If no server session, send the user to /auth/finalize to sync client tokens to cookies.
+    // That page will redirect to /login if the client also has no session.
+    const redirect = `${pathname}${url.search}`;
+    const finalizeUrl = new URL(`/auth/finalize`, url.origin);
+    finalizeUrl.searchParams.set("redirect", redirect);
+    const r = NextResponse.redirect(finalizeUrl);
+    r.headers.set("x-bloomcrux-guard", "redirect:no_session");
+    return r;
   }
 
   res.headers.set("x-bloomcrux-guard", session ? "pass:has_session" : "pass:login");
