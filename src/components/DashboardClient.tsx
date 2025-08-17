@@ -2,6 +2,7 @@
 // src/components/DashboardClient.tsx
 "use client";
 import React, { useMemo, useState } from "react";
+import { useUser } from "@supabase/auth-helpers-react";
 import Link from "next/link";
 import {
   Award,
@@ -148,7 +149,9 @@ const MOCK_XP_STATS: UserXpStats = {
 };
 
 export default function DashboardClient() {
-  const [showExample, setShowExample] = useState(true);
+  const user = useUser();
+  // Default to real data for logged-in users, mock data if logged out
+  const [showExample, setShowExample] = useState(!user);
 
   const progressToDisplay = useMemo<DeckProgress[]>(
     () => (showExample ? MOCK_DECK_PROGRESS : []),

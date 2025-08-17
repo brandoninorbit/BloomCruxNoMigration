@@ -4,12 +4,14 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/use-toast';
 import useDeck from '@/hooks/useDeck';
+import useFolders from '@/hooks/useFolders';
 
 type Props = {
   deckId: string;
 };
 
 export default function EditDeckForm({ deckId }: Props) {
+  const folders = useFolders();
   const router = useRouter();
   const { toast } = useToast();
   const { deck, setDeck, save, loading, error } = useDeck(deckId);
@@ -73,7 +75,7 @@ export default function EditDeckForm({ deckId }: Props) {
 
   const title = deck.title ?? '';
   const description = deck.description ?? '';
-  const sources = Array.isArray(deck.sources) ? deck.sources : [];
+  const sources: string[] = Array.isArray(deck.sources) ? deck.sources : [];
 
   const onTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
@@ -83,6 +85,11 @@ export default function EditDeckForm({ deckId }: Props) {
   const onDescriptionChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value;
     setDeck((prev) => (prev ? { ...prev, description: value } : prev));
+  };
+
+  const onFolderChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const value = e.target.value ? Number(e.target.value) : null;
+    setDeck((prev) => (prev ? { ...prev, folder_id: value } : prev));
   };
 
   const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -101,7 +108,7 @@ export default function EditDeckForm({ deckId }: Props) {
   };
 
   const removeSource = (name: string) => {
-    const next = sources.filter((s) => s !== name);
+    const next = sources.filter((s: string) => s !== name);
     setDeck((prev) => (prev ? { ...prev, sources: next } : prev));
     toast({ title: 'Source removed', description: name });
   };
@@ -157,6 +164,20 @@ export default function EditDeckForm({ deckId }: Props) {
               onChange={onDescriptionChange}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow"
             />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="deck-folder">Folder</label>
+            <select
+              id="deck-folder"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow"
+              value={deck.folder_id ?? ""}
+              onChange={onFolderChange}
+            >
+              <option value="">None</option>
+              {folders.map(f => (
+                <option key={f.id} value={f.id}>{f.name}</option>
+              ))}
+            </select>
           </div>
         </div>
       </div>
@@ -220,7 +241,7 @@ export default function EditDeckForm({ deckId }: Props) {
           {sources.length === 0 && (
             <li className="text-sm text-gray-500">No sources yet. Upload a CSV to add one.</li>
           )}
-          {sources.map((name) => (
+          {sources.map((name: string) => (
             <li key={name} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
               <div className="flex items-center gap-3">
                 <span className="material-icons text-gray-500">description</span>
@@ -241,15 +262,15 @@ export default function EditDeckForm({ deckId }: Props) {
       <div className="p-8 bg-white rounded-xl shadow-sm border border-gray-200 mt-8">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-semibold text-gray-900">
-            Cards in this Deck ({deck?.cards?.length ?? 0})
+            Cards in this Deck ({Array.isArray(deck.cards) ? deck.cards.length : 0})
           </h2>
           <button className="text-sm text-gray-600 hover:text-gray-900 font-medium">
-            Remember: {deck?.cards?.length ?? 0}
+            Remember: {Array.isArray(deck.cards) ? deck.cards.length : 0}
           </button>
         </div>
         <div className="text-center py-10">
           <button className="bg-[#2481f9] text-white px-6 py-3 rounded-lg font-semibold shadow-sm hover:bg-blue-600 transition-colors">
-            Load Cards ({deck?.cards?.length ?? 0})
+            Load Cards ({Array.isArray(deck.cards) ? deck.cards.length : 0})
           </button>
         </div>
       </div>

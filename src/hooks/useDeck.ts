@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Deck } from '@/types';
 import { getDeck, updateDeck } from '@/lib/repo';
+import { forceSignOut } from '@/lib/auth/clientSignOut';
 
 type UseDeckReturn = {
   deck: Deck | null;
@@ -34,6 +35,7 @@ export function useDeck(deckId: string): UseDeckReturn {
             description: d.description ?? '',
             sources: Array.isArray(d.sources) ? d.sources : [],
             cards: Array.isArray(d.cards) ? d.cards : [],
+            folder_id: typeof d.folder_id === 'number' ? d.folder_id : null,
           });
         } else {
           setDeck(null); // show "Deck not found" UI in the page
@@ -42,6 +44,10 @@ export function useDeck(deckId: string): UseDeckReturn {
         if (!alive) return;
         const message = e instanceof Error ? e.message : 'Failed to load deck';
         setError(message);
+        // If auth token is invalid/expired, force a clean sign-out so user can reauth
+        if (message?.toLowerCase().includes('refresh token') || message?.toLowerCase().includes('authapierror')) {
+          forceSignOut('/login');
+        }
       } finally {
         if (alive) setLoading(false);
       }

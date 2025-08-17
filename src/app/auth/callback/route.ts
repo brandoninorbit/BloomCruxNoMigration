@@ -12,5 +12,9 @@ export async function GET(req: Request) {
     await supabase.auth.exchangeCodeForSession(code);
   }
 
-  return NextResponse.redirect(new URL(redirect, url.origin));
+  // After the server exchanges the code, redirect to a small client page that
+  // verifies the client session and optionally posts tokens back to server if needed.
+  const next = new URL("/auth/finalize", url.origin);
+  next.searchParams.set("redirect", redirect);
+  return NextResponse.redirect(next);
 }

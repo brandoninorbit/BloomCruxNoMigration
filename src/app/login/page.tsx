@@ -1,13 +1,15 @@
 "use client";
-import { Suspense } from "react";
+import { Suspense, useEffect } from "react";
 
-import { useSearchParams } from "next/navigation";
-import { getSupabaseBrowser } from "@/lib/supabase/client";
+import { getSupabaseClient } from "@/lib/supabase/browserClient";
+
+import { useRouter, useSearchParams } from "next/navigation";
+import { useUser } from "@supabase/auth-helpers-react";
 
 function GoogleLoginButton() {
+  const supabase = getSupabaseClient();
   const searchParams = useSearchParams();
   const redirect = searchParams?.get("redirect") || "/dashboard";
-  const supabase = getSupabaseBrowser();
   const handleGoogleLogin = async () => {
     await supabase.auth.signInWithOAuth({
       provider: "google",
@@ -26,13 +28,28 @@ function GoogleLoginButton() {
   );
 }
 
+function LoginContent() {
+  const user = useUser();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirect = searchParams?.get("redirect") || "/dashboard";
+  useEffect(() => {
+    if (user) router.replace(redirect);
+  }, [user, redirect, router]);
+  return (
+    <>
+      <h1 className="text-2xl font-bold mb-6 text-gray-900 text-center">Sign in</h1>
+      <GoogleLoginButton />
+    </>
+  );
+}
+
 export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="bg-white p-8 rounded-xl shadow-md w-full max-w-sm">
-        <h1 className="text-2xl font-bold mb-6 text-gray-900 text-center">Sign in</h1>
-        <Suspense>
-          <GoogleLoginButton />
+        <Suspense fallback={null}>
+          <LoginContent />
         </Suspense>
       </div>
     </div>

@@ -36,19 +36,28 @@ export type Card = {
   meta?: Record<string, unknown>;
 };
 
+export type Folder = {
+  id: number;
+  name: string;
+  deckIds?: number[];
+  color?: string | null;
+  user_id?: string;
+  created_at?: string;
+  updatedAt?: string;
+};
+
+export type FolderWithCount = Folder & {
+  deck_count: number;
+};
+
 export type Deck = {
-  id: string;
+  id: number;
   title: string;
   description?: string;
   sources?: string[];
-  cards: Card[];
-  folderId?: string | null;
-  updatedAt: string; // ISO string
-};
-
-export type Folder = {
-  id: string;
-  name: string;
-  deckIds: string[];
-  updatedAt: string; // ISO string
+  cards?: Card[];
+  user_id?: string;
+  folder_id?: number | null;
+  created_at?: string;
+  updatedAt?: string;
 };

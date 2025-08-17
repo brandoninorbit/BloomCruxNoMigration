@@ -68,7 +68,7 @@ export default function DecksPage() {
             <h3 className="text-2xl font-semibold text-[#111418]">Decks</h3>
             <div className="flex items-center gap-4">
               <Link
-                href="/decks/new"
+                href="#"
                 className="bg-[#f0f2f4] text-[#111418] font-bold py-2 px-4 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-[#1f8fff] focus:ring-opacity-50 transition-colors"
               >
                 New Set
