@@ -611,7 +611,7 @@ function DecksPage() {
                       <button
                         type="button"
                         className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-[#2481f9] text-white text-[13px] font-semibold py-2 opacity-0 group-hover:opacity-100 transition-opacity shadow-sm hover:bg-blue-600"
-                        onClick={(e) => { e.stopPropagation(); window.location.href = `/study/${d.id}`; }}
+                        onClick={(e) => { e.stopPropagation(); window.location.href = `/decks/${d.id}/study`; }}
                       >
                         <BookOpen className="h-4 w-4" />
                         Study deck
