@@ -1,9 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { DeckCard } from "@/types/deck-cards";
+import type { DeckCard, DeckBloomLevel, DeckMCQMeta, DeckShortMeta, DeckFillMeta, DeckSortingMeta, DeckSequencingMeta, DeckCompareContrastMeta, DeckTwoTierMCQMeta, DeckCERMeta } from "@/types/deck-cards";
 import AddCardModal from "@/components/decks/AddCardModal";
-import type { DeckMCQMeta, DeckShortMeta } from "@/types/deck-cards";
 
 export type CardListProps = {
   cards: DeckCard[];
@@ -24,24 +23,43 @@ export default function CardList({ cards, onEdit, onDelete, onReorder }: CardLis
     await onReorder(ids);
   };
 
-  const submitEdit = async (payload: { question: string; explanation?: string; meta: DeckMCQMeta | DeckShortMeta; bloomLevel?: DeckCard["bloomLevel"] }) => {
+  type ModalSubmitPayload = {
+    type: DeckCard["type"];
+    bloomLevel?: DeckBloomLevel;
+    question: string;
+    explanation?: string;
+  meta: DeckMCQMeta | DeckShortMeta | DeckFillMeta | DeckSortingMeta | DeckSequencingMeta | DeckCompareContrastMeta | DeckTwoTierMCQMeta | DeckCERMeta;
+  };
+
+  const submitEdit = async (payload: ModalSubmitPayload) => {
     if (!editing) return;
-    if (editing.type === "Standard MCQ") {
-      await onEdit({
-        ...editing,
-        question: payload.question,
-        explanation: payload.explanation,
-        meta: payload.meta as DeckMCQMeta,
-        bloomLevel: payload.bloomLevel,
-      });
-    } else {
-      await onEdit({
-        ...editing,
-        question: payload.question,
-        explanation: payload.explanation,
-        meta: payload.meta as DeckShortMeta,
-        bloomLevel: payload.bloomLevel,
-      });
+    const common = {
+      id: editing.id,
+      deckId: editing.deckId,
+      question: payload.question,
+      explanation: payload.explanation,
+      bloomLevel: payload.bloomLevel,
+      position: editing.position,
+      createdAt: editing.createdAt,
+      updatedAt: editing.updatedAt,
+    };
+
+    if (payload.type === "Standard MCQ") {
+      await onEdit({ ...common, type: "Standard MCQ", meta: payload.meta as DeckMCQMeta });
+    } else if (payload.type === "Short Answer") {
+      await onEdit({ ...common, type: "Short Answer", meta: payload.meta as DeckShortMeta });
+    } else if (payload.type === "Sorting") {
+      await onEdit({ ...common, type: "Sorting", meta: payload.meta as DeckSortingMeta });
+    } else if (payload.type === "Sequencing") {
+      await onEdit({ ...common, type: "Sequencing", meta: payload.meta as DeckSequencingMeta });
+    } else if (payload.type === "Compare/Contrast") {
+      await onEdit({ ...common, type: "Compare/Contrast", meta: payload.meta as DeckCompareContrastMeta });
+    } else if (payload.type === "Two-Tier MCQ") {
+      await onEdit({ ...common, type: "Two-Tier MCQ", meta: payload.meta as DeckTwoTierMCQMeta });
+    } else if (payload.type === "Fill in the Blank") {
+      await onEdit({ ...common, type: "Fill in the Blank", meta: payload.meta as DeckFillMeta });
+    } else if (payload.type === "CER") {
+      await onEdit({ ...common, type: "CER", meta: payload.meta as DeckCERMeta });
     }
     setEditing(null);
   };

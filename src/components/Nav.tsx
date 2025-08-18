@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import AuthStatus from '@/components/AuthStatus'; // ✅ added
+import Image from 'next/image';
 
 const links = [
   { href: '/', label: 'Home' },
@@ -19,9 +20,12 @@ export default function Nav() {
   return (
     <header className="sticky top-0 z-40 w-full border-b border-border bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <nav className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
-        {/* Brand (unchanged) */}
+        {/* Brand with logo */}
         <Link href="/" className="font-semibold tracking-tight">
-          BloomCrux
+          <span className="inline-flex items-center gap-2">
+            <Image src="/logo.svg" alt="BloomCrux logo" width={24} height={24} priority />
+            <span>BloomCrux</span>
+          </span>
         </Link>
 
         {/* Main nav links (unchanged) */}

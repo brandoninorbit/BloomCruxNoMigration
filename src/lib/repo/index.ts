@@ -24,11 +24,7 @@ export async function updateDeck(deck: Deck): Promise<void> {
   return (await getRepo()).updateDeck(deck);
 }
 
-export async function createDeck(_input: { title: string; description?: string; folderId?: string | null }): Promise<Deck> {
-  // Deprecated: use createDeckWithUser instead
-  throw new Error("Use createDeckWithUser(userId, input) instead");
-
-}
+// deprecated createDeck removed; use createDeckWithUser
 
 export async function createDeckWithUser(userId: string, input: { title: string; description?: string; folder_id?: number | null }): Promise<{ id: number; title: string; description: string; folder_id: number | null }> {
   return (await getRepo()).createDeck(userId, input);

@@ -7,6 +7,18 @@ import type {
   DeckShortAnswer,
   DeckMCQMeta,
   DeckShortMeta,
+  DeckFillBlank,
+  DeckFillMeta,
+  DeckSorting,
+  DeckSortingMeta,
+  DeckSequencing,
+  DeckSequencingMeta,
+  DeckCompareContrast,
+  DeckCompareContrastMeta,
+  DeckTwoTierMCQ,
+  DeckTwoTierMCQMeta,
+  DeckCER,
+  DeckCERMeta,
 } from "@/types/deck-cards";
 
 // Database row shape for 'cards' table
@@ -19,6 +31,7 @@ type CardRow = {
   explanation: string | null;
   meta: unknown; // stored as JSONB in DB
   position: number | null;
+  source?: string | null;
   created_at: string | null;
   updated_at: string | null;
 };
@@ -44,11 +57,49 @@ function rowToCard(row: CardRow): DeckCard {
       meta: row.meta as DeckMCQMeta,
     } satisfies DeckStandardMCQ;
   }
+  if (row.type === "Short Answer") {
+    return {
+      ...base,
+      type: "Short Answer",
+      meta: row.meta as DeckShortMeta,
+    } satisfies DeckShortAnswer;
+  }
+  if (row.type === "Fill in the Blank") {
+    return {
+      ...base,
+      type: "Fill in the Blank",
+      meta: row.meta as DeckFillMeta,
+    } satisfies DeckFillBlank;
+  }
+  if (row.type === "Sorting") {
+    return {
+      ...base,
+      type: "Sorting",
+      meta: row.meta as DeckSortingMeta,
+    } satisfies DeckSorting;
+  }
+  // Sequencing
+  if (row.type === "Sequencing") return {
+    ...base,
+    type: "Sequencing",
+    meta: row.meta as DeckSequencingMeta,
+  } satisfies DeckSequencing;
+  if (row.type === "Two-Tier MCQ") return {
+    ...base,
+    type: "Two-Tier MCQ",
+    meta: row.meta as DeckTwoTierMCQMeta,
+  } satisfies DeckTwoTierMCQ;
+  if (row.type === "CER") return {
+    ...base,
+    type: "CER",
+    meta: row.meta as DeckCERMeta,
+  } satisfies DeckCER;
+  // Compare/Contrast
   return {
     ...base,
-    type: "Short Answer",
-    meta: row.meta as DeckShortMeta,
-  } satisfies DeckShortAnswer;
+    type: "Compare/Contrast",
+    meta: row.meta as DeckCompareContrastMeta,
+  } satisfies DeckCompareContrast;
 }
 
 function cardToRow(card: DeckCard): Omit<CardRow, "id" | "created_at" | "updated_at"> {
@@ -60,6 +111,7 @@ function cardToRow(card: DeckCard): Omit<CardRow, "id" | "created_at" | "updated
     explanation: card.explanation ?? null,
     meta: card.meta,
     position: card.position ?? null,
+  // 
   };
 }
 
@@ -79,8 +131,10 @@ export type NewDeckCard = {
   bloomLevel?: DeckBloomLevel;
   question: string;
   explanation?: string;
-  meta: DeckMCQMeta | DeckShortMeta;
+  meta: DeckMCQMeta | DeckShortMeta | DeckFillMeta | DeckSortingMeta | DeckSequencingMeta | DeckCompareContrastMeta | DeckTwoTierMCQMeta | DeckCERMeta;
   position?: number;
+  source?: string | null;
+  // NOTE: CER handled by widened union below in create/update calls using DeckCard typing.
 };
 
 export async function listByDeck(deckId: number): Promise<DeckCard[]> {
@@ -98,7 +152,7 @@ export async function listByDeck(deckId: number): Promise<DeckCard[]> {
 
 export async function create(input: NewDeckCard): Promise<DeckCard> {
   const supabase = getSupabaseClient();
-  const row = cardToRow({
+  const rowBase = cardToRow({
     id: 0 as unknown as number,
     deckId: input.deckId,
     type: input.type,
@@ -108,14 +162,28 @@ export async function create(input: NewDeckCard): Promise<DeckCard> {
     meta: input.meta,
     position: input.position,
   } as DeckCard);
-  const { data, error } = await supabase
+  // Inject 'source' only at insert time with a typed object
+  const row: Omit<CardRow, "id" | "created_at" | "updated_at"> = {
+    ...rowBase,
+    source: input.source ?? null,
+  };
+  const { error } = await supabase
     .from("cards")
     .insert([row])
-    .select("*")
+    .select("id")
     .single();
 
   if (error) throw readableError("Failed to create card", error);
-  return rowToCard(data as CardRow);
+  // Re-fetch latest created row to return full shape
+  const { data: fresh, error: getErr } = await supabase
+    .from("cards")
+    .select("*")
+    .eq("deck_id", input.deckId)
+    .order("id", { ascending: false })
+    .limit(1)
+    .single();
+  if (getErr) throw readableError("Failed to load created card", getErr);
+  return rowToCard(fresh as CardRow);
 }
 
 export async function update(card: DeckCard): Promise<DeckCard> {
@@ -150,4 +218,16 @@ export async function reorder(deckId: number, orderedIds: number[]): Promise<voi
     .map((r) => r.error?.message)
     .filter((m): m is string => Boolean(m));
   if (messages.length) throw new Error(`Failed to reorder cards: ${messages.join("; ")}`);
+}
+
+// Bulk delete by deck and source tag
+export async function removeBySource(deckId: number, source: string): Promise<number> {
+  const supabase = getSupabaseClient();
+  const { error, count } = await supabase
+    .from("cards")
+    .delete({ count: "exact" })
+    .eq("deck_id", deckId)
+    .eq("source", source);
+  if (error) throw readableError("Failed to delete by source", error);
+  return (count as number) ?? 0;
 }
