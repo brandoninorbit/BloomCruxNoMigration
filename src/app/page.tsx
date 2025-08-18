@@ -1,5 +1,17 @@
 import Link from "next/link";
-export default function HomePage() {
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
+import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
+
+export default async function HomePage() {
+  // Server-side check: if logged out, send users to About page.
+  const supabase = createServerComponentClient({ cookies });
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) {
+    redirect("/about");
+  }
+
+  // Logged-in users see the home page content.
   return (
     <main className="flex flex-col items-center justify-center min-h-[60vh] p-8">
       <h1 className="text-5xl font-bold mb-4 text-center">BloomCrux</h1>

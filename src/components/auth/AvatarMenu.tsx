@@ -13,9 +13,11 @@ export default function AvatarMenu() {
   if (!user || isLoading) return null;
 
   const meta = (user.user_metadata ?? {}) as { avatar_url?: string; picture?: string; full_name?: string };
-  const avatarUrl = meta.avatar_url || meta.picture || undefined;
-  const displayName = meta.full_name || user.email || "User";
-  const initial = (user.email?.[0] ?? "U").toUpperCase();
+  const avatarUrl = meta.avatar_url || meta.picture || undefined; // prefer provider image
+  const rawFull = meta.full_name || user.email || "User";
+  const first = (meta.full_name || "")?.trim().split(/\s+/)[0] || (user.email?.split("@")[0] ?? "User");
+  const displayName = first;
+  const initial = (displayName?.[0] ?? "U").toUpperCase();
 
   return (
     <DropdownMenu>
@@ -27,11 +29,11 @@ export default function AvatarMenu() {
           </Avatar>
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
+  <DropdownMenuContent align="end" className="w-56 bg-white">
         <DropdownMenuLabel className="font-normal">
           <div className="flex flex-col">
             <span className="text-sm font-medium leading-none">{displayName}</span>
-            <span className="text-xs text-muted-foreground truncate">{user.email}</span>
+    <span className="text-xs text-muted-foreground truncate">{user.email}</span>
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />

@@ -395,7 +395,14 @@ function DecksPage() {
 
       <div className="max-w-4xl mx-auto">
         <h2 className="text-3xl font-bold text-[#111418] mb-2">
-          {user ? `Welcome back, ${user.user_metadata?.full_name || user.email || "User"}` : "Welcome back, Agent"}
+          {(() => {
+            if (!user) return "Welcome Back, Agent";
+            const full = (user.user_metadata?.full_name as string | undefined) || "";
+            const firstFromFull = full.trim().split(/\s+/)[0] || "";
+            const firstFromEmail = (user.email || "").split("@")[0];
+            const first = firstFromFull || firstFromEmail || "Agent";
+            return `Welcome Back, ${first}`;
+          })()}
         </h2>
         <p className="text-[#637488] mb-6">Let&apos;s get learning.</p>
 
