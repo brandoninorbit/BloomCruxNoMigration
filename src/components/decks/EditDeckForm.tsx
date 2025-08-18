@@ -388,25 +388,17 @@ export default function EditDeckForm({ deckId }: Props) {
       <AddCardModal
         open={showAddCard}
         onClose={() => setShowAddCard(false)}
-        onCreate={async (payload) => {
-          // Create via repo, then notify listeners to refresh/append
+        onSubmit={async (payload) => {
           const created = await cardsRepo.create({
-            id: 0 as unknown as number, // not used by create mapping
             deckId: Number(deckId),
             type: payload.type,
             bloomLevel: payload.bloomLevel,
             question: payload.question,
             explanation: payload.explanation,
             meta: payload.meta,
-            position: undefined,
-            createdAt: undefined,
-            updatedAt: undefined,
-          } as any);
-          // Broadcast a custom event so EditDeckClient can append when loaded
+          });
           if (typeof window !== "undefined") {
-            window.dispatchEvent(
-              new CustomEvent("deck-card:created", { detail: { card: created } })
-            );
+            window.dispatchEvent(new CustomEvent("deck-card:created", { detail: { card: created } }));
           }
           toast({ title: "Card created" });
         }}

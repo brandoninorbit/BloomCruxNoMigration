@@ -1,14 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import type {
-  DeckBloomLevel,
-  DeckCard,
-  DeckStandardMCQ,
-  DeckShortAnswer,
-  DeckMCQMeta,
-  DeckShortMeta,
-} from "@/types/deck-cards";
+import { useEffect, useState } from "react";
+import type { DeckBloomLevel, DeckCard, DeckStandardMCQ, DeckShortAnswer, DeckMCQMeta, DeckShortMeta } from "@/types/deck-cards";
+import { CARD_TYPES_BY_BLOOM, BLOOM_LEVELS, defaultBloomFor, type CardType } from "@/types/card-catalog";
 
 type SubmitPayload = {
   type: DeckCard["type"];
@@ -28,9 +22,8 @@ type Props = {
 
 export default function AddCardModal({ open, mode = "create", initialCard, onClose, onSubmit }: Props) {
   const isEdit = mode === "edit";
-  const type: DeckCard["type"] = useMemo(() => {
-    return isEdit ? initialCard?.type ?? "Standard MCQ" : "Standard MCQ";
-  }, [isEdit, initialCard]);
+  type AllowedType = "Standard MCQ" | "Short Answer";
+  const [type, setType] = useState<AllowedType>("Standard MCQ");
 
   const [question, setQuestion] = useState("");
   const [bloomLevel, setBloomLevel] = useState<DeckBloomLevel | undefined>(
@@ -50,6 +43,7 @@ export default function AddCardModal({ open, mode = "create", initialCard, onClo
     if (!open) return;
     if (isEdit && initialCard) {
       setQuestion(initialCard.question ?? "");
+  setType(initialCard.type as AllowedType);
       setBloomLevel(initialCard.bloomLevel);
       setExplanation(initialCard.explanation ?? "");
       if (initialCard.type === "Standard MCQ") {
@@ -65,7 +59,8 @@ export default function AddCardModal({ open, mode = "create", initialCard, onClo
     } else if (open && !isEdit) {
       // reset for creation
       setQuestion("");
-      setBloomLevel(undefined);
+  setType("Standard MCQ");
+      setBloomLevel(defaultBloomFor("Standard MCQ"));
       setExplanation("");
       setA("");
       setB("");
@@ -129,14 +124,34 @@ export default function AddCardModal({ open, mode = "create", initialCard, onClo
           {/* Card Type */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Card Type</label>
-            <select className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-700" value={type} disabled>
-              <option value="Standard MCQ">Standard MCQ</option>
-              <option value="Short Answer">Short Answer</option>
+            <select
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-700"
+              value={type}
+              onChange={(e) => {
+                const next = e.target.value as CardType;
+                if (next === "Standard MCQ" || next === "Short Answer") {
+                  setType(next);
+                  // Auto-apply default bloom from catalog when type changes
+                  setBloomLevel(defaultBloomFor(next));
+                }
+              }}
+              disabled={isEdit}
+            >
+              {BLOOM_LEVELS.map((lvl) => (
+                <optgroup key={lvl} label={lvl}>
+                  {CARD_TYPES_BY_BLOOM[lvl].map((t) => (
+                    <option key={t} value={t} disabled={t !== "Standard MCQ" && t !== "Short Answer"}>
+                      {t}
+                      {t !== "Standard MCQ" && t !== "Short Answer" ? " (coming soon)" : ""}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
             </select>
-            {!isEdit && <p className="text-xs text-gray-500 mt-1">More types coming soon.</p>}
+            {!isEdit && <p className="text-xs text-gray-500 mt-1">Only Standard MCQ and Short Answer are available right now; others are coming soon.</p>}
           </div>
 
-          {/* Bloom Level */}
+          {/* Bloom Level (manual override allowed) */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Bloom Level</label>
             <select
@@ -146,12 +161,9 @@ export default function AddCardModal({ open, mode = "create", initialCard, onClo
             >
               <option value="">None</option>
               <optgroup label="Bloom Levels">
-                <option value="Remember">Remember</option>
-                <option value="Understand">Understand</option>
-                <option value="Apply">Apply</option>
-                <option value="Analyze">Analyze</option>
-                <option value="Evaluate">Evaluate</option>
-                <option value="Create">Create</option>
+                {BLOOM_LEVELS.map((lvl) => (
+                  <option key={lvl} value={lvl}>{lvl}</option>
+                ))}
               </optgroup>
             </select>
           </div>

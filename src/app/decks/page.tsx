@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useUser, useSessionContext } from "@supabase/auth-helpers-react";
-import { Pencil } from "lucide-react";
+import { Pencil, BookOpen } from "lucide-react";
+import { BLOOM_LEVELS, BLOOM_COLOR_HEX, gradientForBloom } from "@/types/card-catalog";
+import type { DeckBloomLevel } from "@/types/deck-cards";
 import {
   Dialog,
   DialogContent,
@@ -377,6 +379,16 @@ function DecksPage() {
     return decks.filter((d) => d.folderId === activeFolderId);
   }, [activeFolderId, decks]);
 
+  // Derive a future-ready display for Bloom mastery; for now, default decks with missing data
+  // to Remember at 30% to match the placeholder behavior until study mode is wired.
+  function resolveBloomAndMastery(d: Deck): { level: DeckBloomLevel; percent: number } {
+    const level = (BLOOM_LEVELS as readonly DeckBloomLevel[]).includes(d.bloomLevel as DeckBloomLevel)
+      ? (d.bloomLevel as DeckBloomLevel)
+      : "Remember";
+    const percent = typeof d.mastery === "number" && d.mastery >= 0 ? d.mastery : 30;
+    return { level, percent };
+  }
+
   /* ---------- UI ---------- */
 
   return (
@@ -556,17 +568,56 @@ function DecksPage() {
                 onClick={() => (window.location.href = `/decks/${d.id}/edit`)}
               >
                 <div className="relative w-full aspect-[3/4] bg-white rounded-xl shadow-md transition-all duration-500 group-hover:shadow-xl group-hover:-translate-y-2 [transform-style:preserve-3d] group-hover:[transform:rotateY(3deg)]">
-                  <div className="absolute inset-0 bg-gray-100 rounded-xl flex items-center justify-center">
-                    {d.locked && (
-                      <div className="absolute top-2 right-2 p-1.5 bg-[#ffc107]/20 text-[#ffc107] rounded-full">
-                        <svg className="h-4 w-4" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg" fill="currentColor" aria-hidden>
-                          <path fillRule="evenodd" clipRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" />
-                        </svg>
-                      </div>
-                    )}
-                    <p className="text-lg font-medium text-[#637488]">{d.tag}</p>
+                  {/* Card background */}
+                  <div className="absolute inset-0 bg-gray-100 rounded-xl" />
+
+                  {/* Lock icon */}
+                  {d.locked && (
+                    <div className="absolute top-2 right-2 p-1.5 bg-[#ffc107]/20 text-[#ffc107] rounded-full">
+                      <svg className="h-4 w-4" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg" fill="currentColor" aria-hidden>
+                        <path fillRule="evenodd" clipRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" />
+                      </svg>
+                    </div>
+                  )}
+
+                  {/* Content layout */}
+                  <div className="absolute inset-0 p-4 flex flex-col">
+                    {/* Title at top */}
+                    <div className="text-[15px] font-bold text-[#111418] line-clamp-2 pr-6">{d.title}</div>
+
+                    {/* Bloom mastery directly below title */}
+                    <div className="mt-2">
+                      {(() => {
+                        const { level, percent } = resolveBloomAndMastery(d);
+                        const grad = gradientForBloom(level);
+                        const pct = Math.max(0, Math.min(100, percent));
+                        const color = BLOOM_COLOR_HEX[level] ?? "#4DA6FF";
+                        return (
+                          <div>
+                            <div className="mb-1 text-[11px] font-semibold" style={{ color }}>{level}</div>
+                            <div className="h-2.5 w-full rounded-full bg-gray-200 overflow-hidden">
+                              <div className="h-full rounded-full" style={{ width: `${pct}%`, background: grad }} />
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    {/* Spacer */}
+                    <div className="flex-1" />
+
+                    {/* Hover Study button at bottom */}
+                    <div className="pt-2">
+                      <button
+                        type="button"
+                        className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-[#2481f9] text-white text-[13px] font-semibold py-2 opacity-0 group-hover:opacity-100 transition-opacity shadow-sm hover:bg-blue-600"
+                        onClick={(e) => { e.stopPropagation(); window.location.href = `/study/${d.id}`; }}
+                      >
+                        <BookOpen className="h-4 w-4" />
+                        Study deck
+                      </button>
+                    </div>
                   </div>
-                  <div className="absolute bottom-4 left-4 text-sm font-medium text-[#111418]">{d.title}</div>
                 </div>
               </div>
             ))}

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import type { DeckCard } from "@/types/deck-cards";
 import AddCardModal from "@/components/decks/AddCardModal";
+import type { DeckMCQMeta, DeckShortMeta } from "@/types/deck-cards";
 
 export type CardListProps = {
   cards: DeckCard[];
@@ -23,9 +24,25 @@ export default function CardList({ cards, onEdit, onDelete, onReorder }: CardLis
     await onReorder(ids);
   };
 
-  const submitEdit = async (payload: { question: string; explanation?: string; meta: any; bloomLevel?: any }) => {
+  const submitEdit = async (payload: { question: string; explanation?: string; meta: DeckMCQMeta | DeckShortMeta; bloomLevel?: DeckCard["bloomLevel"] }) => {
     if (!editing) return;
-    await onEdit({ ...editing, question: payload.question, explanation: payload.explanation, meta: payload.meta, bloomLevel: payload.bloomLevel });
+    if (editing.type === "Standard MCQ") {
+      await onEdit({
+        ...editing,
+        question: payload.question,
+        explanation: payload.explanation,
+        meta: payload.meta as DeckMCQMeta,
+        bloomLevel: payload.bloomLevel,
+      });
+    } else {
+      await onEdit({
+        ...editing,
+        question: payload.question,
+        explanation: payload.explanation,
+        meta: payload.meta as DeckShortMeta,
+        bloomLevel: payload.bloomLevel,
+      });
+    }
     setEditing(null);
   };
 
@@ -77,7 +94,7 @@ export default function CardList({ cards, onEdit, onDelete, onReorder }: CardLis
         mode="edit"
         initialCard={editing ?? undefined}
         onClose={() => setEditing(null)}
-        onSubmit={submitEdit as any}
+        onSubmit={submitEdit}
       />
     </>
   );

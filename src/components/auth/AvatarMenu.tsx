@@ -14,7 +14,6 @@ export default function AvatarMenu() {
 
   const meta = (user.user_metadata ?? {}) as { avatar_url?: string; picture?: string; full_name?: string };
   const avatarUrl = meta.avatar_url || meta.picture || undefined; // prefer provider image
-  const rawFull = meta.full_name || user.email || "User";
   const first = (meta.full_name || "")?.trim().split(/\s+/)[0] || (user.email?.split("@")[0] ?? "User");
   const displayName = first;
   const initial = (displayName?.[0] ?? "U").toUpperCase();
