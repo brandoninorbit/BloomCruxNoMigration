@@ -58,18 +58,17 @@ function col(row: CsvRow, ...names: string[]): string {
   return "";
 }
 const toBloom = (s?: string): DeckBloomLevel | undefined => {
-  const t = (s || "").trim().toLowerCase();
-  if (!t) return undefined;
-  const map: Record<string, DeckBloomLevel> = {
-    remember: "Remember",
-    understand: "Understand",
-    apply: "Apply",
-    analyze: "Analyze",
-    analyse: "Analyze",
-    evaluate: "Evaluate",
-    create: "Create",
-  };
-  return map[t];
+  const raw = (s || "").trim();
+  if (!raw) return undefined;
+  const t = raw.toLowerCase();
+  // direct contains matching
+  if (t.includes("remember") || t === "l1" || t === "level 1" || t === "1") return "Remember";
+  if (t.includes("understand") || t === "l2" || t === "level 2" || t === "2") return "Understand";
+  if (t.includes("apply") || t === "l3" || t === "level 3" || t === "3") return "Apply";
+  if (t.includes("analyz") || t.includes("analyse") || t === "l4" || t === "level 4" || t === "4") return "Analyze";
+  if (t.includes("evaluate") || t === "l5" || t === "level 5" || t === "5") return "Evaluate";
+  if (t.includes("create") || t === "l6" || t === "level 6" || t === "6") return "Create";
+  return undefined;
 };
 
 // Narrow a possibly messy value to the literal union 'A' | 'B' | 'C' | 'D'
@@ -87,7 +86,7 @@ const asLetter = (v?: string): Letter => {
   return "A";
 };
 // Regex to detect a leading label like A), A., A:, or A-
-const LABEL_RE = /^\s*([A-D])\s*[\)\].:–—-]?\s*/i; // supports A) A. A: A- (including en/em dashes)
+const LABEL_RE = /^\s*([A-D])(?![a-zA-Z])\s*[\)\].:–—-]?\s*/i; // require next char not a letter to avoid stripping words like 'Alpha'
 
 // Some spreadsheets misalign A/B/C/D fields or include labels like "A) text" in the wrong column.
 // This routine collects any labeled values and reconstructs the correct A/B/C/D map.
@@ -168,20 +167,6 @@ function normalizeRAtoRD(row: CsvRow): { RA: string; RB: string; RC: string; RD:
       map[k] = v.trim();
     }
   });
-  // Fallback: scan across all values for labeled RA..RD if still missing
-  if (!map.RA || !map.RB || !map.RC || !map.RD) {
-    const values = Object.values(row) as string[];
-    values.forEach((val) => {
-      if (!val || typeof val !== "string") return;
-      const m = val.match(LABEL_RE);
-      if (!m) return;
-      const letter = m[1].toUpperCase() as Letter;
-      const key = ("R" + letter) as keyof typeof map;
-      if (map[key]) return;
-      const text = val.slice(m[0].length).trim();
-      if (text) map[key] = text;
-    });
-  }
   return map;
 }
 
@@ -197,7 +182,7 @@ export function rowToPayload(row: CsvRow): {
   meta: DeckMCQMeta | DeckShortMeta | DeckFillMeta | DeckSortingMeta | DeckSequencingMeta | DeckCompareContrastMeta | DeckTwoTierMCQMeta | DeckCERMeta;
 } {
   const cardType = (col(row, "CardType", "Type") || "").trim();
-  const providedBloom = toBloom(col(row, "BloomLevel"));
+  const providedBloom = toBloom(col(row, "BloomLevel", "Bloom", "Bloom Taxonomy"));
   const explanation = col(row, "Explanation") || undefined;
 
   // Standardize friendly type aliases
@@ -335,9 +320,12 @@ export function rowToPayload(row: CsvRow): {
         .map((p) => p.split(":").map((s) => s.trim()))
         .filter(([term, cat]) => term && cat)
         .map(([term, cat]) => ({ term, correctCategory: cat }));
-      // If categories look like item pairs (contain ':'), derive categories from items instead
-      if (!cats.length || cats.every((c) => c.includes(":"))) {
-        const uniqCats = Array.from(new Set(items.map((it) => it.correctCategory)));
+      // If categories look like item pairs (contain ':'), or if provided categories do not intersect with item categories,
+      // derive categories from items instead.
+      const uniqCats = Array.from(new Set(items.map((it) => it.correctCategory)));
+      const catsLookLikePairs = cats.length > 0 && cats.every((c) => c.includes(":"));
+      const catsIntersect = cats.some((c) => uniqCats.includes(c));
+      if (!cats.length || catsLookLikePairs || (!catsIntersect && uniqCats.length)) {
         if (uniqCats.length) cats = uniqCats;
       }
   return { type: "Sorting", bloomLevel: providedBloom ?? defaultBloomForType("Sorting"), question: q, explanation, meta: { categories: cats, items } };
@@ -358,8 +346,8 @@ export function rowToPayload(row: CsvRow): {
     }
     case "Two-Tier MCQ": {
       // Tier1
-    const norm = normalizeABCD(row);
-    const ans = asLetter(row["Answer"]);
+  const norm = normalizeABCD(row);
+  const ans = asLetter(col(row, "Answer", "Correct", "Correct Answer"));
       // Tier2 columns prefixed with R*
   const rQ = col(row, "RQuestion", "ReasoningQuestion");
     const r = normalizeRAtoRD(row);

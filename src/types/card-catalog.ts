@@ -17,11 +17,11 @@ export const DEFAULT_BLOOM_BY_TYPE: Record<CardType, DeckBloomLevel> = {
   "Fill in the Blank": "Remember",
   "Short Answer": "Understand",
   "Sorting": "Understand",
-  "Sequencing": "Apply",
+  "Sequencing": "Understand",
   "Worked Example": "Apply",
   "Compare/Contrast": "Analyze",
   "Categorization": "Analyze",
-  "Two-Tier MCQ": "Evaluate",
+  "Two-Tier MCQ": "Apply",
   "CER": "Evaluate",
 } as const;
 

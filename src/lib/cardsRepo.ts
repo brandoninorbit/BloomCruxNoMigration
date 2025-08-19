@@ -21,6 +21,9 @@ import type {
   DeckCERMeta,
 } from "@/types/deck-cards";
 import { defaultBloomForType } from "@/lib/bloom";
+import { upsertDeckImport } from "@/lib/db/deckImports";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@/types/supabase";
 
 // Database row shape for 'cards' table
 type CardRow = {
@@ -275,24 +278,17 @@ export async function listSourcesByDeck(deckId: number): Promise<string[]> {
 
 // ----- Import hash tracking (deck_imports) -----
 export async function hasImportHash(deckId: number, fileHash: string): Promise<boolean> {
-  const supabase = getSupabaseClient();
+  const supabase = createClientComponentClient<Database>();
   const { data, error } = await supabase
     .from("deck_imports")
     .select("id")
     .eq("deck_id", deckId)
     .eq("file_hash", fileHash)
     .maybeSingle();
-  if (error && error.code !== "PGRST116") throw readableError("Failed to check import hash", error);
-  return Boolean(data?.id);
+  if (error && error.code !== "PGRST116") return false;
+  return Boolean((data as { id?: number } | null)?.id);
 }
 
 export async function recordImportHash(deckId: number, source: string, fileHash: string): Promise<void> {
-  const supabase = getSupabaseClient();
-  const { data: userData, error: uerr } = await supabase.auth.getUser();
-  if (uerr || !userData?.user) throw new Error("Not signed in");
-  const user_id = userData.user.id;
-  const { error } = await supabase
-    .from("deck_imports")
-    .upsert({ user_id, deck_id: deckId, source, file_hash: fileHash }, { onConflict: "user_id,deck_id,file_hash" });
-  if (error) throw readableError("Failed to record import hash", error);
+  await upsertDeckImport({ deckId, fileHash, source });
 }

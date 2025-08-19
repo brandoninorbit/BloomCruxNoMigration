@@ -15,7 +15,9 @@ export default async function EditDeckPage({
     notFound();
   }
 
-  const supabase = createServerComponentClient({ cookies });
+  const store = await cookies();
+  const cookiesAccessor = (async () => store) as Parameters<typeof createServerComponentClient>[0]["cookies"];
+  const supabase = createServerComponentClient({ cookies: cookiesAccessor });
   const {
     data: { user },
   } = await supabase.auth.getUser();

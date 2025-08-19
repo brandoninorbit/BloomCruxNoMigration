@@ -11,7 +11,9 @@ export default async function StudyPage({ params }: { params: Promise<{ deckId: 
   if (!Number.isFinite(id)) notFound();
 
   // Provide a stable cookies getter to the Supabase helper
-  const supabase = createServerComponentClient({ cookies });
+  const store = await cookies();
+  const cookiesAccessor = (async () => store) as Parameters<typeof createServerComponentClient>[0]["cookies"];
+  const supabase = createServerComponentClient({ cookies: cookiesAccessor });
   const { data: { user } } = await supabase.auth.getUser();
 
   let title = `Deck #${id}`;

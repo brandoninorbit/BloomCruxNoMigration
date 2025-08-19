@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { rowToPayload, type CsvRow } from './csvImport';
-import type { DeckMCQMeta, DeckFillMetaV3, DeckSortingMeta } from '@/types/deck-cards';
+import type { DeckMCQMeta, DeckFillMetaV3, DeckSortingMeta, DeckTwoTierMCQMeta } from '@/types/deck-cards';
 
 describe('csvImport.rowToPayload', () => {
   it('parses MCQ with labeled/misaligned options and correct answer', () => {
@@ -51,5 +51,46 @@ describe('csvImport.rowToPayload', () => {
   const meta = payload.meta as DeckSortingMeta;
     expect(meta.categories).toEqual(['Polymers','Monomers']);
     expect(meta.items.length).toBe(2);
+  });
+
+  it('Two-Tier MCQ parses tier1 and tier2 independently without leakage', () => {
+    const row: CsvRow = {
+      CardType: 'Two-Tier MCQ',
+      Question: 'What is X?',
+      A: 'Alpha',
+      B: 'Beta',
+      C: 'Gamma',
+      D: 'Delta',
+      Answer: 'B',
+      RQuestion: 'Why is that correct?',
+      RA: 'Reason A',
+      RB: 'Reason B',
+      RC: 'Reason C',
+      RD: 'Reason D',
+      RAnswer: 'C',
+    };
+    const payload = rowToPayload(row);
+    expect(payload.type).toBe('Two-Tier MCQ');
+    const meta = payload.meta as DeckTwoTierMCQMeta;
+    expect(meta.tier1.options.A).toBe('Alpha');
+    expect(meta.tier1.answer).toBe('B');
+    expect(meta.tier2.question).toContain('Why');
+    expect(meta.tier2.options.C).toBe('Reason C');
+    expect(meta.tier2.answer).toBe('C');
+  });
+
+  it('BloomLevel synonyms (e.g., L4) normalize to proper Bloom level', () => {
+    const row: CsvRow = {
+      CardType: 'Standard MCQ',
+      Question: 'Bloom synonym test',
+  A: 'Option A',
+  B: 'Option B',
+  C: 'Option C',
+  D: 'Option D',
+      Answer: 'A',
+      BloomLevel: 'L4',
+    };
+    const payload = rowToPayload(row);
+    expect(payload.bloomLevel).toBe('Analyze');
   });
 });
