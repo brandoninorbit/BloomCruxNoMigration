@@ -5,9 +5,7 @@ import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 
 export default async function HomePage() {
   // Server-side check: if logged out, send users to About page.
-    const store = await cookies();
-    const cookiesAccessor = (async () => store) as Parameters<typeof createServerComponentClient>[0]["cookies"];
-    const supabase = createServerComponentClient({ cookies: cookiesAccessor });
+  const supabase = createServerComponentClient({ cookies });
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) {
     redirect("/about");

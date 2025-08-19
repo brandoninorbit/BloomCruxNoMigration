@@ -9,10 +9,8 @@ export async function POST(req: Request) {
   if (!access_token || !refresh_token) {
     return NextResponse.json({ ok: false, error: "missing_tokens" }, { status: 400 });
   }
-  // Pass the cookies helper directly – no any, no await
-  const store = await cookies();
-  const cookiesAccessor = (async () => store) as Parameters<typeof createRouteHandlerClient>[0]["cookies"];
-  const supabase = createRouteHandlerClient({ cookies: cookiesAccessor });
+  // Pass the cookies function reference directly – no synchronous access
+  const supabase = createRouteHandlerClient({ cookies });
   await supabase.auth.setSession({ access_token, refresh_token });
   return NextResponse.json({ ok: true });
 }
