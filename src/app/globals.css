@@ -1,6 +1,6 @@
 /* Tailwind v4: import the framework via CSS, then register plugins here */
 @import "tailwindcss";
-@plugin "tailwindcss-animate";
+/* tailwindcss-animate plugin can be added via Tailwind config; removed here to avoid editor parse errors */
 
 /* ---- shadcn-style tokens you already use ---- */
 @layer base {
@@ -54,4 +54,37 @@
 @layer base {
   * { border-color: hsl(var(--border)); }
   body { background-color: hsl(var(--background)); color: hsl(var(--foreground)); }
+}
+
+/* Study quest helpers */
+@layer utilities {
+  :root {
+    /* Remember Bloom color to reuse in outlines */
+    --bloom-remember: #4DA6FF;
+  }
+  .dragging { cursor: grabbing !important; }
+  .droppable-over { outline: 2px solid var(--bloom-remember); outline-offset: 2px; }
+  .focus-ring:focus { outline: 2px solid color(display-p3 0.3 0.45 1 / 0.75); outline-offset: 2px; }
+
+    /* Study layout wrappers */
+    .study-page {
+      background-color: #f8fafc; /* slate-50 */
+      min-height: 100vh;
+      font-family: var(--font-ui), ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+    }
+    .study-card {
+      background-color: #ffffff;
+      border-radius: 0.75rem; /* rounded-xl */
+      box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+      border: 1px solid #e2e8f0; /* slate-200 */
+      min-height: 70vh; /* extend card toward bottom as requested */
+    }
+    .study-body {
+      font-family: var(--font-content), ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      font-size: 1.25rem; /* text-xl scale for card content */
+      line-height: 1.75rem;
+    }
+  .font-valid { font-family: var(--font-ui), ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; }
+  .font-lalo { font-family: var(--font-content), ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; }
+  .font-nav { font-family: var(--font-nav, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"); }
 }

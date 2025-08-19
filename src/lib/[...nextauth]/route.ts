@@ -1,1 +1,1 @@
-export { handlers as GET, handlers as POST } from "@/lib/auth";
+export { default as GET, default as POST } from "@/lib/auth";

@@ -14,11 +14,27 @@ export type DeckMCQMeta = {
 };
 
 export type DeckShortMeta = { suggestedAnswer: string };
-export type DeckFillMode = 'Free Text' | 'Drag & Drop';
+export type DeckFillMode = 'Free Text' | 'Drag & Drop' | 'Either';
 // Backward-compatible: V1 used a single answer string. V2 supports multiple blanks and optional options for DnD.
 export type DeckFillMetaV1 = { answer: string };
-export type DeckFillMetaV2 = { mode: DeckFillMode; answers: string[]; options?: string[] };
-export type DeckFillMeta = DeckFillMetaV1 | DeckFillMetaV2;
+export type DeckFillMetaV2 = { mode: Exclude<DeckFillMode, 'Either'>; answers: string[]; options?: string[] };
+// V3: structured blank specs with per-blank flags and optional global flags/options
+export type DeckFillBlankSpec = {
+  id: string | number;
+  answers: string[]; // include alternates; first is primary
+  hint?: string;
+  mode?: DeckFillMode; // overrides card-level mode
+  caseSensitive?: boolean; // overrides card-level flag
+  ignorePunct?: boolean;   // overrides card-level flag
+};
+export type DeckFillMetaV3 = {
+  mode: DeckFillMode; // default behavior for blanks
+  blanks: DeckFillBlankSpec[];
+  options?: string[]; // word bank when Drag & Drop or Either
+  caseSensitive?: boolean; // default grading flags
+  ignorePunct?: boolean;
+};
+export type DeckFillMeta = DeckFillMetaV1 | DeckFillMetaV2 | DeckFillMetaV3;
 export type DeckSortingItem = { term: string; correctCategory: string };
 export type DeckSortingMeta = { categories: string[]; items: DeckSortingItem[] };
 export type DeckSequencingMeta = { steps: string[] };

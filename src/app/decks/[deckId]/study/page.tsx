@@ -10,6 +10,7 @@ export default async function StudyPage({ params }: { params: Promise<{ deckId: 
   const id = Number(resolved?.deckId);
   if (!Number.isFinite(id)) notFound();
 
+  // Provide a stable cookies getter to the Supabase helper
   const supabase = createServerComponentClient({ cookies });
   const { data: { user } } = await supabase.auth.getUser();
 
@@ -93,7 +94,11 @@ export default async function StudyPage({ params }: { params: Promise<{ deckId: 
                 <h3 className="text-xl font-semibold text-gray-800">{m.title}</h3>
               </div>
               <p className="text-gray-500 mb-6 line-clamp-4">{m.desc}</p>
-              <button className="mt-auto w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors">{m.cta}</button>
+              {m.key === 'quest' ? (
+                <a href={`/decks/${id}/quest`} className="mt-auto w-full bg-blue-600 text-white py-3 rounded-lg font-semibold text-center hover:bg-blue-700 transition-colors block">{m.cta}</a>
+              ) : (
+                <button className="mt-auto w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors">{m.cta}</button>
+              )}
             </div>
           );
         })}

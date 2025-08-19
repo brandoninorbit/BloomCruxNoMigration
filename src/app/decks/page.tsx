@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { useUser, useSessionContext } from "@supabase/auth-helpers-react";
-import { Pencil, BookOpen } from "lucide-react";
+import { Pencil, BookOpen, Trash2 } from "lucide-react";
 import { BLOOM_LEVELS, BLOOM_COLOR_HEX, gradientForBloom } from "@/types/card-catalog";
 import type { DeckBloomLevel } from "@/types/deck-cards";
 import {
@@ -221,6 +221,9 @@ function DecksPage() {
   const [folderToEdit, setFolderToEdit] = useState<FolderUI | null>(null);
   const [editName, setEditName] = useState<string>("");
   const [editColorName, setEditColorName] = useState<ColorName>("blue");
+  // Delete confirmation toast state
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /* ---------- Data Fetch ---------- */
   // Robust fetch for folders and decks
@@ -265,6 +268,7 @@ function DecksPage() {
     }
   }, [user, showMock, fetchUserData]);
 
+          // Inline confirm/cancel handlers are used where needed; keep state reset helper only if used
   // Call fetchUserData after deck/folder creation (patch button logic)
 
   /* ---------- Handlers ---------- */
@@ -355,6 +359,33 @@ function DecksPage() {
     setIsEditModalOpen(false);
     setFolderToEdit(null);
   }, [folderToEdit, editName, editColorName, user, showMock]);
+
+  // DELETE DECK
+  const handleDeleteDeck = useCallback(async (deckId: number) => {
+    try {
+      if (user && !showMock) {
+        // Delete from Supabase, scoped to current user
+        await supabase.from("decks").delete().eq("id", deckId).eq("user_id", user.id);
+        // Refresh decks list
+        await fetchUserData();
+      } else {
+        // Mock path: remove locally
+        setDecks((prev) => prev.filter((d) => d.id !== deckId));
+      }
+    } catch (e) {
+      // No-op; could surface a toast in future
+      console.error(e);
+    }
+  }, [user, showMock, fetchUserData]);
+
+  // Show confirmation toast for a few seconds
+  const requestDeleteConfirm = useCallback((deckId: number) => {
+    setConfirmDeleteId(deckId);
+    if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+    confirmTimerRef.current = setTimeout(() => setConfirmDeleteId(null), 6000);
+  }, []);
+
+  useEffect(() => () => { if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current); }, []);
 
   /* ---------- Derived ---------- */
 
@@ -606,16 +637,51 @@ function DecksPage() {
                     {/* Spacer */}
                     <div className="flex-1" />
 
-                    {/* Hover Study button at bottom */}
-                    <div className="pt-2">
+                    {/* Hover actions at bottom: Study, then centered Delete icon below */}
+                    <div className="pt-2 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
                         type="button"
-                        className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-[#2481f9] text-white text-[13px] font-semibold py-2 opacity-0 group-hover:opacity-100 transition-opacity shadow-sm hover:bg-blue-600"
+                        className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-[#2481f9] text-white text-[13px] font-semibold py-2 shadow-sm hover:bg-blue-600"
                         onClick={(e) => { e.stopPropagation(); window.location.href = `/decks/${d.id}/study`; }}
                       >
                         <BookOpen className="h-4 w-4" />
                         Study deck
                       </button>
+                      <div className="mt-2 flex flex-col items-center gap-2">
+                        <button
+                          type="button"
+                          aria-label="Delete deck"
+                          title="Delete deck"
+                          className="inline-flex items-center justify-center rounded-md border border-slate-200 bg-white p-2 text-slate-600 shadow-sm hover:text-red-600 hover:border-red-300 transition-colors"
+                          onClick={(e) => { e.stopPropagation(); requestDeleteConfirm(d.id); }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                        {confirmDeleteId === d.id && (
+                          <div
+                            className="w-full max-w-[220px] rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 shadow-sm"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <div className="mb-2 font-medium">Delete this deck?</div>
+                            <div className="flex items-center justify-center gap-2">
+                              <button
+                                type="button"
+                                className="px-2.5 py-1 rounded bg-red-600 text-white hover:bg-red-700"
+                                onClick={(e) => { e.stopPropagation(); handleDeleteDeck(d.id); setConfirmDeleteId(null); }}
+                              >
+                                Delete
+                              </button>
+                              <button
+                                type="button"
+                                className="px-2.5 py-1 rounded border border-slate-200 text-slate-700 hover:bg-slate-50"
+                                onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null); }}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>

@@ -8,6 +8,7 @@ import useFolders from "@/hooks/useFolders";
 import AddCardModal from "@/components/decks/AddCardModal";
 import * as cardsRepo from "@/lib/cardsRepo";
 import { parseCsv, rowToPayload } from "@/lib/csvImport";
+import { hasImportHash, recordImportHash } from "@/lib/cardsRepo";
 
 type Props = {
   deckId: string;
@@ -24,10 +25,12 @@ export default function EditDeckForm({ deckId }: Props) {
   const [showAddCard, setShowAddCard] = useState<boolean>(false);
   const [pendingImport, setPendingImport] = useState<null | {
     fileName: string;
+  fileHash: string;
     okRows: { idx: number; payload: ReturnType<typeof rowToPayload> }[];
     errRows: { idx: number; error: string }[];
   }>(null);
   const [showImportErrors, setShowImportErrors] = useState<boolean>(false);
+  const [importing, setImporting] = useState<boolean>(false);
 
   if (!deckId) {
     return (
@@ -106,6 +109,21 @@ export default function EditDeckForm({ deckId }: Props) {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
+      // Compute a SHA-256 hash of the file to guard against re-imports
+      const buf = await file.arrayBuffer();
+      const digest = await crypto.subtle.digest("SHA-256", buf);
+      const hash = Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+      // Check if this file was already imported for this deck (across sessions)
+      try {
+        const already = await hasImportHash(Number(deckId), hash);
+        if (already) {
+          toast({ title: "Already imported", description: `This file appears to be already imported for this deck.`, variant: "destructive" });
+          return;
+        }
+      } catch {
+        // ignore check errors; allow import to proceed
+      }
+
       const rows = await parseCsv(file);
       if (!rows.length) {
         toast({ title: "CSV empty", description: "No rows found.", variant: "destructive" });
@@ -121,7 +139,7 @@ export default function EditDeckForm({ deckId }: Props) {
           errRows.push({ idx: i + 2, error: (err as Error).message });
         }
       }
-      setPendingImport({ fileName: file.name, okRows, errRows });
+  setPendingImport({ fileName: file.name, fileHash: hash, okRows, errRows });
       setShowImportErrors(false);
       if (errRows.length) {
         toast({ title: `Parsed ${okRows.length} OK, ${errRows.length} failed`, description: `Review options below to continue.`, variant: "default" });
@@ -136,9 +154,15 @@ export default function EditDeckForm({ deckId }: Props) {
   const removeSource = async (name: string) => {
     try {
       const deleted = await cardsRepo.removeBySource(Number(deckId), name);
-      const next = sources.filter((s: string) => s !== name);
-      setDeck((prev) => (prev ? { ...prev, sources: next } : prev));
+      try {
+        const refreshed = await cardsRepo.listSourcesByDeck(Number(deckId));
+        setDeck((prev) => (prev ? { ...prev, sources: refreshed } : prev));
+      } catch {
+        const next = sources.filter((s: string) => s !== name);
+        setDeck((prev) => (prev ? { ...prev, sources: next } : prev));
+      }
       toast({ title: "Source removed", description: `Deleted ${deleted} cards from ${name}` });
+      // Also trigger a reload event so any editor lists/cards refresh
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("deck-cards:reload"));
       }
@@ -149,26 +173,31 @@ export default function EditDeckForm({ deckId }: Props) {
 
   const commitPendingImport = async () => {
     if (!pendingImport) return;
+    if (importing) return; // prevent double-click
+    setImporting(true);
     const filename = pendingImport.fileName;
-    let created = 0;
-    for (const r of pendingImport.okRows) {
-      const p = r.payload;
-      await cardsRepo.create({
+  const fileHash = pendingImport.fileHash;
+    const created = await cardsRepo.createMany(
+      pendingImport.okRows.map((r) => ({
         deckId: Number(deckId),
-        type: p.type,
-        bloomLevel: p.bloomLevel,
-        question: p.question,
-        explanation: p.explanation,
-        meta: p.meta,
+        type: r.payload.type,
+        bloomLevel: r.payload.bloomLevel,
+        question: r.payload.question,
+        explanation: r.payload.explanation,
+        meta: r.payload.meta,
         source: filename,
-      });
-      created++;
-    }
+      }))
+    );
     // Track source name once upon successful insert
-    const current = new Set(sources);
-    if (!current.has(filename)) {
-      const newSources = [...sources, filename];
-      setDeck((prev) => (prev ? { ...prev, sources: newSources } : prev));
+    try {
+      const refreshed = await cardsRepo.listSourcesByDeck(Number(deckId));
+      setDeck((prev) => (prev ? { ...prev, sources: refreshed } : prev));
+    } catch {
+      const current = new Set(sources);
+      if (!current.has(filename)) {
+        const newSources = [...sources, filename];
+        setDeck((prev) => (prev ? { ...prev, sources: newSources } : prev));
+      }
     }
     setPendingImport(null);
     setShowImportErrors(false);
@@ -177,6 +206,9 @@ export default function EditDeckForm({ deckId }: Props) {
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("deck-cards:reload"));
     }
+  // Record the import hash (best-effort)
+  try { await recordImportHash(Number(deckId), filename, fileHash); } catch {}
+    setImporting(false);
   };
 
   const handleSave = async () => {
@@ -312,18 +344,22 @@ export default function EditDeckForm({ deckId }: Props) {
               <span>Study Starred</span>
             </button>
           </div>
-          {pendingImport && (
+      {pendingImport && (
             <div className="mt-4">
               <button
-                className="w-full bg-white text-[#2481f9] border border-[#2481f9] px-5 py-3 rounded-lg font-semibold inline-flex items-center justify-center gap-2 hover:bg-blue-50 transition-colors"
+        className="w-full bg-white text-[#2481f9] border border-[#2481f9] px-5 py-3 rounded-lg font-semibold inline-flex items-center justify-center gap-2 hover:bg-blue-50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 type="button"
-                onClick={commitPendingImport}
+                onClick={() => {
+                  if (importing) { toast({ title: "Import in progress", description: "Please wait—this may take a moment." }); return; }
+                  void commitPendingImport();
+                }}
+        disabled={importing}
               >
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5">
                   <circle cx="12" cy="12" r="9" />
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v8m-4-4h8" />
                 </svg>
-                <span>Add Imported Cards to Deck</span>
+        <span>{importing ? "Importing…" : "Add Imported Cards to Deck"}</span>
               </button>
             </div>
           )}
@@ -397,11 +433,15 @@ export default function EditDeckForm({ deckId }: Props) {
               {pendingImport.errRows.length > 0 && (
                 <div className="grid sm:grid-cols-2 gap-3">
                   <button
-                    className="w-full bg-[#2481f9] text-white px-5 py-2.5 rounded-lg font-semibold hover:bg-blue-600 transition-colors"
+                    className="w-full bg-[#2481f9] text-white px-5 py-2.5 rounded-lg font-semibold hover:bg-blue-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                     type="button"
-                    onClick={commitPendingImport}
+                    onClick={() => {
+                      if (importing) { toast({ title: "Import in progress", description: "Please wait—this may take a moment." }); return; }
+                      void commitPendingImport();
+                    }}
+                    disabled={importing}
                   >
-                    Import successful cards
+                    {importing ? "Importing…" : "Import successful cards"}
                   </button>
                   <button
                     className="w-full border border-gray-300 text-gray-700 px-5 py-2.5 rounded-lg font-semibold hover:bg-gray-50 transition-colors"
@@ -474,7 +514,7 @@ export default function EditDeckForm({ deckId }: Props) {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
           <div className="bg-white w-full max-w-xl rounded-xl shadow-lg max-h-[85vh] flex flex-col">
             <div className="px-6 py-4 border-b flex items-center justify-between">
-              <h3 className="text-base font-semibold text-gray-900">CSV Import — BloomCrux v1</h3>
+              <h3 className="text-base font-semibold text-gray-900">CSV Import — Reference</h3>
               <button
                 className="text-gray-500 hover:text-gray-800"
                 onClick={() => setShowInstructions(false)}
@@ -485,55 +525,51 @@ export default function EditDeckForm({ deckId }: Props) {
             </div>
             <div className="px-6 py-4 overflow-y-auto">
               <div className="prose prose-sm max-w-none text-gray-700">
-              <p className="mb-2">CSV requirements and supported columns:</p>
+              <p className="mb-2">CSV requirements and supported columns (matches current parser behavior):</p>
               <ul className="list-disc pl-5">
                 <li>Include a header row.</li>
-                <li>
-                  <span className="font-medium">CardType</span> is required. Accepted values:
-                  <span className="ml-1 font-mono">Standard MCQ, Short Answer, Fill in the Blank, Sorting, Sequencing, Compare/Contrast, Two-Tier MCQ, CER</span>
-                  <br />Short aliases also work in <span className="font-mono">CardType</span>: <span className="font-mono">MCQ</span>, <span className="font-mono">Short</span>, <span className="font-mono">Fill</span>, <span className="font-mono">Compare</span>, <span className="font-mono">TwoTierMCQ</span>, <span className="font-mono">CER</span>.
-                  <br />Only the above types are supported. Unsupported types are rejected.
-                </li>
-                <li>
-                  Title can be in <span className="font-mono">Question</span>, <span className="font-mono">Prompt</span>, or <span className="font-mono">Scenario</span>.
-                </li>
-                <li>
-                  Optional: <span className="font-mono">BloomLevel</span> (Remember, Understand, Apply, Analyze, Evaluate, Create) and <span className="font-mono">Explanation</span>.
-                </li>
+                <li><span className="font-medium">CardType</span> is required. Accepted: <span className="font-mono">Standard MCQ, Short Answer, Fill in the Blank, Sorting, Sequencing, Compare/Contrast, Two-Tier MCQ, CER</span>. Aliases: <span className="font-mono">MCQ</span>, <span className="font-mono">Short</span>, <span className="font-mono">Fill</span>, <span className="font-mono">Compare</span>, <span className="font-mono">TwoTierMCQ</span>, <span className="font-mono">CER</span>.</li>
+                <li>Title can be in <span className="font-mono">Question</span>, <span className="font-mono">Prompt</span>, or <span className="font-mono">Scenario</span>.</li>
+                <li>Optional: <span className="font-mono">BloomLevel</span> (case-insensitive; accepts <span className="font-mono">Analyze/Analyse</span>) and <span className="font-mono">Explanation</span>. If omitted, Bloom defaults by type: MCQ/Fill → Remember; Short/Sorting/Sequencing → Understand; Two-Tier → Apply; Compare/Contrast → Analyze; CER → Evaluate.</li>
                 <li>Unknown columns are ignored. Use the exact casing below for best results.</li>
-                <li><span className="font-mono">BloomLevel</span> is case-insensitive and accepts <span className="font-mono">Analyze</span> or <span className="font-mono">Analyse</span>.</li>
               </ul>
 
               <h4 className="mt-4 font-semibold">By Card Type</h4>
 
               <p className="mt-2"><span className="font-medium">Standard MCQ</span></p>
               <ul className="list-disc pl-5">
-                <li><span className="font-mono">A</span>, <span className="font-mono">B</span>, <span className="font-mono">C</span>, <span className="font-mono">D</span>: option texts (aliases: <span className="font-mono">OptionA</span>/<span className="font-mono">Option A</span>, etc.)</li>
-                <li><span className="font-mono">Answer</span>: one of A|B|C|D (case-insensitive)</li>
+                <li><span className="font-mono">A</span>, <span className="font-mono">B</span>, <span className="font-mono">C</span>, <span className="font-mono">D</span> (aliases: <span className="font-mono">OptionA</span>/<span className="font-mono">Option A</span>, etc.). Labels like <span className="font-mono">A) text</span> are OK; we strip and normalize.</li>
+                <li><span className="font-mono">Answer</span>: one of A|B|C|D (case-insensitive).</li>
               </ul>
 
               <p className="mt-2"><span className="font-medium">Short Answer</span></p>
               <ul className="list-disc pl-5">
-                <li><span className="font-mono">SuggestedAnswer</span> (or <span className="font-mono">Suggested</span> or <span className="font-mono">Answer</span>): sample answer text</li>
+                <li><span className="font-mono">SuggestedAnswer</span> (or <span className="font-mono">Suggested</span> or <span className="font-mono">Answer</span>): sample answer text.</li>
               </ul>
 
               <p className="mt-2"><span className="font-medium">Fill in the Blank</span></p>
               <ul className="list-disc pl-5">
-                <li>Default is one blank: use <span className="font-mono">Answer</span> for the correct value.</li>
-                <li>Multiple blanks: use <span className="font-mono">Answer1</span>, <span className="font-mono">Answer2</span>, … (up to 20). If any numbered answers are present, we use those.</li>
-                <li><span className="font-mono">Mode</span>: <span className="font-mono">Free Text</span> (default) or <span className="font-mono">Drag &amp; Drop</span> (also accepts <span className="font-mono">Drag and Drop</span> or <span className="font-mono">DnD</span>, case-insensitive).</li>
-                <li>If Mode = Drag &amp; Drop: provide a bank via <span className="font-mono">Options</span> (pipe-delimited), e.g. <span className="font-mono">ATP|ADP|NADH</span>.</li>
-                <li>Tip: In the prompt, mark blanks with underscores, e.g. <span className="font-mono">The powerhouse of the cell is the ___.</span></li>
+                <li>One blank (legacy): <span className="font-mono">Answer</span>. Multiple blanks: <span className="font-mono">Answer1</span>, <span className="font-mono">Answer2</span>, … (up to 20). Each numbered answer maps to a <span className="font-mono">[[1]]</span>, <span className="font-mono">[[2]]</span> placeholder in the prompt.</li>
+                <li>Prompt placeholders: put <span className="font-mono">[[n]]</span> where blanks appear. The importer does not auto-insert placeholders.</li>
+                <li>Alternates per blank: <span className="font-mono">Answer{`{n}` }Alt</span> as pipe list. Example: <span className="font-mono">Answer2Alt: &quot;mitochondrion|mito&quot;</span>.</li>
+                <li>Row flags: <span className="font-mono">CaseSensitive</span>, <span className="font-mono">IgnorePunct</span> accept <span className="font-mono">1/true/yes/y</span>.</li>
+                <li>Per-blank overrides: <span className="font-mono">Blank{`{n}` }Mode</span> (<span className="font-mono">Free Text</span> | <span className="font-mono">Drag & Drop</span> | <span className="font-mono">Either</span>), <span className="font-mono">Blank{`{n}` }CaseSensitive</span>, <span className="font-mono">Blank{`{n}` }IgnorePunct</span>.</li>
+                <li><span className="font-mono">Mode</span> (row-level default): if not provided, defaults to <span className="font-mono">Free Text</span> unless <span className="font-mono">Options</span> is present, in which case it defaults to <span className="font-mono">Drag & Drop</span>.</li>
+                <li><span className="font-mono">Options</span> (word bank) is a pipe list. If you set Mode to <span className="font-mono">Drag & Drop</span> or <span className="font-mono">Either</span> and omit <span className="font-mono">Options</span>, we seed the bank from answers/alternates.</li>
               </ul>
               <div className="mt-2 space-y-1 text-xs">
                 <div className="text-gray-600">Example (Free Text, multiple blanks):</div>
                 <div className="font-mono">CardType,Prompt,Answer1,Answer2</div>
-                <div className="font-mono">Fill in the Blank,&quot;Energy carriers include ___ and ___&quot;,ATP,NADH</div>
+                <div className="font-mono">Fill in the Blank,&quot;Energy carriers include [[1]] and [[2]]&quot;,ATP,NADH</div>
               </div>
               <div className="mt-3 space-y-1 text-xs">
                 <div className="text-gray-600">Example (Drag &amp; Drop with options bank):</div>
                 <div className="font-mono">CardType,Prompt,Mode,Answer1,Answer2,Options</div>
-                <div className="font-mono">Fill in the Blank,&quot;Label the parts: ___ and ___&quot;,&quot;Drag &amp; Drop&quot;,Nucleus,Chloroplast,&quot;Nucleus|Chloroplast|Mitochondria|Golgi&quot;</div>
+                <div className="font-mono">Fill in the Blank,&quot;Label the parts: [[1]] and [[2]]&quot;,&quot;Drag &amp; Drop&quot;,Nucleus,Chloroplast,&quot;Nucleus|Chloroplast|Mitochondria|Golgi&quot;</div>
+              </div>
+
+              <div className="mt-2 text-xs text-gray-600">
+                <span className="font-medium">Grading notes:</span> By default, grading is case-insensitive and ignores punctuation unless overridden by row or per-blank flags.
               </div>
 
               <p className="mt-2"><span className="font-medium">Sorting</span></p>
@@ -550,19 +586,19 @@ export default function EditDeckForm({ deckId }: Props) {
               <p className="mt-2"><span className="font-medium">Compare/Contrast</span></p>
               <ul className="list-disc pl-5">
                 <li><span className="font-mono">ItemA</span>, <span className="font-mono">ItemB</span> (or simply <span className="font-mono">A</span> / <span className="font-mono">B</span>)</li>
-                <li><span className="font-mono">Points</span>: each as <span className="font-mono">feature::a::b</span>, pipe-delimited. Example: <span className="font-mono">Speed::Fast::Slow|Color::Red::Blue</span></li>
+                <li><span className="font-mono">Points</span>: each as <span className="font-mono">feature::a::b</span>, pipe-delimited. Example: <span className="font-mono">Backbone::Sequence::Local folding|Bonds::Peptide::H-bonds</span></li>
               </ul>
 
               <p className="mt-2"><span className="font-medium">Two-Tier MCQ</span></p>
               <ul className="list-disc pl-5">
-                <li>Tier 1: <span className="font-mono">A</span>, <span className="font-mono">B</span>, <span className="font-mono">C</span>, <span className="font-mono">D</span>, <span className="font-mono">Answer</span> (A|B|C|D)</li>
-                <li>Tier 2: <span className="font-mono">RQuestion</span> (or <span className="font-mono">ReasoningQuestion</span>), <span className="font-mono">RA</span>, <span className="font-mono">RB</span>, <span className="font-mono">RC</span>, <span className="font-mono">RD</span>, <span className="font-mono">RAnswer</span> (A|B|C|D)</li>
+                <li>Tier 1: <span className="font-mono">A</span>, <span className="font-mono">B</span>, <span className="font-mono">C</span>, <span className="font-mono">D</span>, <span className="font-mono">Answer</span> (A|B|C|D). Labels like <span className="font-mono">A) text</span> are OK.</li>
+                <li>Tier 2: <span className="font-mono">RQuestion</span> (or <span className="font-mono">ReasoningQuestion</span>), <span className="font-mono">RA</span>, <span className="font-mono">RB</span>, <span className="font-mono">RC</span>, <span className="font-mono">RD</span>, <span className="font-mono">RAnswer</span> (A|B|C|D). <span className="font-mono">RA..RD</span> also accept labels like <span className="font-mono">A) text</span>.</li>
               </ul>
 
               <p className="mt-2"><span className="font-medium">CER (Claim–Evidence–Reasoning)</span></p>
               <ul className="list-disc pl-5">
-                <li><span className="font-mono">Mode</span>: <span className="font-mono">Free Text</span> or <span className="font-mono">Multiple Choice</span> (also accepts <span className="font-mono">MC</span> or <span className="font-mono">Multiple</span>, case-insensitive)</li>
-                <li><span className="font-mono">Guidance</span> (or <span className="font-mono">GuidanceQuestion</span>): optional guidance question</li>
+                <li><span className="font-mono">Mode</span>: <span className="font-mono">Free Text</span> or <span className="font-mono">Multiple Choice</span> (also accepts <span className="font-mono">MC</span> / <span className="font-mono">Multiple</span>).</li>
+                <li><span className="font-mono">Guidance</span> (or <span className="font-mono">GuidanceQuestion</span>): optional guidance prompt.</li>
                 <li>If Mode = Multiple Choice:
                   <ul className="list-disc pl-5">
                     <li><span className="font-mono">ClaimOptions</span>, <span className="font-mono">ClaimCorrect</span> (1-based index)</li>
@@ -582,7 +618,13 @@ export default function EditDeckForm({ deckId }: Props) {
                 <li>Upload your CSV; we parse and show counts of successful and failed rows.</li>
                 <li>Click <span className="font-medium">Add Imported Cards to Deck</span> to commit successful rows.</li>
                 <li>If some rows fail, use <span className="font-medium">Import successful cards</span> or <span className="font-medium">Don&apos;t import anything</span>, and check <span className="font-medium">What went wrong?</span> for error details.</li>
-                <li className="text-gray-500">Tip: Use <span className="font-mono">Question</span> (or <span className="font-mono">Prompt</span>/<span className="font-mono">Scenario</span>) for the title. For Compare/Contrast specifically, if it’s empty we’ll auto-title as <span className="font-mono">Compare A and B</span>.</li>
+                <li className="text-gray-500">Tips:
+                  <ul className="list-disc pl-5">
+                    <li>Use <span className="font-mono">Question</span> (or <span className="font-mono">Prompt</span>/<span className="font-mono">Scenario</span>) for the title.</li>
+                    <li>MCQ/Two‑Tier: labels like <span className="font-mono">A) text</span> are accepted and normalized.</li>
+                    <li>Fill: if you choose <span className="font-mono">Drag & Drop</span> but omit <span className="font-mono">Options</span>, we’ll seed the bank from your answers and alternates.</li>
+                  </ul>
+                </li>
               </ul>
               </div>
             </div>

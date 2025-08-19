@@ -8,7 +8,7 @@ export async function GET(req: Request) {
   const redirect = url.searchParams.get("redirect") || "/dashboard";
 
   if (code) {
-    const supabase = createRouteHandlerClient({ cookies });
+  const supabase = createRouteHandlerClient({ cookies });
     await supabase.auth.exchangeCodeForSession(code);
   }
 

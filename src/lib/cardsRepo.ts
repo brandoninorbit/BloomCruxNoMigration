@@ -20,6 +20,7 @@ import type {
   DeckCER,
   DeckCERMeta,
 } from "@/types/deck-cards";
+import { defaultBloomForType } from "@/lib/bloom";
 
 // Database row shape for 'cards' table
 type CardRow = {
@@ -106,7 +107,7 @@ function cardToRow(card: DeckCard): Omit<CardRow, "id" | "created_at" | "updated
   return {
     deck_id: card.deckId,
     type: card.type,
-    bloom_level: card.bloomLevel ?? null,
+    bloom_level: (card.bloomLevel ?? defaultBloomForType(card.type)) ?? null,
     question: card.question,
     explanation: card.explanation ?? null,
     meta: card.meta,
@@ -156,7 +157,7 @@ export async function create(input: NewDeckCard): Promise<DeckCard> {
     id: 0 as unknown as number,
     deckId: input.deckId,
     type: input.type,
-    bloomLevel: input.bloomLevel,
+    bloomLevel: input.bloomLevel ?? defaultBloomForType(input.type),
     question: input.question,
     explanation: input.explanation,
     meta: input.meta,
@@ -184,6 +185,30 @@ export async function create(input: NewDeckCard): Promise<DeckCard> {
     .single();
   if (getErr) throw readableError("Failed to load created card", getErr);
   return rowToCard(fresh as CardRow);
+}
+
+// Bulk insert cards for faster CSV imports
+export async function createMany(inputs: NewDeckCard[]): Promise<number> {
+  if (inputs.length === 0) return 0;
+  const supabase = getSupabaseClient();
+  const rows: Omit<CardRow, "id" | "created_at" | "updated_at">[] = inputs.map((input) => {
+    const rowBase = cardToRow({
+      id: 0 as unknown as number,
+      deckId: input.deckId,
+      type: input.type,
+      bloomLevel: input.bloomLevel ?? defaultBloomForType(input.type),
+      question: input.question,
+      explanation: input.explanation,
+      meta: input.meta,
+      position: input.position,
+    } as DeckCard);
+    return { ...rowBase, source: input.source ?? null };
+  });
+  const { error, count } = await supabase
+    .from("cards")
+    .insert(rows, { count: "exact" });
+  if (error) throw readableError("Failed to bulk create cards", error);
+  return (count as number) ?? inputs.length;
 }
 
 export async function update(card: DeckCard): Promise<DeckCard> {
@@ -230,4 +255,44 @@ export async function removeBySource(deckId: number, source: string): Promise<nu
     .eq("source", source);
   if (error) throw readableError("Failed to delete by source", error);
   return (count as number) ?? 0;
+}
+
+// Distinct list of non-null import sources for a deck
+export async function listSourcesByDeck(deckId: number): Promise<string[]> {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from("cards")
+    .select("source")
+    .eq("deck_id", deckId)
+    .not("source", "is", null);
+  if (error) throw readableError("Failed to list deck sources", error);
+  const set = new Set<string>();
+  for (const r of (data ?? []) as { source: string | null }[]) {
+    if (r.source && r.source.trim()) set.add(r.source.trim());
+  }
+  return Array.from(set).sort((a, b) => a.localeCompare(b));
+}
+
+// ----- Import hash tracking (deck_imports) -----
+export async function hasImportHash(deckId: number, fileHash: string): Promise<boolean> {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from("deck_imports")
+    .select("id")
+    .eq("deck_id", deckId)
+    .eq("file_hash", fileHash)
+    .maybeSingle();
+  if (error && error.code !== "PGRST116") throw readableError("Failed to check import hash", error);
+  return Boolean(data?.id);
+}
+
+export async function recordImportHash(deckId: number, source: string, fileHash: string): Promise<void> {
+  const supabase = getSupabaseClient();
+  const { data: userData, error: uerr } = await supabase.auth.getUser();
+  if (uerr || !userData?.user) throw new Error("Not signed in");
+  const user_id = userData.user.id;
+  const { error } = await supabase
+    .from("deck_imports")
+    .upsert({ user_id, deck_id: deckId, source, file_hash: fileHash }, { onConflict: "user_id,deck_id,file_hash" });
+  if (error) throw readableError("Failed to record import hash", error);
 }

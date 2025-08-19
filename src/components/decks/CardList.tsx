@@ -8,20 +8,12 @@ export type CardListProps = {
   cards: DeckCard[];
   onEdit: (card: DeckCard) => Promise<void>;
   onDelete: (id: number) => Promise<void>;
-  onReorder: (nextIds: number[]) => Promise<void>;
 };
 
-export default function CardList({ cards, onEdit, onDelete, onReorder }: CardListProps) {
+export default function CardList({ cards, onEdit, onDelete }: CardListProps) {
   const items = useMemo(() => cards, [cards]);
   const [editing, setEditing] = useState<DeckCard | null>(null);
 
-  const move = async (index: number, dir: -1 | 1) => {
-    const target = index + dir;
-    if (target < 0 || target >= items.length) return;
-    const ids = [...items.map((c) => c.id)];
-    [ids[index], ids[target]] = [ids[target], ids[index]];
-    await onReorder(ids);
-  };
 
   type ModalSubmitPayload = {
     type: DeckCard["type"];
@@ -67,7 +59,7 @@ export default function CardList({ cards, onEdit, onDelete, onReorder }: CardLis
   return (
     <>
       <ul className="space-y-3">
-        {items.map((card, idx) => (
+        {items.map((card) => (
           <li key={card.id} className="p-4 bg-gray-50 rounded-xl border border-gray-200 shadow-sm">
             <div className="flex items-center justify-between gap-4">
               {/* Left: question, type, bloom */}
@@ -93,14 +85,6 @@ export default function CardList({ cards, onEdit, onDelete, onReorder }: CardLis
                 <IconButton label="Delete" onClick={() => onDelete(card.id)} danger>
                   <TrashIcon />
                 </IconButton>
-                <div className="ml-2 flex items-center gap-1">
-                  <SmallIconButton label="Move up" onClick={() => move(idx, -1)}>
-                    <UpIcon />
-                  </SmallIconButton>
-                  <SmallIconButton label="Move down" onClick={() => move(idx, 1)}>
-                    <DownIcon />
-                  </SmallIconButton>
-                </div>
               </div>
             </div>
           </li>
@@ -122,20 +106,6 @@ function IconButton({ label, onClick, children, danger }: { label: string; onCli
   return (
     <button
       className={`p-2 rounded-lg border transition-colors hover:bg-gray-100 ${danger ? "text-red-600 border-red-200 hover:bg-red-50" : "text-gray-700 border-gray-200"}`}
-      aria-label={label}
-      title={label}
-      onClick={onClick}
-      type="button"
-    >
-      {children}
-    </button>
-  );
-}
-
-function SmallIconButton({ label, onClick, children }: { label: string; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      className="p-1.5 rounded-md border border-gray-200 text-gray-600 hover:bg-gray-100"
       aria-label={label}
       title={label}
       onClick={onClick}
@@ -184,20 +154,4 @@ function TrashIcon() {
   );
 }
 
-function UpIcon() {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
-      <path d="M12 19V5" />
-      <path d="M5 12l7-7 7 7" />
-    </svg>
-  );
-}
-
-function DownIcon() {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
-      <path d="M12 5v14" />
-      <path d="M5 12l7 7 7-7" />
-    </svg>
-  );
-}
+// Removed move up/down controls per spec

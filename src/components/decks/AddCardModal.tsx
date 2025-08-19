@@ -89,15 +89,24 @@ export default function AddCardModal({ open, mode = "create", initialCard, onClo
         setShortSuggested((initialCard as DeckShortAnswer).meta.suggestedAnswer);
       } else if (initialCard.type === "Fill in the Blank") {
         const meta = (initialCard as DeckFillBlank).meta as DeckFillMeta;
-        // Legacy single-answer
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        if ((meta as any).answer !== undefined) {
-          setFillAnswer((meta as { answer: string }).answer);
+        // Legacy single-answer (V1)
+        if ("answer" in meta) {
+          setFillAnswer(meta.answer);
           setFillMode("Free Text");
-          setFillAnswers([ (meta as { answer: string }).answer ]);
+          setFillAnswers([meta.answer]);
           setFillOptions([]);
+        } else if ("blanks" in meta) {
+          // V3: derive a simple answers array from blanks by id order
+          const m = meta; // DeckFillMetaV3
+          const blanks = [...m.blanks].sort((a, b) => Number(a.id) - Number(b.id));
+          const answers = blanks.map((b) => b.answers?.[0] ?? "");
+          setFillMode(m.mode || "Free Text");
+          setFillAnswers(answers);
+          setFillOptions(Array.isArray(m.options) ? m.options : []);
+          setFillAnswer(answers[0] ?? "");
         } else {
-          const m = meta as { mode: DeckFillMode; answers: string[]; options?: string[] };
+          // V2
+          const m = meta; // DeckFillMetaV2
           setFillMode(m.mode || "Free Text");
           setFillAnswers(Array.isArray(m.answers) ? m.answers : []);
           setFillOptions(Array.isArray(m.options) ? m.options : []);
@@ -186,30 +195,33 @@ export default function AddCardModal({ open, mode = "create", initialCard, onClo
   // Helpers for Fill-in-the-Blank authoring
   const countBlanks = (text: string): number => {
     if (!text) return 0;
-    const re = /__([0-9]+)__/g;
+    // Support both legacy __n__ and current [[n]] markers
+    const re = /__(\d+)__|\[\[(\d+)\]\]/g;
     const seen = new Set<number>();
     let m: RegExpExecArray | null;
     while ((m = re.exec(text))) {
-      const n = parseInt(m[1], 10);
+      const n = parseInt((m[1] || m[2]) as string, 10);
       if (Number.isFinite(n)) seen.add(n);
     }
     return seen.size;
   };
 
-  const hasNumberedBlanks = (text: string): boolean => /__\d+__/.test(text || "");
+  const hasNumberedBlanks = (text: string): boolean => /__(\d+)__|\[\[(\d+)\]\]/.test(text || "");
 
   const insertBlankAtCursor = () => {
     const nextIndex = (() => {
-      const re = /__([0-9]+)__/g;
+      // Compute next index based on both marker styles
+      const re = /__(\d+)__|\[\[(\d+)\]\]/g;
       let max = 0; let m: RegExpExecArray | null;
       while ((m = re.exec(question))) {
-        const n = parseInt(m[1], 10);
+        const n = parseInt((m[1] || m[2]) as string, 10);
         if (n > max) max = n;
       }
       return max + 1;
     })();
     const ta = passageRef.current;
-    const token = ` __${nextIndex}__ `;
+    // Standardize new inserts to [[n]]
+    const token = ` [[${nextIndex}]] `;
     if (ta && typeof ta.selectionStart === "number") {
       const start = ta.selectionStart;
       const end = ta.selectionEnd ?? start;
@@ -231,14 +243,24 @@ export default function AddCardModal({ open, mode = "create", initialCard, onClo
   };
 
   const removeBlank = (index: number) => {
-    // remove the specific marker and renumber subsequent ones
-    const re = /__([0-9]+)__/g;
-    const nextText = (question || "").replace(re, (match, grp) => {
-      const n = parseInt(grp, 10);
-      if (n === index) return "";
-      if (n > index) return `__${n - 1}__`;
-      return match;
-    }).replace(/\s{2,}/g, " ").trim();
+    // remove the specific marker and renumber subsequent ones for both styles
+    const nextText = (question || "")
+      // remove/renumber legacy __n__
+      .replace(/__(\d+)__/g, (match, grp) => {
+        const n = parseInt(grp, 10);
+        if (n === index) return "";
+        if (n > index) return `__${n - 1}__`;
+        return match;
+      })
+      // remove/renumber [[n]]
+      .replace(/\[\[(\d+)\]\]/g, (match, grp) => {
+        const n = parseInt(grp, 10);
+        if (n === index) return "";
+        if (n > index) return `[[${n - 1}]]`;
+        return match;
+      })
+      .replace(/\s{2,}/g, " ")
+      .trim();
     setQuestion(nextText);
     setFillAnswers((prev) => {
       const next = [...prev];
@@ -262,15 +284,16 @@ export default function AddCardModal({ open, mode = "create", initialCard, onClo
 
   const renderFillPreview = (text: string) => {
     const nodes: React.ReactNode[] = [];
-    const re = /__([0-9]+)__/g;
+    // Highlight both legacy __n__ and current [[n]] markers
+    const re = /__(\d+)__|\[\[(\d+)\]\]/g;
     let last = 0; let m: RegExpExecArray | null; let key = 0;
     while ((m = re.exec(text || ""))) {
       const before = text.slice(last, m.index);
       if (before) nodes.push(<span key={`t-${key++}`}>{before}</span>);
-      const n = parseInt(m[1], 10);
+      const n = parseInt((m[1] || m[2]) as string, 10);
       nodes.push(
         <span key={`b-${key++}`} className="inline-flex items-center gap-1 bg-amber-50 border border-amber-200 text-amber-800 px-1.5 py-0.5 rounded group align-baseline">
-          <span className="font-mono">__{n}__</span>
+          <span className="font-mono">[[{n}]]</span>
           <button type="button" className="opacity-0 group-hover:opacity-100 transition-opacity text-red-600 hover:text-red-700" onClick={() => removeBlank(n)} aria-label={`Remove blank ${n}`}>
             <SmallXIcon className="h-3 w-3" />
           </button>
