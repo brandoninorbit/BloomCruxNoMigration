@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs";
+import { createServerClient } from "@supabase/ssr";
 
 export async function middleware(req: NextRequest) {
   const url = req.nextUrl;
@@ -21,7 +21,23 @@ export async function middleware(req: NextRequest) {
   }
 
   const res = NextResponse.next();
-  const supabase = createMiddlewareClient({ req, res });
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return req.cookies.getAll().map((c) => ({ name: c.name, value: c.value }));
+        },
+        setAll(cookiesToSet) {
+          for (const c of cookiesToSet) {
+            // NextResponse cookies API accepts name, value, and options
+            res.cookies.set({ name: c.name, value: c.value, ...(c.options ?? {}) });
+          }
+        },
+      },
+    }
+  );
   const { data: { session } } = await supabase.auth.getSession();
 
   if (!session) {

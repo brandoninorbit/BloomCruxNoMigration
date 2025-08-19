@@ -9,9 +9,9 @@ export async function getSupabaseSession(): Promise<Session | null> {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        get(name: string) { return store.get(name)?.value; },
-        set() { /* no-op in generic helper */ },
-        remove() { /* no-op in generic helper */ },
+        getAll() {
+          return store.getAll().map((c) => ({ name: c.name, value: c.value }));
+        },
       },
     }
   );
