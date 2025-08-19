@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { rowToPayload, type CsvRow } from './csvImport';
+import type { DeckMCQMeta, DeckFillMetaV3, DeckSortingMeta } from '@/types/deck-cards';
 
 describe('csvImport.rowToPayload', () => {
   it('parses MCQ with labeled/misaligned options and correct answer', () => {
@@ -12,9 +13,9 @@ describe('csvImport.rowToPayload', () => {
       D: 'D) Methyl group',
       Answer: 'B',
     };
-    const payload = rowToPayload(row);
-    expect(payload.type).toBe('Standard MCQ');
-    const meta = (payload as any).meta as { options: Record<string,string>; answer: string };
+  const payload = rowToPayload(row);
+  expect(payload.type).toBe('Standard MCQ');
+  const meta = payload.meta as DeckMCQMeta;
     expect(meta.options.A).toContain('Hydroxyl');
     expect(meta.options.B).toContain('Carboxyl');
     expect(meta.answer).toBe('B');
@@ -29,9 +30,9 @@ describe('csvImport.rowToPayload', () => {
       Options: 'amino acid|nucleotide|peptide|hydrogen',
       Mode: 'Drag & Drop',
     };
-    const payload = rowToPayload(row);
-    expect(payload.type).toBe('Fill in the Blank');
-    const meta = (payload as any).meta as { mode: string; blanks: Array<{ id: string; answers: string[] }>; options: string[] };
+  const payload = rowToPayload(row);
+  expect(payload.type).toBe('Fill in the Blank');
+  const meta = payload.meta as DeckFillMetaV3;
     expect(meta.mode).toMatch(/Drag/);
     expect(meta.blanks.length).toBe(2);
     expect(meta.blanks[0].answers[0]).toBe('amino acid');
@@ -45,9 +46,9 @@ describe('csvImport.rowToPayload', () => {
       Categories: 'Polymers|Monomers',
       Items: 'Amino acids:Monomers|Proteins:Polymers',
     };
-    const payload = rowToPayload(row);
-    expect(payload.type).toBe('Sorting');
-    const meta = (payload as any).meta as { categories: string[]; items: Array<{ term: string; correctCategory: string }> };
+  const payload = rowToPayload(row);
+  expect(payload.type).toBe('Sorting');
+  const meta = payload.meta as DeckSortingMeta;
     expect(meta.categories).toEqual(['Polymers','Monomers']);
     expect(meta.items.length).toBe(2);
   });
