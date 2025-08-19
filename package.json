@@ -9,8 +9,8 @@
     "lint": "next lint",
     "test": "vitest run",
     "migrate:run-sql": "node scripts/run-sql.js",
-  "migrate:deck_imports": "node scripts/run-sql.js supabase/migrations/20250819_deck_imports.sql",
-  "check:deck_imports": "node scripts/check-deck-imports.js"
+    "migrate:deck_imports": "node scripts/run-sql.js supabase/migrations/20250819_deck_imports.sql",
+    "check:deck_imports": "node scripts/check-deck-imports.js"
   },
   "dependencies": {
     "@auth/supabase-adapter": "^1.10.0",
@@ -40,6 +40,7 @@
     "@radix-ui/react-tooltip": "^1.2.8",
     "@supabase/auth-helpers-nextjs": "^0.10.0",
     "@supabase/auth-helpers-react": "^0.5.0",
+    "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.55.0",
     "class-variance-authority": "^0.7.1",
     "embla-carousel-react": "^8.6.0",

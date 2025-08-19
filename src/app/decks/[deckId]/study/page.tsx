@@ -3,15 +3,28 @@ import { notFound } from "next/navigation";
 import { ClipboardList, Info, FileText, Shuffle, Target, Star, Timer, GraduationCap, Compass } from "lucide-react";
 import { gradientForBloom, BLOOM_COLOR_HEX, BLOOM_LEVELS } from "@/types/card-catalog";
 import type { DeckBloomLevel } from "@/types/deck-cards";
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createServerClient } from "@supabase/ssr";
+
+export const dynamic = "force-dynamic";
 
 export default async function StudyPage({ params }: { params: Promise<{ deckId: string }> }) {
   const resolved = await params;
   const id = Number(resolved?.deckId);
   if (!Number.isFinite(id)) notFound();
 
-  // Provide Next cookies function directly to the Supabase helper
-  const supabase = createServerComponentClient({ cookies });
+  // Provide a stable async cookies accessor to the Supabase helper
+  const store = await cookies();
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return store.getAll().map((c) => ({ name: c.name, value: c.value }));
+        },
+      },
+    }
+  );
   const { data: { user } } = await supabase.auth.getUser();
 
   let title = `Deck #${id}`;

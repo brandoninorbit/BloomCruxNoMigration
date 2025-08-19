@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createServerClient } from "@supabase/ssr";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -8,7 +8,18 @@ export async function GET(req: Request) {
   const redirect = url.searchParams.get("redirect") || "/dashboard";
 
   if (code) {
-    const supabase = createRouteHandlerClient({ cookies });
+    const store = await cookies();
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          get(name: string) { return store.get(name)?.value; },
+          set(name: string, value: string, options?: Record<string, unknown>) { store.set({ name, value, ...(options ?? {}) }); },
+          remove(name: string, options?: Record<string, unknown>) { store.set({ name, value: "", ...(options ?? {}), maxAge: 0 }); },
+        },
+      }
+    );
     await supabase.auth.exchangeCodeForSession(code);
   }
 

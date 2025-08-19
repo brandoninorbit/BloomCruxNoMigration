@@ -1,15 +1,9 @@
 import Link from "next/link";
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
+
+export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  // Server-side check: if logged out, send users to About page.
-  const supabase = createServerComponentClient({ cookies });
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) {
-    redirect("/about");
-  }
+  // Render basic home; session-only flows are handled client-side.
 
   // Logged-in users see the home page content.
   return (
