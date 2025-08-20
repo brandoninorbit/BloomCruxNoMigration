@@ -5,6 +5,7 @@ import { getSupabaseClient } from "@/lib/supabase/browserClient";
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/app/providers/AuthProvider";
+import EmailAuthForm from "@/components/auth/EmailAuthForm";
 
 function GoogleLoginButton() {
   const supabase = getSupabaseClient();
@@ -40,6 +41,9 @@ function LoginContent() {
     <>
       <h1 className="text-2xl font-bold mb-6 text-gray-900 text-center">Sign in</h1>
       <GoogleLoginButton />
+  <div className="my-4 h-px bg-gray-200" />
+  <h2 className="text-sm font-semibold mb-2 text-gray-800">Or sign in with email</h2>
+  <EmailAuthForm />
     </>
   );
 }
