@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { useUser } from '@supabase/auth-helpers-react';
+import { useAuth } from '@/app/providers/AuthProvider';
 import { listFolders } from '@/lib/repos/foldersRepo';
 
 export default function useFolders() {
-  const user = useUser();
+  const { user } = useAuth();
   const [folders, setFolders] = useState<{ id: number; name: string }[]>([]);
   useEffect(() => {
     if (user?.id) {

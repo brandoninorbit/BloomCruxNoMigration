@@ -13,6 +13,7 @@ export async function getSupabaseSession(): Promise<Session | null> {
           return store.getAll().map((c) => ({ name: c.name, value: c.value }));
         },
       },
+  auth: { autoRefreshToken: false, detectSessionInUrl: false },
     }
   );
   const {

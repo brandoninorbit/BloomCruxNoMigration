@@ -2,7 +2,7 @@
 // src/components/DashboardClient.tsx
 "use client";
 import React, { useMemo, useState } from "react";
-import { useUser } from "@supabase/auth-helpers-react";
+import { useAuth } from "@/app/providers/AuthProvider";
 import Link from "next/link";
 import {
   Award,
@@ -149,7 +149,7 @@ const MOCK_XP_STATS: UserXpStats = {
 };
 
 export default function DashboardClient() {
-  const user = useUser();
+  const { user } = useAuth();
   // Default to real data for logged-in users, mock data if logged out
   const [showExample, setShowExample] = useState(!user);
 

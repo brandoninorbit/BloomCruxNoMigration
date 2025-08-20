@@ -9,10 +9,16 @@ export async function GET() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        get(name: string) { return store.get(name)?.value; },
-        set(name: string, value: string, options?: Record<string, unknown>) { store.set({ name, value, ...(options ?? {}) }); },
-        remove(name: string, options?: Record<string, unknown>) { store.set({ name, value: "", ...(options ?? {}), maxAge: 0 }); },
+        getAll() {
+          return store.getAll().map((c) => ({ name: c.name, value: c.value }));
+        },
+        setAll(cookiesToSet) {
+          for (const c of cookiesToSet) {
+            store.set({ name: c.name, value: c.value, ...(c.options ?? {}) });
+          }
+        },
       },
+      auth: { autoRefreshToken: false, detectSessionInUrl: false },
     }
   );
   const {

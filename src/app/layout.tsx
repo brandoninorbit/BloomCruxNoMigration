@@ -1,4 +1,4 @@
-import SupabaseProvider from '@/app/providers/SupabaseProvider';
+import AuthProvider from '@/app/providers/AuthProvider';
 import './globals.css';
 import type { Metadata } from 'next';
 import { Inter, League_Spartan, Plus_Jakarta_Sans } from 'next/font/google';
@@ -36,10 +36,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning>
   <body className={`${inter.className} ${uiFont.variable} ${contentFont.variable} ${navFont.variable}`}>
-        <SupabaseProvider>
+        <AuthProvider>
           <Nav />
           {children}
-        </SupabaseProvider>
+        </AuthProvider>
       </body>
     </html>
   );

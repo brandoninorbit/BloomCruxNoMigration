@@ -73,6 +73,15 @@ const toBloom = (s?: string): DeckBloomLevel | undefined => {
 
 // Narrow a possibly messy value to the literal union 'A' | 'B' | 'C' | 'D'
 type Letter = "A" | "B" | "C" | "D";
+export const stripChoiceLabel = (s?: string): string => {
+  const v = (s || "").trim();
+  const m = v.match(LABEL_RE);
+  if (!m) return v;
+  const rest = v.slice(m[0].length).trim();
+  // If stripping leaves nothing (e.g., value is just "A"), treat it as literal text, not a label
+  return rest || v;
+};
+
 const asLetter = (v?: string): Letter => {
   const raw = (v || "").trim();
   const l = raw.toUpperCase();
@@ -85,6 +94,7 @@ const asLetter = (v?: string): Letter => {
   }
   return "A";
 };
+export const parseAnswerLetter = asLetter;
 // Regex to detect a leading label like A), A., A:, or A-
 const LABEL_RE = /^\s*([A-D])(?![a-zA-Z])\s*[\)\].:–—-]?\s*/i; // require next char not a letter to avoid stripping words like 'Alpha'
 
@@ -98,28 +108,21 @@ function normalizeABCD(row: CsvRow): { A: string; B: string; C: string; D: strin
     D: (row["D"] || row["OptionD"] || row["Option D"] || "").trim(),
   };
   const out: Record<Letter, string> = { A: "", B: "", C: "", D: "" };
-  // First pass: if any cell has a leading label, respect it.
+  // First pass: if any cell has a leading label AND trailing text, respect it.
   (Object.entries(raw) as [Letter, string][]).forEach(([, v]) => {
     const m = v.match(LABEL_RE);
     if (m) {
       const letter = (m[1].toUpperCase() as Letter);
-      const text = v.slice(m[0].length).trim();
-      if (text) out[letter] = text;
+      const text = stripChoiceLabel(v);
+      if (text && text !== v) out[letter] = text; // only when there was meaningful trailing text
     }
   });
   // Second pass: fill remaining slots from their own column (only if value is unlabeled or label matches the same column)
   (Object.entries(raw) as [Letter, string][]).forEach(([k, v]) => {
     if (out[k] || !v) return;
-    const m = v.match(LABEL_RE);
-    if (m) {
-      const labeled = m[1].toUpperCase() as Letter;
-      if (labeled === k) {
-        out[k] = v.slice(m[0].length).trim();
-      }
-      // else: labeled but points to another letter; already handled in first pass; skip to avoid duplication
-    } else {
-      out[k] = v.trim();
-    }
+    // Use safe stripper: if value is a pure label (e.g., "A"), keep it as text "A".
+    const cleaned = stripChoiceLabel(v);
+    out[k] = cleaned;
   });
   // Third pass: If any still missing, scan all row values for labeled options (handles misaligned CSVs)
   if (!out.A || !out.B || !out.C || !out.D) {
@@ -130,8 +133,8 @@ function normalizeABCD(row: CsvRow): { A: string; B: string; C: string; D: strin
       if (!m) return;
       const letter = (m[1].toUpperCase() as Letter);
       if (out[letter]) return; // keep first occurrence
-      const text = val.slice(m[0].length).trim();
-      if (text) out[letter] = text;
+      const text = stripChoiceLabel(val);
+      if (text && text !== val) out[letter] = text;
     });
   }
   return out;
@@ -139,16 +142,18 @@ function normalizeABCD(row: CsvRow): { A: string; B: string; C: string; D: strin
 
 // Positional normalization for RA..RD: strip any leading labels but do not remap across positions.
 function normalizeRAtoRD(row: CsvRow): { RA: string; RB: string; RC: string; RD: string } {
-  const strip = (s?: string) => {
-    const v = (s || "").trim();
-    const m = v.match(LABEL_RE);
-    return m ? v.slice(m[0].length).trim() : v;
+  const get = (keys: string[]) => {
+    for (const k of keys) {
+      const v = row[k];
+      if (typeof v === "string" && v.trim()) return stripChoiceLabel(v);
+    }
+    return "";
   };
   return {
-    RA: strip(row["RA"]),
-    RB: strip(row["RB"]),
-    RC: strip(row["RC"]),
-    RD: strip(row["RD"]),
+    RA: get(["RA", "Tier2A", "Tier 2 A", "ReasonA", "Reason A", "R A"]),
+    RB: get(["RB", "Tier2B", "Tier 2 B", "ReasonB", "Reason B", "R B"]),
+    RC: get(["RC", "Tier2C", "Tier 2 C", "ReasonC", "Reason C", "R C"]),
+    RD: get(["RD", "Tier2D", "Tier 2 D", "ReasonD", "Reason D", "R D"]),
   };
 }
 
@@ -180,8 +185,8 @@ export function rowToPayload(row: CsvRow): {
 
   switch (norm as DeckCardType) {
     case "Standard MCQ": {
-      const norm = normalizeABCD(row);
-      const ans = asLetter(col(row, "Answer", "Correct", "Correct Answer"));
+  const norm = normalizeABCD(row);
+  const ans = parseAnswerLetter(col(row, "Answer", "Correct", "Correct Answer"));
       // Validation: ensure all options exist and the answer maps to a non-empty option
       const missing: string[] = [];
       (['A','B','C','D'] as const).forEach((k) => { if (!norm[k]) missing.push(k); });
@@ -333,7 +338,7 @@ export function rowToPayload(row: CsvRow): {
       // Tier2 columns prefixed with R*
   const rQ = col(row, "RQuestion", "ReasoningQuestion");
     const r = normalizeRAtoRD(row);
-  const rAns = asLetter(col(row, "RAnswer"));
+  const rAns = parseAnswerLetter(col(row, "RAnswer", "Tier2Answer"));
       return {
         type: "Two-Tier MCQ",
         bloomLevel: providedBloom ?? defaultBloomForType("Two-Tier MCQ"),

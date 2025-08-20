@@ -22,26 +22,34 @@ export default async function StudyPage({ params }: { params: Promise<{ deckId: 
         getAll() {
           return store.getAll().map((c) => ({ name: c.name, value: c.value }));
         },
+    setAll() { /* noop in RSC */ },
       },
+  auth: { autoRefreshToken: false, detectSessionInUrl: false },
     }
   );
-  const { data: { user } } = await supabase.auth.getUser();
+  // Avoid auth.getUser in RSC to prevent refresh attempts; rely on RLS
 
   let title = `Deck #${id}`;
   let bloomLevel: DeckBloomLevel | undefined;
   let mastery: number | undefined;
-  if (user) {
-    const { data: deck } = await supabase
+  
+  try {
+    const { data: deck, error } = await supabase
       .from("decks")
       .select("id, title, mastery, bloomLevel")
       .eq("id", id)
-      .eq("user_id", user.id)
-      .single();
-    if (deck?.title) title = String(deck.title);
-    if (typeof deck?.bloomLevel === "string") bloomLevel = deck.bloomLevel as DeckBloomLevel;
-    if (typeof deck?.mastery === "number") mastery = deck.mastery as number;
-  } else {
-    title = `${title} (Logged Out)`;
+      .maybeSingle();
+    
+    if (error) {
+      console.warn('[StudyPage] deck fetch error:', error.message || error);
+    } else {
+      if (deck?.title) title = String(deck.title);
+      if (typeof deck?.bloomLevel === "string") bloomLevel = deck.bloomLevel as DeckBloomLevel;
+      if (typeof deck?.mastery === "number") mastery = deck.mastery as number;
+    }
+  } catch (e) {
+    const msg = e && typeof e === 'object' && 'message' in e ? (e as { message: string }).message : String(e);
+    console.warn('[StudyPage] unexpected error:', msg);
   }
 
   // Bloom progress (reuse decks page color/gradient logic)

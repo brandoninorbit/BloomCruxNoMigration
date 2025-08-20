@@ -1,13 +1,12 @@
 "use client";
-import { useUser, useSessionContext } from "@supabase/auth-helpers-react";
+import { useAuth } from "@/app/providers/AuthProvider";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import Link from "next/link";
 import { forceSignOut } from "@/lib/auth/clientSignOut";
 
 export default function AvatarMenu() {
-  const user = useUser();
-  const { isLoading } = useSessionContext();
+  const { user, loading: isLoading } = useAuth();
   // Supabase client not needed here; forceSignOut handles both server and client
 
   if (!user || isLoading) return null;

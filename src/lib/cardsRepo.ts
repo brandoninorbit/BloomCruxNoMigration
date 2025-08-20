@@ -1,4 +1,3 @@
-import { getSupabaseClient } from "@/lib/supabase/browserClient";
 import type {
   DeckCard,
   DeckCardType,
@@ -22,7 +21,7 @@ import type {
 } from "@/types/deck-cards";
 import { defaultBloomForType } from "@/lib/bloom";
 import { upsertDeckImport } from "@/lib/db/deckImports";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { getSupabaseClient } from "@/lib/supabase/browserClient";
 import type { Database } from "@/types/supabase";
 
 // Database row shape for 'cards' table
@@ -309,7 +308,7 @@ export async function listSourcesByDeck(deckId: number): Promise<string[]> {
 
 // ----- Import hash tracking (deck_imports) -----
 export async function hasImportHash(deckId: number, fileHash: string): Promise<boolean> {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from("deck_imports")
     .select("id")

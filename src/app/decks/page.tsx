@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
-import { useUser, useSessionContext } from "@supabase/auth-helpers-react";
+import { useAuth } from "@/app/providers/AuthProvider";
 import { Pencil, BookOpen, Trash2 } from "lucide-react";
 import { BLOOM_LEVELS, BLOOM_COLOR_HEX, gradientForBloom } from "@/types/card-catalog";
 import type { DeckBloomLevel } from "@/types/deck-cards";
@@ -200,8 +200,7 @@ async function createFolderRaw(
 /* ---------- Page ---------- */
 
 function DecksPage() {
-  const user = useUser();
-  const { isLoading } = useSessionContext();
+  const { user, loading: isLoading } = useAuth();
   const showMock = !user && !isLoading; // ← mock only if logged out
 
   // UI state
@@ -343,7 +342,12 @@ function DecksPage() {
         .eq("id", folderToEdit.id)
         .select()
         .single();
-      if (error) console.error(error);
+      if (error) {
+        const msg = (typeof error === 'object' && error !== null && 'message' in error)
+          ? String((error as { message?: string }).message)
+          : String(error);
+        console.warn('folders update error:', msg);
+      }
 
       const { data } = await supabase.from("folders").select("*");
       if (Array.isArray(data)) setFolders((data as FolderRow[]).map(mapRowToUI));
@@ -373,8 +377,9 @@ function DecksPage() {
         setDecks((prev) => prev.filter((d) => d.id !== deckId));
       }
     } catch (e) {
-      // No-op; could surface a toast in future
-      console.error(e);
+      // No-op; could surface a toast in future; avoid server overlay error spam
+      const msg = (e && typeof e === 'object' && 'message' in e) ? (e as { message?: string }).message : String(e);
+      console.warn('delete deck error:', msg);
     }
   }, [user, showMock, fetchUserData]);
 

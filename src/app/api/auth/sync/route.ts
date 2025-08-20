@@ -25,8 +25,19 @@ export async function POST(req: Request) {
           }
         },
       },
+      auth: { autoRefreshToken: false, detectSessionInUrl: false },
     }
   );
-  await supabase.auth.setSession({ access_token, refresh_token });
-  return NextResponse.json({ ok: true });
+  try {
+    await supabase.auth.setSession({ access_token, refresh_token });
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    const msg = (e && typeof e === 'object' && 'message' in e) ? String((e as { message?: string }).message) : String(e);
+    // Swallow the common race where the refresh token has already been rotated/used by the client
+    if (/Invalid Refresh Token/i.test(msg) || /Already Used/i.test(msg)) {
+      return NextResponse.json({ ok: true, note: 'refresh_token_already_used' });
+    }
+    // Avoid noisy dev overlay; surface a structured response instead of throwing
+    return NextResponse.json({ ok: false, error: msg }, { status: 200 });
+  }
 }

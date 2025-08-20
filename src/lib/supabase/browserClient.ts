@@ -12,6 +12,7 @@ export function getSupabaseClient() {
           persistSession: true,
           detectSessionInUrl: true,
           storageKey: 'bloomcrux.supabase.auth',
+          autoRefreshToken: false, // Prevent "Already Used" refresh token errors
         }
       }
     );

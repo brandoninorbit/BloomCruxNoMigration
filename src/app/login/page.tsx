@@ -4,7 +4,7 @@ import { Suspense, useEffect } from "react";
 import { getSupabaseClient } from "@/lib/supabase/browserClient";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useUser } from "@supabase/auth-helpers-react";
+import { useAuth } from "@/app/providers/AuthProvider";
 
 function GoogleLoginButton() {
   const supabase = getSupabaseClient();
@@ -29,7 +29,7 @@ function GoogleLoginButton() {
 }
 
 function LoginContent() {
-  const user = useUser();
+  const { user } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirect = searchParams?.get("redirect") || "/dashboard";

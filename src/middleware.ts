@@ -36,6 +36,7 @@ export async function middleware(req: NextRequest) {
           }
         },
       },
+  auth: { autoRefreshToken: false, detectSessionInUrl: false },
     }
   );
   const { data: { session } } = await supabase.auth.getSession();

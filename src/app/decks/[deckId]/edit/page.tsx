@@ -25,20 +25,33 @@ export default async function EditDeckPage({
         getAll() {
           return store.getAll().map((c) => ({ name: c.name, value: c.value }));
         },
+    // No-op writer to avoid Next RSC mutation and silence ssr warning
+    setAll() { /* noop in RSC */ },
       },
+  auth: { autoRefreshToken: false, detectSessionInUrl: false },
     }
   );
-  await supabase.auth.getUser();
+  // Avoid calling auth.getUser() in RSC to prevent refresh/write attempts
   let data: { id: number; title?: string | null } | null = null;
   try {
-    const q = supabase.from("decks").select("id, title, folder_id").eq("id", id).maybeSingle();
-    const { data: d } = await q;
-    if (d) {
+    // Rely on RLS to scope rows to the current session; no need to fetch user explicitly
+    const { data: d, error } = await supabase
+      .from("decks")
+      .select("id, title, folder_id")
+      .eq("id", id)
+      .maybeSingle();
+    
+    if (error) {
+      // Log safely without throwing to avoid dev overlay noise
+      console.warn('[EditDeckPage] deck fetch error:', error.message || error);
+    } else if (d) {
       const title = typeof (d as Record<string, unknown>).title === "string" ? String((d as Record<string, unknown>).title) : null;
       data = { id: Number((d as Record<string, unknown>).id), title };
     }
-  } catch {
-    // ignore and render shell
+  } catch (e) {
+    // Catch any other errors and log safely
+    const msg = e && typeof e === 'object' && 'message' in e ? (e as { message: string }).message : String(e);
+    console.warn('[EditDeckPage] unexpected error:', msg);
   }
 
   // Render the full page layout:
