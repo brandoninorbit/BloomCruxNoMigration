@@ -8,6 +8,7 @@ export default function SecurityPage() {
   const { user } = useAuth();
   const supabase = getSupabaseClient();
   const [pw, setPw] = useState("");
+  const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -16,11 +17,22 @@ export default function SecurityPage() {
 
   async function onSet() {
     setBusy(true); setErr(null); setMsg(null);
+    if (pw.length < 6) {
+      setBusy(false);
+      setErr("Password must be at least 6 characters.");
+      return;
+    }
+    if (pw !== confirm) {
+      setBusy(false);
+      setErr("Passwords do not match.");
+      return;
+    }
     const { error } = await supabase.auth.updateUser({ password: pw });
     setBusy(false);
     if (error) { setErr(error.message || "Failed to set password"); return; }
     setMsg("Password set.");
     setPw("");
+    setConfirm("");
   }
 
   return (
@@ -38,9 +50,17 @@ export default function SecurityPage() {
           onChange={(e) => setPw(e.target.value)}
           disabled={!canSet}
         />
+        <input
+          type="password"
+          className="w-full border rounded px-3 py-2 mb-3"
+          placeholder="Retype new password"
+          value={confirm}
+          onChange={(e) => setConfirm(e.target.value)}
+          disabled={!canSet}
+        />
         <button
           className="w-full bg-gray-900 text-white py-2 px-4 rounded-lg font-semibold hover:bg-black/90 disabled:opacity-60"
-          disabled={!canSet || busy || pw.length < 6}
+          disabled={!canSet || busy || pw.length < 6 || pw !== confirm}
           onClick={onSet}
           type="button"
         >

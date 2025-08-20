@@ -13,6 +13,7 @@ export default function EmailAuthForm() {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -27,6 +28,16 @@ export default function EmailAuthForm() {
 
   async function onSignUp() {
     setBusy(true); setErr(null); setMsg(null);
+    if (password.length < 6) {
+      setBusy(false);
+      setErr("Password must be at least 6 characters.");
+      return;
+    }
+    if (password !== confirm) {
+      setBusy(false);
+      setErr("Passwords do not match.");
+      return;
+    }
     const { error } = await supabase.auth.signUp({
       email,
       password,
@@ -73,6 +84,15 @@ export default function EmailAuthForm() {
         value={password}
         onChange={(e) => setPassword(e.target.value)}
       />
+      {mode === "signup" && (
+        <input
+          className="w-full border rounded px-3 py-2"
+          type="password"
+          placeholder="Retype password"
+          value={confirm}
+          onChange={(e) => setConfirm(e.target.value)}
+        />
+      )}
 
       {mode === "signin" ? (
         <button
@@ -86,7 +106,7 @@ export default function EmailAuthForm() {
       ) : (
         <button
           type="button"
-          disabled={busy}
+          disabled={busy || password.length < 6 || password !== confirm}
           className="w-full bg-gray-900 text-white py-2 px-4 rounded-lg font-semibold hover:bg-black/90 disabled:opacity-60"
           onClick={onSignUp}
         >
