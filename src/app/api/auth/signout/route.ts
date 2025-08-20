@@ -10,12 +10,13 @@ export async function POST() {
     {
       cookies: {
         getAll() {
-          return cookieStore.getAll();
+          // Normalize to the shape Supabase expects
+          return cookieStore.getAll().map((c) => ({ name: c.name, value: c.value }));
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            cookieStore.set(name, value, options);
-          });
+          for (const c of cookiesToSet) {
+            cookieStore.set({ name: c.name, value: c.value, ...(c.options ?? {}) });
+          }
         },
       },
       auth: {
