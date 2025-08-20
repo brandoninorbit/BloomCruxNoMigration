@@ -1,35 +1,42 @@
 "use client";
 import { Suspense, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useSessionContext } from "@supabase/auth-helpers-react";
+import { getSupabaseClient } from "@/lib/supabase/browserClient";
 
 function FinalizeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirect = searchParams?.get("redirect") || "/dashboard";
-  const { session, isLoading, supabaseClient } = useSessionContext();
+  // Use our unified client (autoRefreshToken: false) to read any existing client session
+  const supabaseClient = getSupabaseClient();
 
   useEffect(() => {
     async function syncIfNeeded() {
-      // If the client doesn't have a session yet, try to fetch it
-      const { data: s } = await supabaseClient.auth.getSession();
-      const curr = s.session ?? session ?? null;
-  if (curr?.access_token && curr?.refresh_token) {
-        try {
-          await fetch("/api/auth/sync", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ access_token: curr.access_token, refresh_token: curr.refresh_token }),
-          });
-        } catch {}
+      try {
+        // Try to read any existing client session (persisted in localStorage)
+        const { data: s } = await supabaseClient.auth.getSession();
+        const curr = s.session ?? null;
+        if (curr?.access_token && curr?.refresh_token) {
+          try {
+            await fetch("/api/auth/sync", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ access_token: curr.access_token, refresh_token: curr.refresh_token }),
+            });
+          } catch {
+            // ignore sync errors; we'll still attempt the redirect below
+          }
+        }
+      } finally {
+        // Always proceed to the target to avoid getting stuck on /auth/finalize
+        const target = new URL(redirect, window.location.origin);
+        target.searchParams.set("finalized", "1");
+        router.replace(target.pathname + target.search);
       }
-  // Add a finalized=1 marker to avoid middleware loops if server cookies are still missing
-  const target = new URL(redirect, window.location.origin);
-  target.searchParams.set("finalized", "1");
-  router.replace(target.pathname + target.search);
     }
-    if (!isLoading) syncIfNeeded();
-  }, [isLoading, redirect, router, session, supabaseClient]);
+    // No external loading gate needed; run once on mount
+    void syncIfNeeded();
+  }, [redirect, router, supabaseClient]);
 
   return null;
 }
