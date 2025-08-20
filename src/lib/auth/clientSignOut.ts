@@ -48,6 +48,13 @@ export async function forceSignOut(redirectTo: string = "/") {
     // ignore
   }
 
+  // Notify UI immediately
+  try {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('auth:logout'));
+    }
+  } catch {}
+
   // Final redirect
   window.location.assign(redirectTo);
 }

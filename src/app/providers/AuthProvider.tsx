@@ -54,8 +54,22 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       setUser(session?.user ?? null);
       setLoading(false);
     });
+    // Listen for forced-logout events to update UI immediately before navigation
+    function onForcedLogout() {
+      setSession(null);
+      setUser(null);
+      // keep loading false so UI shows logged-out state instantly
+    }
+    if (typeof window !== 'undefined') {
+      window.addEventListener('auth:logout', onForcedLogout as EventListener);
+    }
 
-  return () => subscription.unsubscribe();
+  return () => {
+      subscription.unsubscribe();
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('auth:logout', onForcedLogout as EventListener);
+      }
+    };
   }, []);
 
   return (
