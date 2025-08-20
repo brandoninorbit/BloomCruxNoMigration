@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { DeckBloomLevel, DeckCard, DeckStandardMCQ, DeckShortAnswer, DeckMCQMeta, DeckShortMeta, DeckFillMeta, DeckFillBlank, DeckSortingMeta, DeckSequencingMeta, DeckCompareContrastMeta, DeckTwoTierMCQMeta, DeckCERMeta, DeckCERMode, DeckFillMode } from "@/types/deck-cards";
+import type { DeckBloomLevel, DeckCard, DeckStandardMCQ, DeckShortAnswer, DeckMCQMeta, DeckShortMeta, DeckFillMeta, DeckFillBlank, DeckSortingMeta, DeckSequencingMeta, DeckCompareContrastMeta, DeckTwoTierMCQMeta, DeckCERMeta, DeckCERMode, DeckFillMode, DeckFillMetaV3, DeckFillBlankSpec } from "@/types/deck-cards";
 import { CARD_TYPES_BY_BLOOM, BLOOM_LEVELS, defaultBloomFor, type CardType } from "@/types/card-catalog";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -42,6 +42,8 @@ export default function AddCardModal({ open, mode = "create", initialCard, onClo
   const [fillMode, setFillMode] = useState<DeckFillMode>("Free Text");
   const [fillAnswers, setFillAnswers] = useState<string[]>([]); // answers aligned to __n__ markers
   const [fillOptions, setFillOptions] = useState<string[]>([]); // word bank for Drag & Drop
+  const [fillAlternates, setFillAlternates] = useState<string[][]>([]); // per-blank alternates
+  const [fillPerBlank, setFillPerBlank] = useState<({ mode?: DeckFillMode; caseSensitive?: boolean; ignorePunct?: boolean })[]>([]);
   const passageRef = useRef<HTMLTextAreaElement | null>(null);
   // Two-Tier MCQ Tier 2 fields
   const [tier2Question, setTier2Question] = useState("");
@@ -87,7 +89,7 @@ export default function AddCardModal({ open, mode = "create", initialCard, onClo
         setAnswer(meta.answer);
       } else if (initialCard.type === "Short Answer") {
         setShortSuggested((initialCard as DeckShortAnswer).meta.suggestedAnswer);
-      } else if (initialCard.type === "Fill in the Blank") {
+    } else if (initialCard.type === "Fill in the Blank") {
         const meta = (initialCard as DeckFillBlank).meta as DeckFillMeta;
         // Legacy single-answer (V1)
         if ("answer" in meta) {
@@ -95,15 +97,21 @@ export default function AddCardModal({ open, mode = "create", initialCard, onClo
           setFillMode("Free Text");
           setFillAnswers([meta.answer]);
           setFillOptions([]);
+      setFillAlternates([]);
+      setFillPerBlank([]);
         } else if ("blanks" in meta) {
           // V3: derive a simple answers array from blanks by id order
           const m = meta; // DeckFillMetaV3
-          const blanks = [...m.blanks].sort((a, b) => Number(a.id) - Number(b.id));
-          const answers = blanks.map((b) => b.answers?.[0] ?? "");
-          setFillMode(m.mode || "Free Text");
-          setFillAnswers(answers);
-          setFillOptions(Array.isArray(m.options) ? m.options : []);
-          setFillAnswer(answers[0] ?? "");
+      const blanks = [...m.blanks].sort((a, b) => Number(a.id) - Number(b.id));
+      const answers = blanks.map((b) => (Array.isArray(b.answers) && b.answers.length ? b.answers[0] : ""));
+      const alternates = blanks.map((b) => (Array.isArray(b.answers) ? b.answers.slice(1) : []));
+      const perBlank = blanks.map((b) => ({ mode: b.mode, caseSensitive: b.caseSensitive, ignorePunct: b.ignorePunct }));
+      setFillMode(m.mode || "Free Text");
+      setFillAnswers(answers);
+      setFillAlternates(alternates);
+      setFillPerBlank(perBlank);
+      setFillOptions(Array.isArray(m.options) ? m.options : []);
+      setFillAnswer(answers[0] ?? "");
         } else {
           // V2
           const m = meta; // DeckFillMetaV2
@@ -111,6 +119,8 @@ export default function AddCardModal({ open, mode = "create", initialCard, onClo
           setFillAnswers(Array.isArray(m.answers) ? m.answers : []);
           setFillOptions(Array.isArray(m.options) ? m.options : []);
           setFillAnswer(m.answers?.[0] ?? "");
+      setFillAlternates([]);
+      setFillPerBlank([]);
         }
       } else if (initialCard.type === "Sorting") {
         const meta = (initialCard.meta as DeckSortingMeta);
@@ -172,6 +182,8 @@ export default function AddCardModal({ open, mode = "create", initialCard, onClo
   setFillMode("Free Text");
   setFillAnswers([]);
   setFillOptions([]);
+  setFillAlternates([]);
+  setFillPerBlank([]);
   setCategories(["Category 1", "Category 2"]);
   setItems([{ term: "", correctCategory: "" }]);
   setSteps(["", ""]);
@@ -379,7 +391,32 @@ export default function AddCardModal({ open, mode = "create", initialCard, onClo
         let metaOut: DeckFillMeta;
         if (blanks <= 1 && fillMode === "Free Text" && (!fillOptions.length)) {
           metaOut = { answer: answersNorm[0] ?? "" };
+        } else if (blanks > 1 || fillAlternates.length || fillPerBlank.length) {
+          // Build V3 preserving per-blank alternates and flags
+          const blanksOut: DeckFillBlankSpec[] = answersNorm.map((a, idx) => {
+            const id = String(idx + 1);
+            const alts = fillAlternates[idx] ?? [];
+            const spec = fillPerBlank[idx] ?? {};
+            const answers = [a, ...alts].filter((s) => typeof s === 'string');
+            const b: DeckFillBlankSpec = { id, answers };
+            if (spec.mode) (b as DeckFillBlankSpec & { mode?: DeckFillMode }).mode = spec.mode;
+            if (spec.caseSensitive !== undefined) (b as DeckFillBlankSpec & { caseSensitive?: boolean }).caseSensitive = spec.caseSensitive;
+            if (spec.ignorePunct !== undefined) (b as DeckFillBlankSpec & { ignorePunct?: boolean }).ignorePunct = spec.ignorePunct;
+            return b;
+          });
+          let options = [...fillOptions];
+          if ((fillMode === "Drag & Drop" || fillMode === "Either") && options.length === 0) {
+            // Seed from answers + alternates
+            const uniq = new Set<string>();
+            answersNorm.forEach((a) => a && uniq.add(a));
+            fillAlternates.forEach((arr) => arr.forEach((s) => s && uniq.add(s)));
+            options = Array.from(uniq);
+          }
+          let metaV3: DeckFillMetaV3 = { mode: fillMode, blanks: blanksOut };
+          if (options.length) metaV3 = { ...metaV3, options };
+          metaOut = metaV3;
         } else {
+          // V2 path
           if (fillMode === "Drag & Drop") {
             const merged = Array.from(new Set([...(fillOptions || []), ...answersNorm.filter(Boolean)]));
             metaOut = { mode: fillMode, answers: answersNorm, options: merged } as DeckFillMeta;

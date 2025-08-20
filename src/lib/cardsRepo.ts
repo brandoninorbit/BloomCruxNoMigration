@@ -107,6 +107,37 @@ function rowToCard(row: CardRow): DeckCard {
 }
 
 function cardToRow(card: DeckCard): Omit<CardRow, "id" | "created_at" | "updated_at"> {
+  // Runtime guards (non-transforming) to ensure meta integrity
+  if (card.type === "Standard MCQ") {
+    const m = (card.meta as DeckMCQMeta);
+    const keys = Object.keys(m.options || {}) as Array<keyof DeckMCQMeta["options"]>;
+    (['A','B','C','D'] as const).forEach((k) => { if (!keys.includes(k)) throw new Error("MCQ options must include A,B,C,D keys"); });
+    if (!(['A','B','C','D'] as const).includes(m.answer)) throw new Error("MCQ answer must be one of A,B,C,D");
+  }
+  if (card.type === "Two-Tier MCQ") {
+    const m = (card.meta as DeckTwoTierMCQMeta);
+    (['A','B','C','D'] as const).forEach((k) => { if (!(k in m.tier1.options)) throw new Error("Two-Tier tier1 options require A..D"); });
+    (['A','B','C','D'] as const).forEach((k) => { if (!(k in m.tier2.options)) throw new Error("Two-Tier tier2 options require A..D"); });
+    if (!(['A','B','C','D'] as const).includes(m.tier1.answer)) throw new Error("Two-Tier tier1 answer must be A..D");
+    if (!(['A','B','C','D'] as const).includes(m.tier2.answer)) throw new Error("Two-Tier tier2 answer must be A..D");
+  }
+  if (card.type === "Fill in the Blank") {
+    const m = (card.meta as DeckFillMeta);
+    const isV3 = (mm: DeckFillMeta): mm is import("@/types/deck-cards").DeckFillMetaV3 => (mm as import("@/types/deck-cards").DeckFillMetaV3).blanks !== undefined;
+  const hasProp = <T extends object>(obj: T, key: string): boolean => Object.prototype.hasOwnProperty.call(obj, key);
+  const isV2 = (mm: DeckFillMeta): mm is import("@/types/deck-cards").DeckFillMetaV2 => hasProp(mm as object, "answers") && !hasProp(mm as object, "blanks");
+  const isV1 = (mm: DeckFillMeta): mm is import("@/types/deck-cards").DeckFillMetaV1 => hasProp(mm as object, "answer") && !hasProp(mm as object, "answers") && !hasProp(mm as object, "blanks");
+    if (isV3(m)) {
+      if (!Array.isArray(m.blanks)) throw new Error("Fill-V3 blanks must be an array");
+      m.blanks.forEach((b, idx) => {
+        if (!b || !Array.isArray(b.answers)) throw new Error(`Fill-V3 blank ${idx + 1} missing answers array`);
+      });
+    } else if (isV2(m)) {
+      if (!Array.isArray(m.answers)) throw new Error("Fill-V2 answers must be an array");
+    } else if (!isV1(m)) {
+      throw new Error("Fill meta must be V1/V2/V3");
+    }
+  }
   return {
     deck_id: card.deckId,
     type: card.type,

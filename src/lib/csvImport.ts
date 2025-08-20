@@ -137,37 +137,19 @@ function normalizeABCD(row: CsvRow): { A: string; B: string; C: string; D: strin
   return out;
 }
 
+// Positional normalization for RA..RD: strip any leading labels but do not remap across positions.
 function normalizeRAtoRD(row: CsvRow): { RA: string; RB: string; RC: string; RD: string } {
-  const raw = {
-    RA: (row["RA"] || "").trim(),
-    RB: (row["RB"] || "").trim(),
-    RC: (row["RC"] || "").trim(),
-    RD: (row["RD"] || "").trim(),
-  } as const;
-  const map: Record<"RA" | "RB" | "RC" | "RD", string> = { RA: "", RB: "", RC: "", RD: "" };
-  (Object.entries(raw) as [keyof typeof raw, string][]).forEach(([, v]) => {
+  const strip = (s?: string) => {
+    const v = (s || "").trim();
     const m = v.match(LABEL_RE);
-    if (m) {
-      const letter = m[1].toUpperCase();
-      const text = v.slice(m[0].length).trim();
-      const key = ("R" + letter) as keyof typeof map;
-      map[key] = text;
-    }
-  });
-  (Object.entries(raw) as [keyof typeof raw, string][]).forEach(([k, v]) => {
-    if (map[k] || !v) return;
-    const m = v.match(LABEL_RE);
-    if (m) {
-      const labeled = m[1].toUpperCase();
-      const expected = ("R" + labeled) as keyof typeof map;
-      if (expected === k) {
-        map[k] = v.slice(m[0].length).trim();
-      }
-    } else {
-      map[k] = v.trim();
-    }
-  });
-  return map;
+    return m ? v.slice(m[0].length).trim() : v;
+  };
+  return {
+    RA: strip(row["RA"]),
+    RB: strip(row["RB"]),
+    RC: strip(row["RC"]),
+    RD: strip(row["RD"]),
+  };
 }
 
 
