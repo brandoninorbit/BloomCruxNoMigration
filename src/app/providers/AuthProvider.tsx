@@ -32,13 +32,19 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
 
   useEffect(() => {
     const supabase = getSupabaseClient();
-
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
+    // Get initial session via server endpoint to avoid client-side refresh/rotation
+    (async () => {
+      try {
+        const res = await fetch('/api/auth/session', { cache: 'no-store' });
+        if (res.ok) {
+          const body = await res.json();
+          setSession(body.session ?? null);
+          setUser(body.user ?? null);
+        }
+      } finally {
+        setLoading(false);
+      }
+    })();
 
     // Listen for auth changes (but no auto-refresh since our client has autoRefreshToken: false)
     const {
@@ -49,7 +55,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+  return () => subscription.unsubscribe();
   }, []);
 
   return (

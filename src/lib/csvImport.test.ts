@@ -1,197 +1,166 @@
-import { describe, it, expect } from 'vitest';
-import { rowToPayload, type CsvRow } from './csvImport';
-import type { DeckMCQMeta, DeckFillMetaV3, DeckSortingMeta, DeckTwoTierMCQMeta, DeckSequencingMeta, DeckCompareContrastMeta, DeckCERMeta } from '@/types/deck-cards';
+// src/lib/csvImport.test.ts
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { describe, test, expect } from "vitest";
+import { rowToPayload } from "./csvImport";
 
-describe('csvImport.rowToPayload', () => {
-  it('parses MCQ with labeled/misaligned options and correct answer', () => {
-    const row: CsvRow = {
-      CardType: 'Standard MCQ',
-      Question: 'Which functional group is common to all amino acids?',
-      A: 'A) Hydroxyl group',
-      B: 'B) Carboxyl group',
-      C: 'C) Sulfhydryl group',
-      D: 'D) Methyl group',
-      Answer: 'B',
-    };
-  const payload = rowToPayload(row);
-  expect(payload.type).toBe('Standard MCQ');
-  const meta = payload.meta as DeckMCQMeta;
-    expect(meta.options.A).toContain('Hydroxyl');
-    expect(meta.options.B).toContain('Carboxyl');
-    expect(meta.answer).toBe('B');
+const row = (r: any) => r;
+
+describe("CSV importer – strict mapping", () => {
+  test("MCQ: label stripping + correct letter map", () => {
+    const r = row({
+      CardType: "Standard MCQ",
+      Question: "Which base pair has 3 H-bonds?",
+      A: "A) A–T",
+      B: "B) G≡C",
+      C: "C) A–U",
+      D: "D) C–U",
+      Answer: "b",
+      Explanation: "G≡C has three H-bonds",
+    });
+  const p: any = rowToPayload(r);
+    expect(p.type).toBe("mcq");
+    expect(p.meta.options).toEqual({
+      A: "A–T",
+      B: "G≡C",
+      C: "A–U",
+      D: "C–U",
+    });
+    expect(p.meta.answer).toBe("B");
+    expect(p.explanation).toMatch(/three H-bonds/i);
   });
 
-  it('two-tier labeled RA..RD and RAnswer alias Tier2Answer', () => {
-    const row: CsvRow = {
-      CardType: 'Two-Tier MCQ',
-      Question: 'Q1',
-      A: 'A) a1', B: 'B) b1', C: 'C) c1', D: 'D) d1', Answer: 'A',
-      RQuestion: 'Why?',
-      RA: 'A) r1', RB: 'B) r2', RC: 'C) r3', RD: 'D) r4',
-      Tier2Answer: 'D'
-    };
-  const p = rowToPayload(row);
-  const m: DeckTwoTierMCQMeta = p.meta as DeckTwoTierMCQMeta;
-    expect(m.tier2.options.D).toBe('r4');
-    expect(m.tier2.answer).toBe('D');
+  test("Two‑Tier MCQ: RA..RD positional + RAnswer letter", () => {
+    const r = row({
+      CardType: "Two-Tier MCQ",
+      Question: "Increasing GC raises Tm because…",
+      A: "A) G–C pairs exclude water better",
+      B: "B) G–C pairs form three H-bonds",
+      C: "C) G–C pairs are heavier",
+      D: "D) G–C pairs are rarer",
+      Answer: "B",
+      RQuestion: "Why specifically?",
+      RA: "A) Because of triple H-bonds",
+      RB: "B) Because of higher mass",
+      RC: "C) Because of UV absorbance",
+      RD: "D) Because of sodium ions",
+      RAnswer: "A",
+    });
+  const p: any = rowToPayload(r);
+    expect(p.type).toBe("twoTier");
+    expect(p.meta.tier1.answer).toBe("B");
+    expect(p.meta.tier2.question).toBe("Why specifically?");
+    expect(p.meta.tier2.options).toEqual({
+      A: "Because of triple H-bonds",
+      B: "Because of higher mass",
+      C: "Because of UV absorbance",
+      D: "Because of sodium ions",
+    });
+    expect(p.meta.tier2.answer).toBe("A");
   });
 
-  it('Fill multi-blank defaults mode based on Options; seeds options when DnD and missing', () => {
-    // Case 1: Options present -> Drag & Drop default
-    const r1: CsvRow = {
-      CardType: 'Fill in the Blank',
-      Question: '[[1]] then [[2]]',
-      Answer1: 'first', Answer2: 'second',
-      Options: 'first|second|third'
-    };
-    const p1 = rowToPayload(r1);
-    const m1 = p1.meta as DeckFillMetaV3;
-    expect(m1.mode).toBe('Drag & Drop');
-    expect(m1.options?.includes('first')).toBe(true);
-    // Case 2: DnD chosen but options missing -> seed from answers
-    const r2: CsvRow = {
-      CardType: 'Fill in the Blank',
-      Question: '[[1]] [[2]]',
-      Answer1: 'alpha', Answer2: 'beta',
-      Mode: 'Drag & Drop'
-    };
-    const p2 = rowToPayload(r2);
-    const m2 = p2.meta as DeckFillMetaV3;
-    expect(new Set(m2.options)).toContain('alpha');
-    expect(new Set(m2.options)).toContain('beta');
+  test("Fill multi‑blank: Answer1..N → [[n]]", () => {
+    const r = row({
+      CardType: "Fill in the Blank",
+      Prompt: "Proteins are made of [[1]] units linked by [[2]] bonds.",
+      Mode: "Drag & Drop",
+      Answer1: "amino acid",
+      Answer2: "peptide",
+      Options: "amino acid|nucleotide|peptide|hydrogen",
+      Explanation: "Peptide bonds link amino acids",
+      BloomLevel: "Understand",
+    });
+  const p: any = rowToPayload(r);
+    expect(p.type).toBe("fill");
+    expect(p.meta.mode).toBe("Drag & Drop");
+    expect(p.meta.answers).toEqual(["amino acid", "peptide"]);
+    expect(p.meta.options).toEqual([
+      "amino acid",
+      "nucleotide",
+      "peptide",
+      "hydrogen",
+    ]);
+    expect(p.bloom).toBe("Understand");
   });
 
-  it('Short Answer Suggested alias', () => {
-    const row: CsvRow = { CardType: 'Short Answer', Prompt: 'SA', Suggested: 'text' };
-  const p = rowToPayload(row);
-  const m = p.meta as { suggestedAnswer: string };
-  expect(m.suggestedAnswer).toBe('text');
+  test("Short Answer: SuggestedAnswer + separate Explanation", () => {
+    const r = row({
+      CardType: "Short Answer",
+      Question: "Why is RNA more prone to degradation than DNA?",
+      SuggestedAnswer:
+        "2′‑OH on ribose makes RNA susceptible to base‑catalyzed hydrolysis",
+      BloomLevel: "Understand",
+      Explanation:
+        "2′‑OH attacks the phosphodiester backbone under basic conditions",
+    });
+  const p: any = rowToPayload(r);
+    expect(p.type).toBe("short");
+    expect(p.meta.suggestedAnswer).toMatch(/2′‑?OH/i);
+    expect(p.explanation).toMatch(/phosphodiester/i);
   });
 
-  it('Sequencing from Steps list', () => {
-    const row: CsvRow = { CardType: 'Sequencing', Question: 'Order', Steps: 'First|Second|Third' };
-    const p = rowToPayload(row);
-    const m = p.meta as DeckSequencingMeta;
-    expect(m.steps).toEqual(['First','Second','Third']);
+  test("Sorting: Categories vs Items orientation", () => {
+    const r = row({
+      CardType: "Sorting",
+      Question: "Sort these molecules by type",
+      Categories: "Polymers|Monomers",
+      Items: "Amino acids:Monomers|DNA:Polymers",
+    });
+  const p: any = rowToPayload(r);
+    expect(p.type).toBe("sorting");
+    expect(p.meta.categories).toEqual(["Polymers", "Monomers"]);
+    expect(p.meta.items).toEqual([
+      { term: "Amino acids", category: "Monomers" },
+      { term: "DNA", category: "Polymers" },
+    ]);
   });
 
-  it('Compare/Contrast point parsing', () => {
-    const row: CsvRow = {
-      CardType: 'Compare/Contrast',
-      ItemA: 'Backbone', ItemB: 'Folding',
-      Points: 'Backbone::Seq::Local folding|Bonds::Peptide::H-bonds'
-    };
-    const p = rowToPayload(row);
-    const m = p.meta as DeckCompareContrastMeta;
-    expect(m.points[0].feature).toBe('Backbone');
-    expect(m.points[1].b).toBe('H-bonds');
+  test("Sequencing: Steps pipe list", () => {
+    const r = row({
+      CardType: "Sequencing",
+      Prompt: "Hierarchy of protein structure",
+      Steps: "Primary|Secondary|Tertiary|Quaternary",
+    });
+  const p: any = rowToPayload(r);
+    expect(p.type).toBe("sequencing");
+    expect(p.meta.steps).toEqual([
+      "Primary",
+      "Secondary",
+      "Tertiary",
+      "Quaternary",
+    ]);
   });
 
-  it('CER Free Text and Multiple Choice', () => {
-    const free: CsvRow = {
-      CardType: 'CER',
-      Scenario: 'S',
-      Guidance: 'G',
-      Claim: 'C1', Evidence: 'E1', Reasoning: 'R1'
-    };
-  const pf = rowToPayload(free);
-  const mf = pf.meta as DeckCERMeta;
-  expect((mf.claim as { sampleAnswer?: string }).sampleAnswer).toBe('C1');
-    const mc: CsvRow = {
-      CardType: 'CER', Scenario: 'S', Mode: 'MC',
-      ClaimOptions: 'A|B', ClaimCorrect: '2',
-      EvidenceOptions: 'E|F', EvidenceCorrect: '1',
-      ReasoningOptions: 'R|S', ReasoningCorrect: '2'
-    };
-  const pm = rowToPayload(mc);
-  const mm = pm.meta as DeckCERMeta;
-  expect((mm.claim as { options: string[]; correct: number }).correct).toBe(1);
-  expect((mm.reasoning as { options: string[]; correct: number }).correct).toBe(1);
+  test("Compare/Contrast: feature::a::b", () => {
+    const r = row({
+      CardType: "Compare/Contrast",
+      Question: "DNA vs RNA",
+      ItemA: "DNA",
+      ItemB: "RNA",
+      Points: "Sugar::deoxyribose::ribose|Strands::double::single",
+    });
+  const p: any = rowToPayload(r);
+    expect(p.type).toBe("compare");
+    expect(p.meta.itemA).toBe("DNA");
+    expect(p.meta.points[0]).toEqual({
+      feature: "Sugar",
+      a: "deoxyribose",
+      b: "ribose",
+    });
   });
 
-  it('Bloom override + Analyse spelling; Explanation separate', () => {
-    const row: CsvRow = {
-      CardType: 'Standard MCQ',
-      Question: 'Bloom test',
-      A: 'A', B: 'B', C: 'C', D: 'D', Answer: 'A',
-      BloomLevel: 'Analyse',
-      Explanation: 'why'
-    };
-    const p = rowToPayload(row);
-    expect(p.bloomLevel).toBe('Analyze');
-    expect(p.explanation).toBe('why');
-  });
-
-  it('parses Fill in the Blank V3 with word bank inference', () => {
-    const row: CsvRow = {
-      CardType: 'Fill in the Blank',
-      Question: 'Proteins are made of repeating [[1]] units linked by [[2]] bonds.',
-      Answer1: 'amino acid',
-      Answer2: 'peptide',
-      Options: 'amino acid|nucleotide|peptide|hydrogen',
-      Mode: 'Drag & Drop',
-    };
-  const payload = rowToPayload(row);
-  expect(payload.type).toBe('Fill in the Blank');
-  const meta = payload.meta as DeckFillMetaV3;
-    expect(meta.mode).toMatch(/Drag/);
-    expect(meta.blanks.length).toBe(2);
-    expect(meta.blanks[0].answers[0]).toBe('amino acid');
-    expect(new Set(meta.options)).toContain('peptide');
-  });
-
-  it('parses Sorting categories and items, inferring categories when needed', () => {
-    const row: CsvRow = {
-      CardType: 'Sorting',
-      Question: 'Sort these molecules by type.',
-      Categories: 'Polymers|Monomers',
-      Items: 'Amino acids:Monomers|Proteins:Polymers',
-    };
-  const payload = rowToPayload(row);
-  expect(payload.type).toBe('Sorting');
-  const meta = payload.meta as DeckSortingMeta;
-    expect(meta.categories).toEqual(['Polymers','Monomers']);
-    expect(meta.items.length).toBe(2);
-  });
-
-  it('Two-Tier MCQ parses tier1 and tier2 independently without leakage', () => {
-    const row: CsvRow = {
-      CardType: 'Two-Tier MCQ',
-      Question: 'What is X?',
-      A: 'Alpha',
-      B: 'Beta',
-      C: 'Gamma',
-      D: 'Delta',
-      Answer: 'B',
-      RQuestion: 'Why is that correct?',
-      RA: 'Reason A',
-      RB: 'Reason B',
-      RC: 'Reason C',
-      RD: 'Reason D',
-      RAnswer: 'C',
-    };
-    const payload = rowToPayload(row);
-    expect(payload.type).toBe('Two-Tier MCQ');
-    const meta = payload.meta as DeckTwoTierMCQMeta;
-    expect(meta.tier1.options.A).toBe('Alpha');
-    expect(meta.tier1.answer).toBe('B');
-    expect(meta.tier2.question).toContain('Why');
-    expect(meta.tier2.options.C).toBe('Reason C');
-    expect(meta.tier2.answer).toBe('C');
-  });
-
-  it('BloomLevel synonyms (e.g., L4) normalize to proper Bloom level', () => {
-    const row: CsvRow = {
-      CardType: 'Standard MCQ',
-      Question: 'Bloom synonym test',
-  A: 'Option A',
-  B: 'Option B',
-  C: 'Option C',
-  D: 'Option D',
-      Answer: 'A',
-      BloomLevel: 'L4',
-    };
-    const payload = rowToPayload(row);
-    expect(payload.bloomLevel).toBe('Analyze');
+  test("CER Free Text", () => {
+    const r = row({
+      CardType: "CER",
+      Question: "Stem‑loops in 5′ UTR affect translation?",
+      Guidance: "Consider ribosome scanning",
+      Mode: "Free Text",
+      Claim: "Reduced translation",
+      Evidence: "Hairpin impedes scanning",
+      Reasoning: "Secondary structure blocks initiation",
+    });
+  const p: any = rowToPayload(r);
+    expect(p.type).toBe("cer");
+    expect(p.meta.mode).toBe("Free Text");
+    expect(p.meta.claim.sampleAnswer).toMatch(/Reduced/);
   });
 });

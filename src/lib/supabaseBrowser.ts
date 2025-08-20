@@ -1,7 +1,6 @@
-import { createClient } from '@supabase/supabase-js'
+// Deprecated: use getSupabaseClient from '@/lib/supabase/browserClient'.
+// This file now delegates to the unified client that disables auto-refresh
+// to prevent "Invalid Refresh Token: Already Used" errors.
+import { getSupabaseClient } from '@/lib/supabase/browserClient'
 
-export const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  { auth: { persistSession: true, autoRefreshToken: true } }
-)
+export const supabase = getSupabaseClient()

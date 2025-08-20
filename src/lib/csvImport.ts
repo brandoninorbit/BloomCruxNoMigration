@@ -1,380 +1,616 @@
-import Papa from "papaparse";
-import type { DeckBloomLevel, DeckCardType, DeckMCQMeta, DeckShortMeta, DeckFillMeta, DeckSortingMeta, DeckSequencingMeta, DeckCompareContrastMeta, DeckTwoTierMCQMeta, DeckCERMeta, DeckFillMetaV3, DeckFillMode } from "@/types/deck-cards";
-import { defaultBloomForType } from "@/lib/bloom";
+// src/lib/csvImport.ts
+// Strict, deterministic CSV importer for BloomCrux — no heuristics, no reordering, no dedupe.
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+import Papa from 'papaparse';
+import type {
+  DeckBloomLevel,
+  DeckCardType,
+  DeckMCQMeta,
+  DeckShortMeta,
+  DeckFillMeta,
+  DeckSortingMeta,
+  DeckSequencingMeta,
+  DeckCompareContrastMeta,
+  DeckTwoTierMCQMeta,
+  DeckCERMeta,
+  DeckFillMode,
+} from '@/types/deck-cards';
+import type { NewDeckCard } from '@/lib/cardsRepo';
 
 export type CsvRow = Record<string, string>;
 
-export type ImportResult = {
-  ok: boolean;
-  created: number;
-  errors: { row: number; message: string }[];
-};
+type Bloom = 'Remember' | 'Understand' | 'Apply' | 'Analyze' | 'Evaluate' | 'Create';
 
-// Parse a CSV file (File or string) into rows
-export function parseCsv(input: File | string): Promise<CsvRow[]> {
-  return new Promise((resolve, reject) => {
-    const config = {
-      header: true,
-      skipEmptyLines: true,
-      transformHeader: (h: string) => h.replace(/^\uFEFF/, "").trim(),
-    } as Papa.ParseConfig<unknown>;
-
-    const onComplete = (result: Papa.ParseResult<Record<string, unknown>>) => {
-      const raw = result.data ?? [];
-      const rows: CsvRow[] = raw.map((r) => {
-        const obj: CsvRow = {} as CsvRow;
-        Object.entries(r).forEach(([k, v]) => {
-          obj[String(k)] = typeof v === "string" ? v.trim() : v == null ? "" : String(v).trim();
-        });
-        return obj;
-      });
-      resolve(rows);
-    };
-
-  const onError = (err: unknown) => reject(err as Error);
-
-    if (typeof input === "string") {
-      Papa.parse(input, { ...config, complete: onComplete, error: onError });
-    } else {
-      Papa.parse(input, { ...config, complete: onComplete, error: onError });
-    }
-  });
-}
-
-// Helpers
-// Flexible column getter: tries exact names, then case-insensitive matching ignoring spaces/punct
-function col(row: CsvRow, ...names: string[]): string {
-  for (const n of names) {
-    const v = row[n];
-    if (typeof v === "string" && v.trim() !== "") return v.trim();
-  }
-  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
-  const map: Record<string, string> = {};
-  Object.keys(row).forEach((k) => { map[norm(k)] = k; });
-  for (const n of names) {
-    const key = map[norm(n)];
-    if (key && typeof row[key] === "string" && row[key].trim() !== "") return row[key].trim();
-  }
-  return "";
-}
-const toBloom = (s?: string): DeckBloomLevel | undefined => {
-  const raw = (s || "").trim();
-  if (!raw) return undefined;
-  const t = raw.toLowerCase();
-  // direct contains matching
-  if (t.includes("remember") || t === "l1" || t === "level 1" || t === "1") return "Remember";
-  if (t.includes("understand") || t === "l2" || t === "level 2" || t === "2") return "Understand";
-  if (t.includes("apply") || t === "l3" || t === "level 3" || t === "3") return "Apply";
-  if (t.includes("analyz") || t.includes("analyse") || t === "l4" || t === "level 4" || t === "4") return "Analyze";
-  if (t.includes("evaluate") || t === "l5" || t === "level 5" || t === "5") return "Evaluate";
-  if (t.includes("create") || t === "l6" || t === "level 6" || t === "6") return "Create";
-  return undefined;
-};
-
-// Narrow a possibly messy value to the literal union 'A' | 'B' | 'C' | 'D'
-type Letter = "A" | "B" | "C" | "D";
-export const stripChoiceLabel = (s?: string): string => {
-  const v = (s || "").trim();
-  const m = v.match(LABEL_RE);
-  if (!m) return v;
-  const rest = v.slice(m[0].length).trim();
-  // If stripping leaves nothing (e.g., value is just "A"), treat it as literal text, not a label
-  return rest || v;
-};
-
-const asLetter = (v?: string): Letter => {
-  const raw = (v || "").trim();
-  const l = raw.toUpperCase();
-  if (l === "A" || l === "B" || l === "C" || l === "D") return l;
-  // Try to extract a leading label from strings like "B) text" or "B. text"
-  const m = raw.match(LABEL_RE);
-  if (m) {
-    const letter = (m[1].toUpperCase() as Letter);
-    return letter;
-  }
-  return "A";
-};
-export const parseAnswerLetter = asLetter;
-// Regex to detect a leading label like A), A., A:, or A-
-const LABEL_RE = /^\s*([A-D])(?![a-zA-Z])\s*[\)\].:–—-]?\s*/i; // require next char not a letter to avoid stripping words like 'Alpha'
-
-// Some spreadsheets misalign A/B/C/D fields or include labels like "A) text" in the wrong column.
-// This routine collects any labeled values and reconstructs the correct A/B/C/D map.
-function normalizeABCD(row: CsvRow): { A: string; B: string; C: string; D: string } {
-  const raw: Record<Letter, string> = {
-    A: (row["A"] || row["OptionA"] || row["Option A"] || "").trim(),
-    B: (row["B"] || row["OptionB"] || row["Option B"] || "").trim(),
-    C: (row["C"] || row["OptionC"] || row["Option C"] || "").trim(),
-    D: (row["D"] || row["OptionD"] || row["Option D"] || "").trim(),
-  };
-  const out: Record<Letter, string> = { A: "", B: "", C: "", D: "" };
-  // First pass: if any cell has a leading label AND trailing text, respect it.
-  (Object.entries(raw) as [Letter, string][]).forEach(([, v]) => {
-    const m = v.match(LABEL_RE);
-    if (m) {
-      const letter = (m[1].toUpperCase() as Letter);
-      const text = stripChoiceLabel(v);
-      if (text && text !== v) out[letter] = text; // only when there was meaningful trailing text
-    }
-  });
-  // Second pass: fill remaining slots from their own column (only if value is unlabeled or label matches the same column)
-  (Object.entries(raw) as [Letter, string][]).forEach(([k, v]) => {
-    if (out[k] || !v) return;
-    // Use safe stripper: if value is a pure label (e.g., "A"), keep it as text "A".
-    const cleaned = stripChoiceLabel(v);
-    out[k] = cleaned;
-  });
-  // Third pass: If any still missing, scan all row values for labeled options (handles misaligned CSVs)
-  if (!out.A || !out.B || !out.C || !out.D) {
-    const values = Object.values(row) as string[];
-    values.forEach((val) => {
-      if (!val || typeof val !== "string") return;
-      const m = val.match(LABEL_RE);
-      if (!m) return;
-      const letter = (m[1].toUpperCase() as Letter);
-      if (out[letter]) return; // keep first occurrence
-      const text = stripChoiceLabel(val);
-      if (text && text !== val) out[letter] = text;
-    });
-  }
-  return out;
-}
-
-// Positional normalization for RA..RD: strip any leading labels but do not remap across positions.
-function normalizeRAtoRD(row: CsvRow): { RA: string; RB: string; RC: string; RD: string } {
-  const get = (keys: string[]) => {
-    for (const k of keys) {
-      const v = row[k];
-      if (typeof v === "string" && v.trim()) return stripChoiceLabel(v);
-    }
-    return "";
-  };
-  return {
-    RA: get(["RA", "Tier2A", "Tier 2 A", "ReasonA", "Reason A", "R A"]),
-    RB: get(["RB", "Tier2B", "Tier 2 B", "ReasonB", "Reason B", "R B"]),
-    RC: get(["RC", "Tier2C", "Tier 2 C", "ReasonC", "Reason C", "R C"]),
-    RD: get(["RD", "Tier2D", "Tier 2 D", "ReasonD", "Reason D", "R D"]),
-  };
-}
-
-
-// (reserved) const truthy = (s?: string): boolean => /^(1|true|yes|y)$/i.test(s || "");
-
-// Map a CSV row into a NewDeckCard payload
-export function rowToPayload(row: CsvRow): {
-  type: DeckCardType;
-  bloomLevel?: DeckBloomLevel;
+// Public importer payloads
+type MCQPayload = {
+  type: 'mcq';
   question: string;
+  bloom: Bloom;
   explanation?: string;
-  meta: DeckMCQMeta | DeckShortMeta | DeckFillMeta | DeckSortingMeta | DeckSequencingMeta | DeckCompareContrastMeta | DeckTwoTierMCQMeta | DeckCERMeta;
+  meta: { options: { A: string; B: string; C: string; D: string }; answer: 'A' | 'B' | 'C' | 'D' };
+};
+
+type TwoTierPayload = {
+  type: 'twoTier';
+  question: string;
+  bloom: Bloom;
+  explanation?: string;
+  meta: {
+    tier1: { options: { A: string; B: string; C: string; D: string }; answer: 'A' | 'B' | 'C' | 'D' };
+    tier2: { question: string; options: { A: string; B: string; C: string; D: string }; answer: 'A' | 'B' | 'C' | 'D' };
+  };
+};
+
+type ShortPayload = {
+  type: 'short';
+  question: string;
+  bloom: Bloom;
+  explanation?: string;
+  meta: { suggestedAnswer?: string };
+};
+
+type FillPerBlankOverrides = {
+  [n: number]: { mode?: DeckFillMode; caseSensitive?: boolean; ignorePunct?: boolean };
+};
+type FillPayload = {
+  type: 'fill';
+  question: string;
+  bloom: Bloom;
+  explanation?: string;
+  meta: {
+    mode: DeckFillMode;
+    answers: string[]; // primary answers per blank (index 1-based in prompt)
+    alternates: string[][]; // alternates per blank
+    options?: string[]; // word bank; never auto-seeded
+    caseSensitive?: boolean; // row flags
+    ignorePunct?: boolean; // row flags
+    perBlank?: FillPerBlankOverrides; // per-blank overrides
+  };
+};
+
+type SortingPayload = {
+  type: 'sorting';
+  question: string;
+  bloom: Bloom;
+  explanation?: string;
+  meta: { categories: string[]; items: { term: string; category: string }[] };
+};
+
+type SequencingPayload = {
+  type: 'sequencing';
+  question: string;
+  bloom: Bloom;
+  explanation?: string;
+  meta: { steps: string[] };
+};
+
+type ComparePayload = {
+  type: 'compare';
+  question: string;
+  bloom: Bloom;
+  explanation?: string;
+  meta: { itemA: string; itemB: string; points: { feature: string; a: string; b: string }[] };
+};
+
+type CERMode = 'Free Text' | 'Multiple Choice';
+type CERPartFree = { sampleAnswer?: string };
+type CERPartMC = { options: string[]; correct: number };
+type CERPart = CERPartFree | CERPartMC;
+type CERPayload = {
+  type: 'cer';
+  question: string;
+  bloom: Bloom;
+  explanation?: string;
+  meta: { mode: CERMode; guidance?: string; claim?: CERPart; evidence?: CERPart; reasoning?: CERPart };
+};
+
+export type ImportPayload =
+  | MCQPayload
+  | TwoTierPayload
+  | ShortPayload
+  | FillPayload
+  | SortingPayload
+  | SequencingPayload
+  | ComparePayload
+  | CERPayload;
+
+// ---------- Helpers ----------
+const LABEL_RE = /^\s*([A-D])\s*[).:]\s*/i;
+const truthy = (s?: string) => /^(1|true|yes|y)$/i.test((s || '').trim());
+const normKey = (k: string) => (k || '').trim().toLowerCase();
+
+function pick(row: CsvRow, ...aliases: string[]): string | undefined {
+  const map = new Map<string, string>();
+  Object.keys(row || {}).forEach((k) => map.set(normKey(k), (row as any)[k]));
+  for (const a of aliases) {
+    const v = map.get(normKey(a));
+    if (v !== undefined && v !== null) {
+      const t = String(v).trim();
+      if (t !== '') return t;
+    }
+  }
+  return undefined;
+}
+
+function splitPipes(s?: string): string[] {
+  return (s || '')
+    .split('|')
+    .map((x) => x.trim())
+    .filter((x) => x.length > 0);
+}
+
+function stripLabel(s: string): string {
+  return (s || '').replace(LABEL_RE, '').trim();
+}
+
+function letterToKey(s: string): 'A' | 'B' | 'C' | 'D' {
+  const L = (s || '').trim().toUpperCase();
+  if (L === 'A' || L === 'B' || L === 'C' || L === 'D') return L;
+  // default unreachable in validated paths
+  return 'A';
+}
+
+function normalizeBloom(raw?: string): Bloom | undefined {
+  if (!raw) return undefined;
+  const x = raw.trim().toLowerCase();
+  if (x === 'remember') return 'Remember';
+  if (x === 'understand') return 'Understand';
+  if (x === 'apply') return 'Apply';
+  if (x === 'analyze' || x === 'analyse') return 'Analyze';
+  if (x === 'evaluate') return 'Evaluate';
+  if (x === 'create') return 'Create';
+  return undefined;
+}
+
+const DEFAULT_BLOOM: Record<string, Bloom> = {
+  mcq: 'Remember',
+  fill: 'Remember',
+  short: 'Understand',
+  sorting: 'Understand',
+  sequencing: 'Understand',
+  compare: 'Analyze',
+  twoTier: 'Evaluate',
+  cer: 'Evaluate',
+};
+
+// CardType mapping — strict, enumerated aliases only
+function mapCardType(raw?: string):
+  | 'mcq'
+  | 'short'
+  | 'fill'
+  | 'sorting'
+  | 'sequencing'
+  | 'compare'
+  | 'twoTier'
+  | 'cer'
+  | undefined {
+  const x = (raw || '').trim().toLowerCase();
+  if (!x) return undefined;
+  if (x === 'mcq' || x === 'standard mcq' || x === 'multiple choice') return 'mcq';
+  if (x === 'short' || x === 'short answer') return 'short';
+  if (x === 'fill' || x === 'fill in the blank') return 'fill';
+  if (x === 'sorting' || x === 'sort') return 'sorting';
+  if (x === 'sequencing' || x === 'sequence') return 'sequencing';
+  if (x === 'compare' || x === 'compare/contrast' || x === 'compare-contrast') return 'compare';
+  if (x === 'twotiermcq' || x === 'two-tier mcq' || x === 'two tier mcq' || x === 'two-tier' || x === 'two tier') return 'twoTier';
+  if (x === 'cer') return 'cer';
+  return undefined;
+}
+
+function questionFrom(row: CsvRow): string {
+  return (
+    pick(row, 'Title') ?? pick(row, 'Question') ?? pick(row, 'Prompt') ?? pick(row, 'Scenario') ?? ''
+  ).trim();
+}
+
+function explanationFrom(row: CsvRow): string | undefined {
+  const v = pick(row, 'Explanation');
+  return v && v.trim() ? v.trim() : undefined;
+}
+
+// ---------- Per-type mapping with validation (returns errors instead of throwing) ----------
+type MapResult = { payload?: ImportPayload; errors: string[] };
+
+function mapMCQ(row: CsvRow, idx: number, bloom: Bloom): MapResult {
+  const errors: string[] = [];
+  const question = questionFrom(row);
+  if (!question) errors.push(`Row ${idx}: missing Question/Title/Prompt/Scenario`);
+  const A = pick(row, 'A', 'OptionA', 'Option A');
+  const B = pick(row, 'B', 'OptionB', 'Option B');
+  const C = pick(row, 'C', 'OptionC', 'Option C');
+  const D = pick(row, 'D', 'OptionD', 'Option D');
+  const ans = pick(row, 'Answer');
+  if (!A) errors.push(`Row ${idx}: missing A`);
+  if (!B) errors.push(`Row ${idx}: missing B`);
+  if (!C) errors.push(`Row ${idx}: missing C`);
+  if (!D) errors.push(`Row ${idx}: missing D`);
+  if (!ans) errors.push(`Row ${idx}: missing Answer`);
+  if (errors.length) return { errors };
+  const options = { A: stripLabel(A!), B: stripLabel(B!), C: stripLabel(C!), D: stripLabel(D!) };
+  const answerKey = letterToKey(ans!);
+  if (!options[answerKey]) errors.push(`Row ${idx}: Answer points to empty option`);
+  if (errors.length) return { errors };
+  return {
+    errors,
+    payload: { type: 'mcq', question, bloom, explanation: explanationFrom(row), meta: { options, answer: answerKey } },
+  };
+}
+
+function mapTwoTier(row: CsvRow, idx: number, bloom: Bloom): MapResult {
+  // Tier-1
+  const t1 = mapMCQ(row, idx, bloom);
+  if (!t1.payload) return t1;
+  const t1Meta = (t1.payload as MCQPayload).meta;
+  const rq = pick(row, 'RQuestion', 'ReasoningQuestion', 'Tier2Question', 'Tier-2 Question');
+  const RA = pick(row, 'RA', 'Tier2A');
+  const RB = pick(row, 'RB', 'Tier2B');
+  const RC = pick(row, 'RC', 'Tier2C');
+  const RD = pick(row, 'RD', 'Tier2D');
+  const RAnswer = pick(row, 'RAnswer', 'Tier2Answer');
+  const errors: string[] = [];
+  if (!rq) errors.push(`Row ${idx}: missing RQuestion/Tier2Question`);
+  if (!RA) errors.push(`Row ${idx}: missing RA`);
+  if (!RB) errors.push(`Row ${idx}: missing RB`);
+  if (!RC) errors.push(`Row ${idx}: missing RC`);
+  if (!RD) errors.push(`Row ${idx}: missing RD`);
+  if (!RAnswer) errors.push(`Row ${idx}: missing RAnswer`);
+  if (errors.length) return { errors };
+  const ropts = { A: stripLabel(RA!), B: stripLabel(RB!), C: stripLabel(RC!), D: stripLabel(RD!) };
+  const rKey = letterToKey(RAnswer!);
+  if (!ropts[rKey]) errors.push(`Row ${idx}: RAnswer points to empty RA/RB/RC/RD`);
+  if (errors.length) return { errors };
+  return {
+    errors: [],
+    payload: {
+      type: 'twoTier',
+  question: t1.payload!.question,
+      bloom,
+      explanation: explanationFrom(row),
+  meta: { tier1: t1Meta, tier2: { question: rq!.trim(), options: ropts, answer: rKey } },
+    },
+  };
+}
+
+function detectMaxPlaceholder(prompt: string): number {
+  const matches = prompt.match(/\[\[(\d+)]]/g);
+  if (!matches) return 0;
+  return Math.max(...matches.map((m) => parseInt(m.replace(/[^\d]/g, ''), 10)));
+}
+
+function mapFill(row: CsvRow, idx: number, bloom: Bloom): MapResult {
+  const question = questionFrom(row);
+  if (!question) return { errors: [`Row ${idx}: missing Prompt/Question/Title`] };
+  const modeRaw = pick(row, 'Mode') || '';
+  const mode: DeckFillMode = /drag/i.test(modeRaw)
+    ? 'Drag & Drop'
+    : /either/i.test(modeRaw)
+    ? 'Either'
+    : 'Free Text';
+
+  const maxInPrompt = detectMaxPlaceholder(question);
+  // Collect answers Answer or Answer1..Answer20
+  const answers: string[] = [];
+  const alternates: string[][] = [];
+  const errors: string[] = [];
+  let multi = false;
+  for (let n = 1; n <= 20; n++) {
+    const a = pick(row, n === 1 ? 'Answer' : `Answer${n}`);
+    const aN = pick(row, `Answer${n}`);
+    if (aN !== undefined) multi = true;
+    if (a !== undefined || aN !== undefined) {
+      const val = (aN ?? a)!;
+      answers.push(val.trim());
+      alternates.push(splitPipes(pick(row, `Answer${n}Alt`)));
+    } else if (n === 1) {
+      // allow single-blank via Answer
+      const single = pick(row, 'Answer');
+      if (single) {
+        answers.push(single.trim());
+        alternates.push(splitPipes(pick(row, 'AnswerAlt')));
+      }
+      break;
+    } else {
+      break;
+    }
+  }
+  if (answers.length === 0) errors.push(`Row ${idx}: missing Answer/Answer1`);
+  if (multi && maxInPrompt < answers.length) {
+    errors.push(`Row ${idx}: Prompt must include [[n]] placeholders up to [[${answers.length}]]`);
+  }
+  if (errors.length) return { errors };
+
+  // Flags and options (no seeding)
+  const caseSensitive = truthy(pick(row, 'CaseSensitive')) || undefined;
+  const ignorePunct = truthy(pick(row, 'IgnorePunct')) || undefined;
+  const options = splitPipes(pick(row, 'Options'));
+  const perBlank: FillPerBlankOverrides = {};
+  for (let n = 1; n <= answers.length; n++) {
+    const bModeRaw = pick(row, `Blank${n}Mode`);
+    const bMode: DeckFillMode | undefined = bModeRaw
+      ? /drag/i.test(bModeRaw)
+        ? 'Drag & Drop'
+        : /either/i.test(bModeRaw)
+        ? 'Either'
+        : 'Free Text'
+      : undefined;
+    const bCS = truthy(pick(row, `Blank${n}CaseSensitive`)) || undefined;
+    const bIP = truthy(pick(row, `Blank${n}IgnorePunct`)) || undefined;
+    if (bMode || bCS || bIP) perBlank[n] = { mode: bMode, caseSensitive: bCS, ignorePunct: bIP };
+  }
+
+  return {
+    errors: [],
+    payload: {
+      type: 'fill',
+      question,
+      bloom,
+      explanation: explanationFrom(row),
+      meta: { mode, answers, alternates, options: options.length ? options : undefined, caseSensitive, ignorePunct, perBlank: Object.keys(perBlank).length ? perBlank : undefined },
+    },
+  };
+}
+
+function mapSorting(row: CsvRow, idx: number, bloom: Bloom): MapResult {
+  const question = questionFrom(row);
+  const cats = splitPipes(pick(row, 'Categories'));
+  const itemsRaw = splitPipes(pick(row, 'Items'));
+  const errors: string[] = [];
+  if (!question) errors.push(`Row ${idx}: missing Title/Question/Prompt/Scenario`);
+  if (!cats.length) errors.push(`Row ${idx}: missing Categories`);
+  if (!itemsRaw.length) errors.push(`Row ${idx}: missing Items`);
+  const items = itemsRaw.map((s) => {
+    const idxColon = s.indexOf(':');
+    if (idxColon === -1) {
+      errors.push(`Row ${idx}: Sorting item "${s}" must be "term:category"`);
+      return { term: '', category: '' };
+    }
+    return { term: s.slice(0, idxColon).trim(), category: s.slice(idxColon + 1).trim() };
+  });
+  if (errors.length) return { errors };
+  return { errors: [], payload: { type: 'sorting', question, bloom, explanation: explanationFrom(row), meta: { categories: cats, items } } };
+}
+
+function mapShort(row: CsvRow, idx: number, bloom: Bloom): MapResult {
+  const question = questionFrom(row);
+  const suggested = pick(row, 'SuggestedAnswer', 'Suggested', 'Answer');
+  const errors: string[] = [];
+  if (!question) errors.push(`Row ${idx}: missing Title/Question/Prompt/Scenario`);
+  if (errors.length) return { errors };
+  return {
+    errors: [],
+  payload: { type: 'short', question, bloom, explanation: explanationFrom(row), meta: { suggestedAnswer: suggested ?? '' } },
+  };
+}
+
+function mapSequencing(row: CsvRow, idx: number, bloom: Bloom): MapResult {
+  const question = questionFrom(row);
+  const steps = splitPipes(pick(row, 'Steps') ?? pick(row, 'Items'));
+  const errors: string[] = [];
+  if (!question) errors.push(`Row ${idx}: missing Title/Question/Prompt/Scenario`);
+  if (!steps.length) errors.push(`Row ${idx}: Sequencing requires Steps or Items`);
+  if (errors.length) return { errors };
+  return { errors: [], payload: { type: 'sequencing', question, bloom, explanation: explanationFrom(row), meta: { steps } } };
+}
+
+function mapCompare(row: CsvRow, idx: number, bloom: Bloom): MapResult {
+  const question = questionFrom(row);
+  const itemA = pick(row, 'ItemA', 'A');
+  const itemB = pick(row, 'ItemB', 'B');
+  const pts = splitPipes(pick(row, 'Points', 'Pairs'));
+  const errors: string[] = [];
+  if (!question) errors.push(`Row ${idx}: missing Title/Question/Prompt/Scenario`);
+  if (!itemA) errors.push(`Row ${idx}: missing ItemA/A`);
+  if (!itemB) errors.push(`Row ${idx}: missing ItemB/B`);
+  if (!pts.length) errors.push(`Row ${idx}: missing Points`);
+  const points = pts.map((s) => {
+    const parts = s.split('::').map((p) => p.trim());
+    if (parts.length !== 3) {
+      errors.push(`Row ${idx}: Compare point "${s}" must be "feature::a::b"`);
+      return { feature: '', a: '', b: '' };
+    }
+    const [feature, a, b] = parts;
+    return { feature, a, b };
+  });
+  if (errors.length) return { errors };
+  return { errors: [], payload: { type: 'compare', question, bloom, explanation: explanationFrom(row), meta: { itemA: itemA!, itemB: itemB!, points } } };
+}
+
+function mapCER(row: CsvRow, idx: number, bloom: Bloom): MapResult {
+  const question = questionFrom(row);
+  const modeRaw = (pick(row, 'Mode') || '').toLowerCase();
+  const mode: CERMode = /multiple|mc/.test(modeRaw) ? 'Multiple Choice' : 'Free Text';
+  const guidance = pick(row, 'Guidance', 'GuidanceQuestion');
+  const errors: string[] = [];
+  if (!question) errors.push(`Row ${idx}: missing Title/Question/Prompt/Scenario`);
+  if (mode === 'Free Text') {
+    const claim: CERPartFree = { sampleAnswer: pick(row, 'Claim') };
+    const evidence: CERPartFree = { sampleAnswer: pick(row, 'Evidence') };
+    const reasoning: CERPartFree = { sampleAnswer: pick(row, 'Reasoning') };
+    return { errors, payload: { type: 'cer', question, bloom, explanation: explanationFrom(row), meta: { mode, guidance, claim, evidence, reasoning } } };
+  }
+  // Multiple Choice
+  const parseMC = (prefix: 'Claim' | 'Evidence' | 'Reasoning') => {
+    const options = splitPipes(pick(row, `${prefix}Options`));
+    const correctStr = pick(row, `${prefix}Correct`);
+    let err: string | null = null;
+    if (!options.length) err = `${prefix}Options required for CER MC`;
+    const idx1 = correctStr ? parseInt(correctStr, 10) : NaN;
+    if (!err && !(idx1 >= 1 && idx1 <= options.length)) err = `${prefix}Correct must be 1..${options.length}`;
+    return { part: err ? undefined : ({ options, correct: idx1 } as CERPartMC), err };
+  };
+  const c = parseMC('Claim');
+  const e = parseMC('Evidence');
+  const r = parseMC('Reasoning');
+  if (c.err) errors.push(`Row ${idx}: ${c.err}`);
+  if (e.err) errors.push(`Row ${idx}: ${e.err}`);
+  if (r.err) errors.push(`Row ${idx}: ${r.err}`);
+  if (errors.length) return { errors };
+  return {
+    errors: [],
+    payload: { type: 'cer', question, bloom, explanation: explanationFrom(row), meta: { mode, guidance, claim: c.part!, evidence: e.part!, reasoning: r.part! } },
+  };
+}
+
+// ---------- Public API ----------
+
+export function rowToPayload(row: CsvRow): ImportPayload {
+  // Determine type strictly by CardType cell
+  const rawType = pick(row, 'CardType');
+  const mapped = mapCardType(rawType);
+  const idx = 1; // row index unknown in standalone usage; error strings not emitted here
+  const bloom = normalizeBloom(pick(row, 'BloomLevel')) || (DEFAULT_BLOOM[mapped || 'mcq'] as Bloom);
+  const t = mapped || 'mcq';
+  const res =
+    t === 'mcq'
+      ? mapMCQ(row, idx, bloom)
+      : t === 'twoTier'
+      ? mapTwoTier(row, idx, bloom)
+      : t === 'fill'
+      ? mapFill(row, idx, bloom)
+      : t === 'short'
+      ? mapShort(row, idx, bloom)
+      : t === 'sorting'
+      ? mapSorting(row, idx, bloom)
+      : t === 'sequencing'
+      ? mapSequencing(row, idx, bloom)
+      : t === 'compare'
+      ? mapCompare(row, idx, bloom)
+      : mapCER(row, idx, bloom);
+  if (res.payload) return res.payload;
+  // Non-throwing fallback for standalone usage; parseCsv will validate in real flows.
+  return {
+    type: 'mcq',
+    question: questionFrom(row),
+    bloom,
+    explanation: explanationFrom(row),
+    meta: { options: { A: stripLabel(pick(row, 'A') || ''), B: stripLabel(pick(row, 'B') || ''), C: stripLabel(pick(row, 'C') || ''), D: stripLabel(pick(row, 'D') || '') }, answer: letterToKey(pick(row, 'Answer') || 'A') },
+  } as MCQPayload;
+}
+
+export function parseCsv(csvText: string): {
+  okRows: { index: number; payload: ImportPayload }[];
+  badRows: { index: number; errors: string[] }[];
+  warnings: string[];
 } {
-  const cardType = (col(row, "CardType", "Type") || "").trim();
-  const providedBloom = toBloom(col(row, "BloomLevel", "Bloom", "Bloom Taxonomy"));
-  const explanation = col(row, "Explanation") || undefined;
-
-  // Standardize friendly type aliases
-  const norm = cardType
-    .replace(/^mcq$/i, "Standard MCQ")
-    .replace(/^fill$/i, "Fill in the Blank")
-    .replace(/^short$/i, "Short Answer")
-    .replace(/^compare$/i, "Compare/Contrast")
-    .replace(/^twotiermcq$/i, "Two-Tier MCQ")
-    .replace(/^cer$/i, "CER");
-
-  const q = (col(row, "Question", "Prompt", "Scenario") || "").trim();
-
-  switch (norm as DeckCardType) {
-    case "Standard MCQ": {
-  const norm = normalizeABCD(row);
-  const ans = parseAnswerLetter(col(row, "Answer", "Correct", "Correct Answer"));
-      // Validation: ensure all options exist and the answer maps to a non-empty option
-      const missing: string[] = [];
-      (['A','B','C','D'] as const).forEach((k) => { if (!norm[k]) missing.push(k); });
-      if (missing.length) {
-        throw new Error(`MCQ requires A–D options; missing ${missing.join(', ')} for question: "${q || row['Question'] || ''}"`);
-      }
-      if (!norm[ans]) {
-        throw new Error(`MCQ answer ${ans} has no text; check A–D columns for question: "${q || row['Question'] || ''}"`);
-      }
-      return {
-        type: "Standard MCQ",
-        bloomLevel: providedBloom ?? defaultBloomForType("Standard MCQ"),
-        question: q,
-        explanation,
-        meta: { options: { A: norm.A, B: norm.B, C: norm.C, D: norm.D }, answer: ans },
-      };
+  const result = Papa.parse<CsvRow>(csvText, { header: true, skipEmptyLines: true, transformHeader: (h: string) => h.trim() });
+  const warnings: string[] = [];
+  const okRows: { index: number; payload: ImportPayload }[] = [];
+  const badRows: { index: number; errors: string[] }[] = [];
+  if (result.errors.length > 0) {
+    // Collect the first parse error as a bad row at header level
+    warnings.push(`CSV parser reported ${result.errors.length} issue(s); first: ${result.errors[0].message}`);
+  }
+  const rows = result.data || [];
+  rows.forEach((row, i) => {
+    const index = i + 2; // header + 1-based
+    const t = mapCardType(pick(row, 'CardType'));
+    if (!t) {
+      badRows.push({ index, errors: [`Row ${index}: missing or unsupported CardType`] });
+      return;
     }
-    case "Short Answer": {
-  const suggested = col(row, "SuggestedAnswer", "Suggested", "Answer");
-  return { type: "Short Answer", bloomLevel: providedBloom ?? defaultBloomForType("Short Answer"), question: q, explanation, meta: { suggestedAnswer: suggested } };
+    const bloom = normalizeBloom(pick(row, 'BloomLevel')) || DEFAULT_BLOOM[t];
+    let res: MapResult;
+    switch (t) {
+      case 'mcq':
+        res = mapMCQ(row, index, bloom);
+        break;
+      case 'twoTier':
+        res = mapTwoTier(row, index, bloom);
+        break;
+      case 'fill':
+        res = mapFill(row, index, bloom);
+        break;
+      case 'short':
+        res = mapShort(row, index, bloom);
+        break;
+      case 'sorting':
+        res = mapSorting(row, index, bloom);
+        break;
+      case 'sequencing':
+        res = mapSequencing(row, index, bloom);
+        break;
+      case 'compare':
+        res = mapCompare(row, index, bloom);
+        break;
+      case 'cer':
+        res = mapCER(row, index, bloom);
+        break;
+      default:
+        res = { errors: [`Row ${index}: unsupported CardType`] };
     }
-    case "Fill in the Blank": {
-      // Support V1/V2 for backward-compat, but prefer emitting V3 rich meta.
-  const legacy = row["Answer"] || "";
-      if (legacy) {
-        const meta: DeckFillMeta = { answer: legacy };
-  return { type: "Fill in the Blank", bloomLevel: providedBloom ?? defaultBloomForType("Fill in the Blank"), question: q, explanation, meta };
-      }
-      const answers: string[] = [];
-      for (let i = 1; i <= 20; i++) {
-        const v = row[`Answer${i}`];
-        if (!v) break;
-        const t = v.trim();
-        if (t) answers.push(t);
-      }
-      // Alternate answers per-blank: AnswerNAlt (pipe-delimited)
-      const alts: Record<number, string[]> = {};
-      for (let i = 1; i <= answers.length; i++) {
-        const raw = row[`Answer${i}Alt`];
-        if (raw) alts[i] = raw.split("|").map((s) => s.trim()).filter(Boolean);
-      }
-      // Per-row grading flags
-  const rowCase = /^(1|true|yes|y)$/i.test(col(row, "CaseSensitive") || "");
-  const rowIgnore = /^(1|true|yes|y)$/i.test(col(row, "IgnorePunct") || "");
-      // Per-blank overrides
-      const blankFlags: Record<number, { caseSensitive?: boolean; ignorePunct?: boolean; mode?: DeckFillMode }> = {};
-      for (let i = 1; i <= answers.length; i++) {
-  const cs = col(row, `Blank${i}CaseSensitive`);
-  const ip = col(row, `Blank${i}IgnorePunct`);
-  const m = col(row, `Blank${i}Mode`);
-        const modeL = (m || "").toLowerCase();
-        const mm: DeckFillMode | undefined = modeL
-          ? modeL.includes("either")
-            ? "Either"
-            : modeL.includes("drag") || modeL.includes("dnd")
-            ? "Drag & Drop"
-            : "Free Text"
-          : undefined;
-        blankFlags[i] = {
-          caseSensitive: cs ? /^(1|true|yes|y)$/i.test(cs) : undefined,
-          ignorePunct: ip ? /^(1|true|yes|y)$/i.test(ip) : undefined,
-          mode: mm,
-        };
-      }
-      // Options/word bank
-  let options = (col(row, "Options") || "").split("|").map((s) => s.trim()).filter(Boolean);
-      // Heuristic: some CSVs misplace the word bank into Answer1. If Answer1 looks like a bank and Options is empty, move it.
-      if ((!options.length) && answers[0] && answers[0].includes("|") && answers[0].split("|").filter(Boolean).length >= 3) {
-        options = answers[0].split("|").map((s) => s.trim()).filter(Boolean);
-        answers[0] = "";
-      }
-      // Heuristic: if Answer1 exactly matches Options pipe list, clear it (it was duplicated/misaligned)
-      if (options.length && answers[0] && answers[0].includes("|") && answers[0].split("|").map((s) => s.trim()).join("|") === options.join("|")) {
-        answers[0] = "";
-      }
-      // Default mode: Drag & Drop with word bank (if not specified)
-  const modeCell = (col(row, "Mode") || "").trim();
-      const modeRaw = (modeCell || (options.length ? "Drag & Drop" : "")).toLowerCase();
-      const mode: DeckFillMode = modeRaw.includes("either")
-        ? "Either"
-        : modeRaw.includes("drag") || modeRaw.includes("dnd")
-        ? "Drag & Drop"
-        : options.length > 0
-        ? "Drag & Drop"
-        : "Free Text";
-      if ((mode === "Drag & Drop" || mode === "Either") && options.length === 0) {
-        // Seed options from unique provided answers and alternates
-        const uniq = new Set<string>();
-        answers.forEach((a) => uniq.add(a));
-        Object.values(alts).forEach((arr) => arr.forEach((a) => uniq.add(a)));
-        options = Array.from(uniq);
-      }
-      // Build V3 blanks list
-      const blanks = answers.map((a, idx) => {
-        const id = idx + 1;
-        const spec = blankFlags[id] ?? {};
-        return {
-          id: String(id),
-          answers: [a, ...(alts[id] ?? [])],
-          ...(spec.mode ? { mode: spec.mode } : {}),
-          ...(spec.caseSensitive !== undefined ? { caseSensitive: spec.caseSensitive } : {}),
-          ...(spec.ignorePunct !== undefined ? { ignorePunct: spec.ignorePunct } : {}),
-        };
-      });
-      const meta: DeckFillMetaV3 = {
-        mode,
+    if (res.payload) okRows.push({ index, payload: res.payload });
+    else badRows.push({ index, errors: res.errors });
+  });
+  return { okRows, badRows, warnings };
+}
+
+export function importPayloadToNewDeckCard(payload: ImportPayload, deckId: number): NewDeckCard {
+  const baseCard = {
+    deckId,
+    question: payload.question,
+    bloomLevel: payload.bloom as DeckBloomLevel,
+    explanation: payload.explanation,
+  };
+
+  switch (payload.type) {
+    case 'mcq':
+      return { ...baseCard, type: 'Standard MCQ' as DeckCardType, meta: payload.meta as DeckMCQMeta };
+
+    case 'twoTier':
+      return { ...baseCard, type: 'Two-Tier MCQ' as DeckCardType, meta: payload.meta as DeckTwoTierMCQMeta };
+
+    case 'short':
+      return { ...baseCard, type: 'Short Answer' as DeckCardType, meta: (payload.meta as DeckShortMeta) };
+
+    case 'fill': {
+      const fill = payload.meta;
+      const blanks = fill.answers.map((answer, i) => ({
+        id: i + 1,
+        answers: [answer, ...(fill.alternates[i] || [])],
+        // apply per-blank overrides when present
+        mode: fill.perBlank?.[i + 1]?.mode,
+        caseSensitive: fill.perBlank?.[i + 1]?.caseSensitive ?? fill.caseSensitive,
+        ignorePunct: fill.perBlank?.[i + 1]?.ignorePunct ?? fill.ignorePunct,
+      }));
+      const deckMeta: DeckFillMeta = {
+        mode: fill.mode,
         blanks,
-        ...(options.length ? { options } : {}),
-        ...(rowCase ? { caseSensitive: true } : {}),
-        ...(rowIgnore ? { ignorePunct: true } : {}),
+        options: fill.options,
+        caseSensitive: fill.caseSensitive,
+        ignorePunct: fill.ignorePunct,
       };
-  return { type: "Fill in the Blank", bloomLevel: providedBloom ?? defaultBloomForType("Fill in the Blank"), question: q, explanation, meta };
+      return { ...baseCard, type: 'Fill in the Blank' as DeckCardType, meta: deckMeta };
     }
-    case "Sorting": {
-      // Categories as pipe-delimited; Items as "term:category" pipe-delimited
-  let cats = (col(row, "Categories") || "").split("|").map((s) => s.trim()).filter(Boolean);
-  const items = (col(row, "Items") || "").split("|")
-        .map((p) => p.split(":").map((s) => s.trim()))
-        .filter(([term, cat]) => term && cat)
-        .map(([term, cat]) => ({ term, correctCategory: cat }));
-      // If categories look like item pairs (contain ':'), or if provided categories do not intersect with item categories,
-      // derive categories from items instead.
-      const uniqCats = Array.from(new Set(items.map((it) => it.correctCategory)));
-      const catsLookLikePairs = cats.length > 0 && cats.every((c) => c.includes(":"));
-      const catsIntersect = cats.some((c) => uniqCats.includes(c));
-      if (!cats.length || catsLookLikePairs || (!catsIntersect && uniqCats.length)) {
-        if (uniqCats.length) cats = uniqCats;
-      }
-  return { type: "Sorting", bloomLevel: providedBloom ?? defaultBloomForType("Sorting"), question: q, explanation, meta: { categories: cats, items } };
-    }
-    case "Sequencing": {
-  const steps = ((col(row, "Steps") || col(row, "Items")) || "").split("|").map((s) => s.trim()).filter(Boolean);
-  return { type: "Sequencing", bloomLevel: providedBloom ?? defaultBloomForType("Sequencing"), question: q, explanation, meta: { steps } };
-    }
-    case "Compare/Contrast": {
-  const itemA = col(row, "ItemA", "A");
-  const itemB = col(row, "ItemB", "B");
-      // Points as "feature::a::b" pipe-delimited
-  const points = (col(row, "Points") || "").split("|")
-        .map((seg) => seg.split("::").map((s) => s.trim()))
-        .filter((a) => a.length === 3 && a[0] && a[1] && a[2])
-        .map(([feature, a, b]) => ({ feature, a, b }));
-  return { type: "Compare/Contrast", bloomLevel: providedBloom ?? defaultBloomForType("Compare/Contrast"), question: q || `Compare ${itemA} and ${itemB}`, explanation, meta: { itemA, itemB, points } };
-    }
-    case "Two-Tier MCQ": {
-      // Tier1
-  const norm = normalizeABCD(row);
-  const ans = asLetter(col(row, "Answer", "Correct", "Correct Answer"));
-      // Tier2 columns prefixed with R*
-  const rQ = col(row, "RQuestion", "ReasoningQuestion");
-    const r = normalizeRAtoRD(row);
-  const rAns = parseAnswerLetter(col(row, "RAnswer", "Tier2Answer"));
+
+    case 'sorting':
       return {
-        type: "Two-Tier MCQ",
-        bloomLevel: providedBloom ?? defaultBloomForType("Two-Tier MCQ"),
-        question: q,
-        explanation,
-        meta: {
-      tier1: { options: { A: norm.A, B: norm.B, C: norm.C, D: norm.D }, answer: ans },
-      tier2: { question: rQ, options: { A: r.RA, B: r.RB, C: r.RC, D: r.RD }, answer: rAns },
-        },
+        ...baseCard,
+        type: 'Sorting' as DeckCardType,
+        meta: { categories: payload.meta.categories, items: payload.meta.items.map((it) => ({ term: it.term, correctCategory: it.category })) } as DeckSortingMeta,
       };
+
+    case 'sequencing':
+      return { ...baseCard, type: 'Sequencing' as DeckCardType, meta: payload.meta as DeckSequencingMeta };
+
+    case 'compare':
+      return { ...baseCard, type: 'Compare/Contrast' as DeckCardType, meta: { itemA: payload.meta.itemA, itemB: payload.meta.itemB, points: payload.meta.points } as DeckCompareContrastMeta };
+
+    case 'cer': {
+      const m = payload.meta;
+      const cvt = (part?: CERPart): DeckCERMeta['claim'] => {
+        if (!part) return {} as any;
+        if ('options' in part && typeof part.correct === 'number') return { options: part.options, correct: part.correct };
+        return { sampleAnswer: (part as CERPartFree).sampleAnswer };
+      };
+      const meta: DeckCERMeta = {
+        mode: m.mode,
+        guidanceQuestion: m.guidance,
+        claim: cvt(m.claim),
+        evidence: cvt(m.evidence),
+        reasoning: cvt(m.reasoning),
+      };
+      return { ...baseCard, type: 'CER' as DeckCardType, meta };
     }
-    case "CER": {
-      // Scenario/Prompt is the question/title; optional guidance in Guidance column
-    const guidance = col(row, "Guidance", "GuidanceQuestion");
-    const mode = (col(row, "Mode") || "Free Text").toLowerCase();
-      if (mode === "multiple choice" || mode === "mc" || mode === "multiple") {
-        // Options pipe-delimited per part; correct index is 1-based in CSV
-        const parsePart = (prefix: string) => {
-      const options = (col(row, `${prefix}Options`) || "").split("|").map((s) => s.trim()).filter(Boolean);
-      const correct = Math.max(0, ((Number(col(row, `${prefix}Correct`)) || 1) - 1));
-          return { options, correct };
-        };
-        const claim = parsePart("Claim");
-        const evidence = parsePart("Evidence");
-        const reasoning = parsePart("Reasoning");
-        const meta: DeckCERMeta = { mode: "Multiple Choice", guidanceQuestion: guidance || undefined, claim, evidence, reasoning };
-  return { type: "CER", bloomLevel: providedBloom ?? defaultBloomForType("CER"), question: q, explanation: undefined, meta };
-      } else {
-        const claim = row["Claim"] || "";
-        const evidence = row["Evidence"] || "";
-        const reasoning = row["Reasoning"] || "";
-        const meta: DeckCERMeta = { mode: "Free Text", guidanceQuestion: guidance || undefined, claim: { sampleAnswer: claim || undefined }, evidence: { sampleAnswer: evidence || undefined }, reasoning: { sampleAnswer: reasoning || undefined } };
-  return { type: "CER", bloomLevel: providedBloom ?? defaultBloomForType("CER"), question: q, explanation: undefined, meta };
-      }
-    }
-    default:
-      throw new Error(`Unsupported CardType: ${norm}`);
   }
 }

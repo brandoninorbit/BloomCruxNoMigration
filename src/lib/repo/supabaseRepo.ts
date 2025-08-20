@@ -12,28 +12,23 @@ export const supabaseRepo = {
     const id = Number(deckId);
     if (!Number.isFinite(id)) return null;
 
-    // Get current user for user_id scoping
-    const { data: userData, error: userErr } = await supabase.auth.getUser();
-    if (userErr || !userData?.user) return null;
-    const uid = userData.user.id;
-
+    // Rely on RLS to scope rows to the current session; avoid auth.getUser() on client
     const { data, error } = await supabase
       .from("decks")
       .select("id, title, description, folder_id, user_id, created_at")
       .eq("id", id)
-      .eq("user_id", uid)
-      .single();
+      .maybeSingle();
 
     if (error) return null;
 
     // Map to Deck type (cards/sources not persisted here)
     const deck: Deck = {
-      id: data.id as number,
-      title: (data.title as string) ?? "",
-      description: (data.description as string) ?? "",
-      folder_id: (data.folder_id as number | null) ?? null,
-      user_id: data.user_id as string,
-      created_at: data.created_at as string,
+      id: (data?.id as number) ?? id,
+      title: (data?.title as string) ?? "",
+      description: (data?.description as string) ?? "",
+      folder_id: (data?.folder_id as number | null) ?? null,
+      user_id: (data?.user_id as string) ?? "",
+      created_at: (data?.created_at as string) ?? "",
   updatedAt: undefined,
       // sources/cards may exist in DB in the future; default to empty for UI safety
       sources: [],
