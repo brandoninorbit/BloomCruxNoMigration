@@ -36,6 +36,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import DashboardProgressChart from "@/components/DashboardProgressChart";
+import DeckProgressChart from "@/components/decks/DeckProgressChart";
 
 // Helper component for Progress Ring
 const ProgressRing = ({
@@ -581,6 +582,10 @@ export default function DashboardClient() {
                         </div>
                       );
                     })}
+                  </div>
+                  {/* Per-deck 30-day trend chart: X=attempt index, Y=score_pct, blue raw + green SMA(5) */}
+                  <div className="mt-4">
+                    <DeckProgressChart deckId={Number(deck.deckId)} height={150} />
                   </div>
                   <div className="flex justify-end items-center mt-4 space-x-4">
                     <button className="text-sm font-medium text-blue-600 hover:text-blue-800 flex items-center">

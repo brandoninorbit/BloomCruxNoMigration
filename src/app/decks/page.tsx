@@ -15,7 +15,6 @@ import {
 
 import { getSupabaseClient } from "@/lib/supabase/browserClient";
 const supabase = getSupabaseClient();
-import DeckProgressChart from "@/components/decks/DeckProgressChart";
 
 /* ---------- Types ---------- */
 
@@ -718,10 +717,7 @@ function DecksPage() {
                       })()}
                     </div>
 
-                    {/* Deck progress chart (last 30 days) */}
-                    <div className="mt-1">
-                      <DeckProgressChart deckId={d.id} />
-                    </div>
+                    {/* Deck progress chart removed per spec; only shown in Dashboard Deck Dossier */}
 
                     {/* Spacer */}
                     <div className="flex-1" />

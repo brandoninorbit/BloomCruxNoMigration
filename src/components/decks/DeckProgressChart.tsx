@@ -28,7 +28,7 @@ export function computeSMA(values: number[], k = 5): number[] {
   return out;
 }
 
-export default function DeckProgressChart({ deckId }: { deckId: number }) {
+export default function DeckProgressChart({ deckId, height = 150 }: { deckId: number; height?: number }) {
   const [data, setData] = useState<Array<{ idx: number; acc: number; ended_at: string }>>([]);
 
   useEffect(() => {
@@ -64,11 +64,12 @@ export default function DeckProgressChart({ deckId }: { deckId: number }) {
 
   const chartData = useMemo(() => data.map((d, i) => ({ name: String(d.idx), Accuracy: Number(d.acc.toFixed(1)), SMA: Number((sma[i] ?? 0).toFixed(1)) })), [data, sma]);
 
+  const h = Math.max(150, Number(height) || 150);
   return (
-    <div style={{ width: "100%", minHeight: 140, height: 140 }} className="mt-3" aria-label="Deck progress over time">
+    <div style={{ width: "100%", minHeight: h, height: h }} className="mt-3" aria-label="Deck progress over time">
       {data.length === 0 ? (
-        <div className="w-full h-full flex items-center justify-center text-xs text-gray-500 bg-gray-50 rounded-md border border-gray-200 px-3 py-2">
-          Complete a mission in this deck to unlock your trend (30-day window).
+        <div className="w-full h-full flex items-center justify-center text-xs text-gray-500 bg-gray-50 rounded-md border border-gray-200 px-3 py-2 text-center">
+          Complete a mission in this deck to unlock your 30-day trend.
         </div>
       ) : (
         <ResponsiveContainer width="100%" height="100%">
