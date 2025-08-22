@@ -15,7 +15,7 @@ import {
   Zap,
   Star,
 } from "lucide-react";
-import { gradientForBloom, BLOOM_LEVELS } from "@/types/card-catalog";
+import { gradientForBloom, BLOOM_LEVELS, BLOOM_COLOR_HEX } from "@/types/card-catalog";
 import type { DeckBloomLevel } from "@/types/deck-cards";
 import {
   Collapsible,
@@ -503,10 +503,12 @@ export default function DashboardClient() {
                         {deck.deckName}
                       </h3>
                       <p className="text-sm text-gray-500 text-left">
-                        Mastery:{" "}
+                        Mastery: {" "}
                         {(() => {
-                          const sumCorrect = Object.values(deck.bloomMastery).reduce((acc, curr) => acc + curr.correct, 0);
-                          const sumTotal = Object.values(deck.bloomMastery).reduce((acc, curr) => acc + curr.total, 0);
+                          // Exclude Create level from the aggregate mastery percent
+                          const entries = Object.entries(deck.bloomMastery).filter(([lvl]) => (lvl as BloomLevel) !== "Create");
+                          const sumCorrect = entries.reduce((acc, [, curr]) => acc + curr.correct, 0);
+                          const sumTotal = entries.reduce((acc, [, curr]) => acc + curr.total, 0);
                           const pct = sumTotal > 0 ? (sumCorrect / sumTotal) * 100 : 0;
                           return formatPercent1(pct);
                         })()} | {deck.xp}/{deck.xpToNext} XP
@@ -523,13 +525,19 @@ export default function DashboardClient() {
                 <CollapsibleContent>
                   <div className="space-y-3 mt-4">
                     {/* Render blooms in defined order (easiest -> hardest) */}
-                    {(
-                      BLOOM_LEVELS as BloomLevel[]
-                    ).map((level) => {
+                    {(BLOOM_LEVELS as BloomLevel[]).map((level) => {
                       const mastery = deck.bloomMastery[level];
                       if (!mastery) return null;
                       const percentage = mastery.total > 0 ? (mastery.correct / mastery.total) * 100 : 0;
                       const grad = gradientForBloom(level as DeckBloomLevel);
+                      if (level === "Create") {
+                        return (
+                          <div key={level} className="flex items-center mb-2 group">
+                            <span className="text-sm font-medium text-gray-600 w-24 relative -top-[2px]">Create</span>
+                            <div className="text-xs ml-2" style={{ color: BLOOM_COLOR_HEX["Create"] }}>Coming soon</div>
+                          </div>
+                        );
+                      }
                       return (
                         <div key={level} className="flex items-center mb-2 group">
                           <span className="text-sm font-medium text-gray-600 w-24 relative -top-[2px]">
@@ -587,6 +595,25 @@ export default function DashboardClient() {
                   <div className="mt-4">
                     <DeckProgressChart deckId={Number(deck.deckId)} height={150} />
                   </div>
+                  {/* Gentle banner if any non-Create mastery < 80 after updates (non-punitive) */}
+                  {(() => {
+                    try {
+                      const entries = Object.entries(deck.bloomMastery || {}).filter(([lvl]) => (lvl as any) !== "Create");
+                      const percents = entries.map(([, v]: any) => {
+                        const pct = (v?.total ?? 0) > 0 ? (v.correct / v.total) * 100 : 0;
+                        return Math.round(pct);
+                      });
+                      const minPct = percents.length ? Math.min(...percents) : 100;
+                      if (minPct > 0 && minPct < 80) {
+                        return (
+                          <div className="mt-3 rounded border border-amber-200 bg-amber-50 p-2 text-amber-800 text-sm">
+                            Mastery needs refresh (now {minPct}%). Replay to reinforce.
+                          </div>
+                        );
+                      }
+                    } catch {}
+                    return null;
+                  })()}
                   <div className="flex justify-end items-center mt-4 space-x-4">
                     <button className="text-sm font-medium text-blue-600 hover:text-blue-800 flex items-center">
                       <TrendingUp className="text-sm mr-1" />

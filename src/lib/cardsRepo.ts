@@ -216,6 +216,8 @@ export async function create(input: NewDeckCard): Promise<DeckCard> {
     .limit(1)
     .single();
   if (getErr) throw readableError("Failed to load created card", getErr);
+  // Fire-and-forget: notify content-changed so counts/mastery can recompute
+  try { await fetch(`/api/decks/${input.deckId}/content-changed`, { method: 'POST' }); } catch {}
   return rowToCard(fresh as CardRow);
 }
 
@@ -240,7 +242,10 @@ export async function createMany(inputs: NewDeckCard[]): Promise<number> {
     .from("cards")
     .insert(rows, { count: "exact" });
   if (error) throw readableError("Failed to bulk create cards", error);
-  return (count as number) ?? inputs.length;
+  const created = (count as number) ?? inputs.length;
+  // Fire-and-forget recompute for the deck (assumes same deckId for all)
+  try { await fetch(`/api/decks/${inputs[0]!.deckId}/content-changed`, { method: 'POST' }); } catch {}
+  return created;
 }
 
 export async function update(card: DeckCard): Promise<DeckCard> {
@@ -256,6 +261,8 @@ export async function update(card: DeckCard): Promise<DeckCard> {
     .single();
 
   if (error) throw readableError("Failed to update card", error);
+  // Trigger content-change recompute (level may have changed)
+  try { await fetch(`/api/decks/${card.deckId}/content-changed`, { method: 'POST' }); } catch {}
   return rowToCard(data as CardRow);
 }
 
@@ -263,6 +270,7 @@ export async function remove(cardId: number): Promise<void> {
   const supabase = getSupabaseClient();
   const { error } = await supabase.from("cards").delete().eq("id", cardId);
   if (error) throw readableError("Failed to delete card", error);
+  // Best-effort: we don't know deckId; skip notifying here. Callers removing by source will notify once.
 }
 
 export async function reorder(deckId: number, orderedIds: number[]): Promise<void> {
@@ -286,7 +294,9 @@ export async function removeBySource(deckId: number, source: string): Promise<nu
     .eq("deck_id", deckId)
     .eq("source", source);
   if (error) throw readableError("Failed to delete by source", error);
-  return (count as number) ?? 0;
+  const deleted = (count as number) ?? 0;
+  try { await fetch(`/api/decks/${deckId}/content-changed`, { method: 'POST' }); } catch {}
+  return deleted;
 }
 
 // Distinct list of non-null import sources for a deck

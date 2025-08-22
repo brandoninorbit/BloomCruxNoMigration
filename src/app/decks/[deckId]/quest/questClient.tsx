@@ -324,6 +324,12 @@ export default function QuestClient({ deckId }: { deckId: number }) {
   const startOrResume = useCallback(async () => {
     if (!cards || !progress) return;
     if (mission) return;
+  // Create level is not yet supported
+  if (level === "Create") return;
+  // Block missions with zero eligible cards for this level
+  const isActiveCheck = activePredicateForLevel(level);
+  const eligibleCount = (cards || []).filter(isActiveCheck).length;
+  if (eligibleCount === 0) return;
   finishingRef.current = false;
     // If restart was explicitly requested, ignore existing mission data and compose fresh from missionIndex (0)
     if (!restartRequested) {
@@ -346,9 +352,9 @@ export default function QuestClient({ deckId }: { deckId: number }) {
   setCerMCQSel({ claim: null, evidence: null, reasoning: null }); setCerMCQChecked(false); setCerMCQResponseMs(undefined); cerMCQStartRef.current = Date.now();
   setCerFree({ claim: "", evidence: "", reasoning: "" }); setCerFreeChecked(false); setCerFreeOverride({}); setCerFreeResponseMs(undefined); cerFreeStartRef.current = Date.now();
   // Recompute composition ids so we can label current card
-      try {
-  const isActive = activePredicateForLevel(level);
-  const comp = composeMission({ deckId, level, allCards: cards, srs, missionIndex, seed: `${deckId}:${level}:${missionIndex}`, isActive, reviewCandidateIds: reviewCandidateIds ?? undefined });
+    try {
+  const isActiveLocal = activePredicateForLevel(level);
+  const comp = composeMission({ deckId, level, allCards: cards, srs, missionIndex, seed: `${deckId}:${level}:${missionIndex}`, isActive: isActiveLocal, reviewCandidateIds: reviewCandidateIds ?? undefined });
         setDebug(comp.debug);
         setCompositionIds({ primaryIds: comp.primaryIds, blastsIds: comp.blastsIds, reviewIds: comp.reviewIds });
       } catch {}
@@ -361,8 +367,8 @@ export default function QuestClient({ deckId }: { deckId: number }) {
       }
     }
     // Allow only supported card types for this level; engine will add blasts/review
-  const isActive = activePredicateForLevel(level);
-  const comp = composeMission({ deckId, level, allCards: cards, srs, missionIndex, seed: `${deckId}:${level}:${missionIndex}`, isActive, reviewCandidateIds: reviewCandidateIds ?? undefined });
+  const isActiveLocal2 = activePredicateForLevel(level);
+  const comp = composeMission({ deckId, level, allCards: cards, srs, missionIndex, seed: `${deckId}:${level}:${missionIndex}`, isActive: isActiveLocal2, reviewCandidateIds: reviewCandidateIds ?? undefined });
     // Safety: if overlaps with previously answered (due to old data), remove answered cardIds
     const previously = restartRequested ? null : await fetchMission(deckId, level, missionIndex);
     const answeredIds = new Set((previously?.answered ?? []).map((a) => a.cardId));
@@ -398,9 +404,14 @@ export default function QuestClient({ deckId }: { deckId: number }) {
   const restart = useCallback(async () => {
     if (!cards) return;
   finishingRef.current = false;
+    // Prevent restart when no eligible cards or Create level
+    if (level === "Create") return;
+  const isActiveCheck2 = activePredicateForLevel(level);
+  const eligibleCount = (cards || []).filter(isActiveCheck2).length;
+    if (eligibleCount === 0) return;
     const nextSeed = `${deckId}:${level}:${missionIndex}:${Date.now()}`;
-  const isActive = activePredicateForLevel(level);
-  const comp = composeMission({ deckId, level, allCards: cards, srs, missionIndex, seed: nextSeed, isActive, reviewCandidateIds: reviewCandidateIds ?? undefined });
+  const isActiveLocal3 = activePredicateForLevel(level);
+  const comp = composeMission({ deckId, level, allCards: cards, srs, missionIndex, seed: nextSeed, isActive: isActiveLocal3, reviewCandidateIds: reviewCandidateIds ?? undefined });
   setDebug(comp.debug);
   setCompositionIds({ primaryIds: comp.primaryIds, blastsIds: comp.blastsIds, reviewIds: comp.reviewIds });
     const state = startMission({ deckId, level, missionIndex, poolIds: comp.missionIds, seed: comp.seedUsed });
@@ -527,15 +538,23 @@ export default function QuestClient({ deckId }: { deckId: number }) {
         <h1 className="font-valid text-2xl font-semibold text-slate-900">Quest Mode · {level}</h1>
         <p className="font-valid text-sm text-slate-600">{deckTitle} · Mission {missionIndex + 1}</p>
       </div>
-      <div className="mb-6">
-        <QuestProgress current={missionProgress.current} total={missionProgress.total} color={BLOOM_COLOR_HEX[level]} label={`${level} Progress`} />
-        {mission ? (
-          <p className="mt-1 text-xs text-slate-600">
-            Cards this mission: {mission.cardOrder.length}
-            {debug ? ` (Primary ${debug.primaryCount}, Blasts ${debug.blastsChosen}, Review ${debug.reviewChosen})` : ""}
-          </p>
-        ) : null}
-      </div>
+      {level === "Create" ? (
+        <div className="mb-6">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-slate-700">
+            Create level missions are coming soon.
+          </div>
+        </div>
+      ) : (
+        <div className="mb-6">
+          <QuestProgress current={missionProgress.current} total={missionProgress.total} color={BLOOM_COLOR_HEX[level]} label={`${level} Progress`} />
+          {mission ? (
+            <p className="mt-1 text-xs text-slate-600">
+              Cards this mission: {mission.cardOrder.length}
+              {debug ? ` (Primary ${debug.primaryCount}, Blasts ${debug.blastsChosen}, Review ${debug.reviewChosen})` : ""}
+            </p>
+          ) : null}
+        </div>
+      )}
       {/* Friendly card label replaces raw debug breakdown */}
       {(() => {
         if (!mission || !compositionIds) return null;
@@ -557,7 +576,9 @@ export default function QuestClient({ deckId }: { deckId: number }) {
         <div className="lg:col-span-8">
           <div className="study-card p-6 md:p-8">
             <div className="study-body">
-      {mission && cards ? (
+      {level === "Create" ? (
+                <div className="rounded border border-slate-200 p-4 text-slate-700">Create level content is coming soon.</div>
+              ) : mission && cards ? (
               (() => {
         const currentIndex = mission.answered.length;
         const currentCardId = mission.cardOrder[currentIndex];

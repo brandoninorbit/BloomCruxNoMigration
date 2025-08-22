@@ -17,7 +17,7 @@ export default async function QuestEnterPage({ params }: { params: Promise<{ dec
   if (!Number.isFinite(id)) notFound();
 
   type BP = { totalCards?: number; missionsCompleted?: number; mastered?: boolean; accuracySum?: number; accuracyCount?: number; cleared?: boolean; weightedAvg?: number };
-  let per: Partial<Record<DeckBloomLevel, BP>> = {};
+  let per: Partial<Record<DeckBloomLevel, BP & { updatedSinceLastRun?: number }>> = {};
   let levels: Array<{
     level: DeckBloomLevel;
     totalCards: number;
@@ -25,6 +25,7 @@ export default async function QuestEnterPage({ params }: { params: Promise<{ dec
     totalMissions: number;
     mastered: boolean;
     unlocked: boolean;
+    updatedSinceLastRun: number;
   }> = [];
   // Collect unlock reasoning for a lightweight debug panel
   const unlockWhy: Array<{ level: DeckBloomLevel; prevMastered: boolean; prevCleared: boolean; prevAvg: number; prevHasMission: boolean }> = [];
@@ -68,7 +69,8 @@ export default async function QuestEnterPage({ params }: { params: Promise<{ dec
     const missionsCompleted = Number(p.missionsCompleted ?? 0);
     const totalMissions = Math.ceil(totalCards / cap) || 0;
     const mastered = !!p.mastered;
-    return { level: lvl, totalCards, missionsCompleted, totalMissions, mastered, unlocked: false };
+  const updatedSinceLastRun = Number((per?.[lvl] as (BP & { updatedSinceLastRun?: number }) | undefined)?.updatedSinceLastRun ?? 0);
+    return { level: lvl, totalCards, missionsCompleted, totalMissions, mastered, unlocked: false, updatedSinceLastRun };
   });
   // Unlocking rules (single-pass model):
   // - Remember is always unlocked
@@ -123,6 +125,8 @@ export default async function QuestEnterPage({ params }: { params: Promise<{ dec
           const isCompleted = li.totalMissions > 0 && li.missionsCompleted >= li.totalMissions;
           const multi = li.totalMissions > 1;
           const nextUnlocked = levels[idx + 1]?.unlocked ?? false;
+          const hasMissions = li.totalMissions > 0;
+          const comingSoon = li.level === ("Create" as DeckBloomLevel);
           // Nudge when: user has done ≥1 mission on this level, hasn't mastered it yet,
           // and the next level is still locked (i.e., average < pass threshold and not cleared)
           const shouldNudge = li.unlocked && !nextUnlocked && li.missionsCompleted > 0 && !li.mastered;
@@ -131,28 +135,40 @@ export default async function QuestEnterPage({ params }: { params: Promise<{ dec
               <div
                 className="w-full flex items-center justify-between rounded-lg border p-4"
                 style={{
-                  backgroundColor: li.unlocked ? "#fff" : "#f8fafc",
+                  // Light tint of the bloom color for background, readable text foreground
+                  backgroundColor: li.unlocked ? `${color}1A` : "#f8fafc", // ~10% opacity
                   borderColor: li.unlocked ? color : "#e2e8f0",
-                  opacity: li.unlocked ? 1 : 0.6,
+                  opacity: li.unlocked ? 1 : 0.9,
                 }}
                 aria-disabled={!li.unlocked}
               >
                 <div className="text-left">
                   <div className="font-semibold" style={{ color }}>{li.level}</div>
                   <div className="text-sm text-slate-600">
-                    {li.totalMissions === 0
+                    {comingSoon
+                      ? "Coming soon"
+                      : li.totalMissions === 0
                       ? `0 missions`
                       : isCompleted || li.mastered
                         ? `Completed • ${li.totalMissions} missions`
                         : isStarted
                           ? `${Math.min(li.missionsCompleted, li.totalMissions)} / ${li.totalMissions} completed`
                           : `${li.totalMissions} missions`}
+                    {li.updatedSinceLastRun > 0 && (
+                      <span className="ml-2 inline-flex items-center rounded px-1.5 py-0.5 text-xs" style={{ background: "#f1f5f9", color: "#0f172a" }}>
+                        Updated: +{li.updatedSinceLastRun} new
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
           {li.unlocked ? (
                     <>
-            {isCompleted || li.mastered ? (
+            {comingSoon ? (
+                        <span className="text-sm font-medium px-3 py-1.5 rounded bg-slate-200 text-slate-600 cursor-not-allowed" aria-disabled>Coming Soon</span>
+                      ) : !hasMissions ? (
+                        <span className="text-sm font-medium px-3 py-1.5 rounded bg-slate-200 text-slate-600 cursor-not-allowed" aria-disabled>Start</span>
+                      ) : isCompleted || li.mastered ? (
                         <a
                           href={`/decks/${id}/quest?level=${encodeURIComponent(li.level)}&restart=1`}
                           className="text-sm font-medium px-3 py-1.5 rounded bg-slate-200 text-slate-700"
@@ -192,7 +208,7 @@ export default async function QuestEnterPage({ params }: { params: Promise<{ dec
                 </div>
               </div>
 
-              {multi && (
+        {multi && (
                 <details className="mt-2 ml-3 border-l pl-4">
                   <summary className="cursor-pointer list-none text-sm text-slate-600 hover:text-slate-800 select-none">
                     Show missions
@@ -202,7 +218,7 @@ export default async function QuestEnterPage({ params }: { params: Promise<{ dec
                       const ord = idx + 1;
                       const isDone = ord <= li.missionsCompleted;
                       const isNext = ord === li.missionsCompleted + 1;
-          const actionable = li.unlocked && (isNext || isDone);
+      const actionable = li.unlocked && (isNext || isDone) && hasMissions && !comingSoon;
                       return (
                         <div key={ord} className="flex items-center justify-between">
                           <div className="text-sm">

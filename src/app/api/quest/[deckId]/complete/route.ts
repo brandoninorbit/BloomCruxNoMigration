@@ -3,6 +3,7 @@ import { getSupabaseSession } from "@/lib/supabase/session";
 import { recordMissionAttempt, unlockNextBloomLevel, updateQuestProgressOnComplete } from "@/server/progression/quest";
 import { updateBloomMastery } from "@/server/mastery/updateBloomMastery";
 import type { DeckBloomLevel } from "@/types/deck-cards";
+import { supabaseAdmin } from "@/lib/supabase/server";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ deckId: string }> }) {
   const { deckId: deckIdStr } = await params;
@@ -41,6 +42,33 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dec
   // Update per_bloom aggregates for counters and averages
   try {
     await updateQuestProgressOnComplete({ userId: session.user.id, deckId, level: bloom_level, scorePct: score_pct, cardsSeen: cards_seen });
+  } catch {}
+
+  // Adjust updatedSinceLastRun and add lastCompletion snapshot; never relock missionUnlocked
+  try {
+    const sb = supabaseAdmin();
+    const { data: row } = await sb
+      .from("user_deck_quest_progress")
+      .select("id, per_bloom, xp")
+      .eq("user_id", session.user.id)
+      .eq("deck_id", deckId)
+      .maybeSingle();
+    if (row?.per_bloom) {
+      type PB = Partial<{ updatedSinceLastRun: number; missionUnlocked: boolean; cleared: boolean; accuracyCount: number; lastCompletion: { percent: number; timestamp: string; attempts: number } }>;
+      const per = row.per_bloom as Record<string, PB>;
+      const cur = (per[bloom_level] ?? {}) as PB;
+      const was = Number(cur.updatedSinceLastRun ?? 0);
+      const after = Math.max(0, was - Math.max(0, Number(cards_seen ?? 0)));
+      per[bloom_level] = {
+        ...cur,
+        updatedSinceLastRun: after,
+        missionUnlocked: Boolean(cur.missionUnlocked ?? cur.cleared ?? false),
+        lastCompletion: { percent: score_pct, timestamp: ended_at ?? new Date().toISOString(), attempts: Number(cur.accuracyCount ?? 0) + 1 },
+      };
+      await sb
+        .from("user_deck_quest_progress")
+        .upsert({ user_id: session.user.id, deck_id: deckId, per_bloom: per, xp: row.xp ?? {} }, { onConflict: "user_id,deck_id" });
+    }
   } catch {}
 
   // Update mastery aggregates (EWMA + retention + coverage)

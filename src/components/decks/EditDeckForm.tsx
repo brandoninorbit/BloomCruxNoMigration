@@ -168,7 +168,7 @@ export default function EditDeckForm({ deckId }: Props) {
     setImporting(true);
     const filename = pendingImport.fileName;
   const fileHash = pendingImport.fileHash;
-    const created = await cardsRepo.createMany(
+  const created = await cardsRepo.createMany(
       pendingImport.okRows.map((r) => {
         const tmap = {
           mcq: 'Standard MCQ',
@@ -270,10 +270,10 @@ export default function EditDeckForm({ deckId }: Props) {
         setDeck((prev) => (prev ? { ...prev, sources: newSources } : prev));
       }
     }
-    setPendingImport(null);
+  setPendingImport(null);
     setShowImportErrors(false);
     setSourceMsg(`Imported ${created} cards from ${filename}`);
-    toast({ title: `Imported ${created} cards`, description: filename });
+  toast({ title: `Deck updated`, description: `+${created} cards added. Mastery bars recalculating.` });
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("deck-cards:reload"));
     }
@@ -284,8 +284,8 @@ export default function EditDeckForm({ deckId }: Props) {
 
   const handleSave = async () => {
     await save();
-    setSourceMsg("Saved changes to deck.");
-    toast({ title: "Deck saved" });
+  setSourceMsg("Saved changes to deck.");
+  toast({ title: "Deck saved", description: "Deck updated. Mastery bars recalculating." });
   };
 
   return (
