@@ -44,7 +44,11 @@ export function computeMissionSet(input: MissionComputeInput): MissionSet {
     : () => true;
 
   const primary = allCards.filter((c) => isActive(c) && (c.bloomLevel ?? "Remember") === level);
-  const lowerPool = allCards.filter((c) => isActive(c) && lowerLevels.includes((c.bloomLevel ?? "Remember") as DeckBloomLevel));
+  // Blasts: draw from lower levels only; for "Evaluate" specifically, include up to Analyze only
+  const effectiveLowerLevels: DeckBloomLevel[] = (level === "Evaluate")
+    ? BLOOM_LEVELS.slice(0, BLOOM_LEVELS.indexOf("Evaluate")) // Remember..Analyze
+    : lowerLevels;
+  const lowerPool = allCards.filter((c) => isActive(c) && effectiveLowerLevels.includes((c.bloomLevel ?? "Remember") as DeckBloomLevel));
 
   // blasts from the pasts: percentage of total cards up to current level
   const totalUpTo = primary.length + lowerPool.length;
@@ -59,13 +63,35 @@ export function computeMissionSet(input: MissionComputeInput): MissionSet {
     // tiebreaker deterministic by id
     return a.id - b.id;
   });
-  const blasts = shuffleDeterministic(blastsSorted, `${input.deckId}:${level}:blasts`).slice(0, blastsCount);
+  // Include missionIndex/seed so blasts vary across missions at the same level
+  const blastsSeed = `${input.deckId}:${level}:blasts:${input.missionIndex ?? 0}:${input.seed ?? ""}`;
+  const blasts = shuffleDeterministic(blastsSorted, blastsSeed).slice(0, blastsCount);
 
-  // review: lowest performers first by accuracy (attempts - correct)
+  // review: use provided low-accuracy candidates if available; otherwise fallback to SRS-derived ranking
   let review: DeckCard[] = [];
-  if (input.srs) {
-  const entries = Object.entries(input.srs)
+  const byId = new Map(allCards.map((c) => [c.id, c] as const));
+  if (input.reviewCandidateIds && input.reviewCandidateIds.length) {
+    // Restrict to lower levels (Remember..Analyze) when level is Evaluate; otherwise to lowerLevels
+    const allowed = new Set(
+      allCards
+        .filter((c) => effectiveLowerLevels.includes((c.bloomLevel ?? "Remember") as DeckBloomLevel))
+        .map((c) => c.id)
+    );
+    review = input.reviewCandidateIds
+      .filter((id) => allowed.has(id))
+      .map((id) => byId.get(id))
+      .filter((v): v is DeckCard => Boolean(v))
+      .filter((c) => isActive(c));
+  } else if (input.srs) {
+    // Fallback: SRS performance heuristic, restricted to allowed lower levels
+    const allowed = new Set(
+      allCards
+        .filter((c) => effectiveLowerLevels.includes((c.bloomLevel ?? "Remember") as DeckBloomLevel))
+        .map((c) => c.id)
+    );
+    const entries = Object.entries(input.srs)
       .map(([cardId, perf]) => ({ cardId: Number(cardId), perf }))
+      .filter((e) => allowed.has(e.cardId))
       .sort((a, b) => {
         const aWrong = a.perf.attempts - a.perf.correct;
         const bWrong = b.perf.attempts - b.perf.correct;
@@ -73,13 +99,22 @@ export function computeMissionSet(input: MissionComputeInput): MissionSet {
         // tie-breaker: fewer attempts indicates less practice
         return a.perf.attempts - b.perf.attempts;
       });
-  const reviewIds = new Set(entries.slice(0, Math.ceil(primary.length * 0.2)).map((e) => e.cardId));
-    const byId = new Map(allCards.map((c) => [c.id, c] as const));
-    review = [...reviewIds]
-      .map((id) => byId.get(id))
-      .filter((v): v is DeckCard => Boolean(v))
-      .filter((c) => isActive(c));
+    const windowSize = Math.max(0, Math.ceil(primary.length * 0.2));
+    const allIdsSorted = entries.map((e) => e.cardId);
+    if (windowSize > 0 && allIdsSorted.length > 0) {
+      const rotSeed = `${input.deckId}:${level}:review:${input.missionIndex ?? 0}:${input.seed ?? ""}`;
+      const rot = hashStringToInt(rotSeed) % allIdsSorted.length;
+      const rotated = [...allIdsSorted.slice(rot), ...allIdsSorted.slice(0, rot)];
+      const chosen = rotated.slice(0, Math.min(windowSize, rotated.length));
+      const reviewIds = new Set(chosen);
+      review = [...reviewIds]
+        .map((id) => byId.get(id))
+        .filter((v): v is DeckCard => Boolean(v))
+        .filter((c) => isActive(c));
+    }
   }
+  // Do not include review for Remember (initial tier)
+  if (level === "Remember") review = [];
 
   return { cards: primary, blasts, review };
 }
@@ -174,17 +209,22 @@ export function resumeMission(state: MissionState): MissionState {
   return { ...state, resumedAt: new Date().toISOString() };
 }
 
-export function recordAnswer(state: MissionState, cardId: number, correct: boolean): MissionState {
+export function toNumericCorrect(v: boolean | number): number {
+  if (typeof v === "number") return Math.max(0, Math.min(1, v));
+  return v ? 1 : 0;
+}
+
+export function recordAnswer(state: MissionState, cardId: number, correct: boolean | number): MissionState {
   if (!state.cardOrder.includes(cardId)) return state;
   const exists = state.answered.find((a) => a.cardId === cardId);
   if (exists) {
     // update existing
     const updated = state.answered.map((a) => (a.cardId === cardId ? { cardId, correct } : a));
-    const correctCount = updated.filter((a) => a.correct).length;
+    const correctCount = updated.reduce((s, a) => s + toNumericCorrect(a.correct), 0);
     return { ...state, answered: updated, correctCount };
   }
   const answered = [...state.answered, { cardId, correct }];
-  const correctCount = answered.filter((a) => a.correct).length;
+  const correctCount = answered.reduce((s, a) => s + toNumericCorrect(a.correct), 0);
   return { ...state, answered, correctCount };
 }
 
@@ -206,16 +246,37 @@ export function computePass(state: MissionState, settings?: Partial<QuestSetting
   const s = { ...DEFAULT_QUEST_SETTINGS, ...(settings ?? {}) };
   const total = state.cardOrder.length;
   const correct = state.correctCount;
-  const percent = total > 0 ? Math.round((correct / total) * 100) : 0;
-  const passed = percent >= s.passThreshold;
+  const pctFloat = total > 0 ? (correct / total) * 100 : 0;
+  const percent = Math.round(pctFloat * 10) / 10;
+  // Pass/fail must use raw float vs threshold with a small epsilon (no integer rounding)
+  const EPS = 1e-6;
+  const passed = (pctFloat + EPS) >= s.passThreshold;
   return { total, correct, percent, passed };
+}
+
+// Utilities for consistency-based progression
+export function computeWeightedAvg(attempts: Array<{ percent: number }>): number {
+  if (!attempts || attempts.length === 0) return 0;
+  const n = attempts.length;
+  const weights = attempts.map((_, i) => i + 1);
+  const sumW = weights.reduce((a, b) => a + b, 0);
+  const vals = attempts.map((a) => a.percent);
+  return Math.round(vals.reduce((acc, v, i) => acc + v * weights[i]!, 0) / Math.max(1, sumW));
+}
+
+export function hasCollapse(attempts: Array<{ percent: number }>): boolean {
+  const last3 = attempts.slice(-3);
+  for (let i = 1; i < last3.length; i++) {
+    if (last3[i - 1]!.percent < 50 && last3[i]!.percent < 50) return true;
+  }
+  return false;
 }
 
 export function completionCopy(level: DeckBloomLevel, state: MissionState): string {
   const total = state.cardOrder.length;
   const correct = state.correctCount;
-  const percent = total > 0 ? Math.round((correct / total) * 100) : 0;
-  return `Mission complete: ${level} progress ${percent}% (${correct}/${total} cards).`;
+  const pct = total > 0 ? Math.round(((correct / total) * 100) * 10) / 10 : 0;
+  return `Mission complete: ${level} progress ${pct}% (${correct}/${total} cards).`;
 }
 
 // simple user progress tracker (per deck) in localStorage for now
@@ -259,6 +320,9 @@ export function initUserBloomProgress(allCards: DeckCard[]): UserBloomProgress {
   accuracySum: 0,
   accuracyCount: 0,
   totalMissions: Math.ceil(byLevel[lvl] / DEFAULT_QUEST_SETTINGS.missionCap) || 0,
+  recentAttempts: [],
+  weightedAvg: 0,
+  cleared: false,
     };
   });
   return res;

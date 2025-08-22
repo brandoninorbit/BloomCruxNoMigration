@@ -22,7 +22,6 @@ import type {
 import { defaultBloomForType } from "@/lib/bloom";
 import { upsertDeckImport } from "@/lib/db/deckImports";
 import { getSupabaseClient } from "@/lib/supabase/browserClient";
-import type { Database } from "@/types/supabase";
 
 // Database row shape for 'cards' table
 type CardRow = {

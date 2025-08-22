@@ -61,3 +61,19 @@ export type Deck = {
   created_at?: string;
   updatedAt?: string;
 };
+
+// Mission attempts and mastery aggregates
+export type MissionAttempt = {
+  deck_id: number;
+  ended_at: string; // ISO
+  bloom_level?: BloomLevel | null;
+  score_pct?: number | null; // 0..100 if present
+  cards_seen?: number | null; // fallback when score_pct is null
+  cards_correct?: number | null; // fallback when score_pct is null
+};
+
+export type BloomMastery = {
+  deck_id: number;
+  bloom_level: BloomLevel | string;
+  mastery_pct: number | null; // 0..100 or null when unknown
+};

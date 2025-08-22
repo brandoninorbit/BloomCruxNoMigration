@@ -82,3 +82,13 @@ Supported card types and columns. Use a header row; unknown columns are ignored.
 
 Notes
 - New SQL migrations add these types to the cards.type check. Ensure they’re applied in your database before importing.
+
+## Database migrations (manual)
+
+This repo includes SQL files under `supabase/migrations`. To apply one against your Supabase `DATABASE_URL`, use the helper script:
+
+```bash
+node scripts/run-sql.js supabase/migrations/20250821_bloom_mastery.sql
+```
+
+The script reads `.env.local` for `DATABASE_URL`. On Windows with self-signed pooler certs, it disables strict TLS for local dev.

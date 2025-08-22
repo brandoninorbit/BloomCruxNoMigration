@@ -151,6 +151,7 @@ describe("CSV importer – strict mapping", () => {
   test("CER Free Text", () => {
     const r = row({
       CardType: "CER",
+      // With only Question (no Scenario), it becomes the prompt
       Question: "Stem‑loops in 5′ UTR affect translation?",
       Guidance: "Consider ribosome scanning",
       Mode: "Free Text",
@@ -162,5 +163,26 @@ describe("CSV importer – strict mapping", () => {
     expect(p.type).toBe("cer");
     expect(p.meta.mode).toBe("Free Text");
     expect(p.meta.claim.sampleAnswer).toMatch(/Reduced/);
+  });
+
+  test("CER uses Scenario/Prompt as question and Question as guidance when Scenario present", () => {
+    const r = row({
+      CardType: "CER",
+      Scenario:
+        "A researcher observes that mRNA with long secondary structures in the 5′ UTR has reduced translation efficiency.",
+      Question: "Predict the effect of these structures.",
+      Mode: "Free Text",
+      Claim: "Reduced translation",
+      Evidence: "Ribosome scanning is slowed or blocked",
+      Reasoning: "Secondary structures in the 5′ UTR impede ribosome initiation",
+    });
+    const p: any = rowToPayload(r);
+    expect(p.type).toBe("cer");
+    // Prompt should be Scenario, not the Question
+    expect(p.question).toBe(
+      "A researcher observes that mRNA with long secondary structures in the 5′ UTR has reduced translation efficiency."
+    );
+    // Guidance should fall back to Question when explicit Guidance is absent
+    expect(p.meta.guidance).toBe("Predict the effect of these structures.");
   });
 });

@@ -119,6 +119,11 @@ Two-Tier MCQ,Increasing GC raises Tm because…,Heavier,Three H-bonds,Excludes w
 Required: Mode = Free Text | Multiple Choice (aliases: MC, Multiple)
 Guidance optional: Guidance (or GuidanceQuestion)
 
+Prompt selection for CER:
+- If Scenario or Prompt is present, that value is used as the card prompt.
+- The Question cell is treated as a guidance question when Scenario/Prompt exists (unless Guidance/GuidanceQuestion is explicitly provided).
+- If Scenario/Prompt is absent, Question becomes the card prompt.
+
 If Free Text → Required: Claim, Evidence, Reasoning (sample answers)
 
 If Multiple Choice → Required:

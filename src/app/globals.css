@@ -88,3 +88,33 @@
   .font-lalo { font-family: var(--font-content), ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; }
   .font-nav { font-family: var(--font-nav, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"); }
 }
+
+@layer base {
+  :root{
+    --primary-color:#2563eb;
+    --secondary-color:#ffffff;
+    --background-color:#f8fafc;
+    --text-primary:#0f172a;
+    --text-secondary:#475569;
+    --accent-color:#3b82f6;
+    --hud-blue:#0284c7;
+    --hud-yellow:#ca8a04;
+    --hud-green:#16a34a;
+    --hud-purple:#7c3aed;
+  }
+}
+@layer utilities{
+  .bg-grid-pattern{
+    background-image:
+      linear-gradient(#e2e8f0 1px,transparent 1px),
+      linear-gradient(to right,#e2e8f0 1px,transparent 1px);
+    background-size:2rem 2rem;
+  }
+  @keyframes rotate-slow{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+  .animate-rotate-slow{animation:rotate-slow 20s linear infinite}
+  @keyframes pulse-glow{
+    0%,100%{transform:scale(1);box-shadow:0 0 12px 3px var(--accent-color), inset 0 0 22px 8px color-mix(in srgb,var(--accent-color),#fff 30%)}
+    50%{transform:scale(1.05);box-shadow:0 0 20px 8px var(--accent-color), inset 0 0 30px 12px color-mix(in srgb,var(--accent-color),#fff 20%)}
+  }
+  .animate-pulse-glow{animation:pulse-glow 3s infinite ease-in-out}
+}

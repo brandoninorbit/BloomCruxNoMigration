@@ -30,10 +30,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dec
   if (!session?.user?.id) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));
-  const per_bloom = body?.per_bloom ?? {};
-  const xp = body?.xp ?? {};
+  const incomingPerBloom = body?.per_bloom as unknown;
+  const incomingXp = body?.xp as unknown;
 
   const sb = supabaseAdmin();
+  // Load existing so we can merge when one field is omitted
+  const { data: existing } = await sb
+    .from("user_deck_quest_progress")
+    .select("id, per_bloom, xp")
+    .eq("user_id", session.user.id)
+    .eq("deck_id", deckId)
+    .maybeSingle();
+
+  const per_bloom = (typeof incomingPerBloom !== "undefined" ? incomingPerBloom : (existing?.per_bloom ?? {})) as Record<string, unknown>;
+  const xp = (typeof incomingXp !== "undefined" ? incomingXp : (existing?.xp ?? {})) as Record<string, unknown>;
+
   const { data, error } = await sb
     .from("user_deck_quest_progress")
     .upsert(

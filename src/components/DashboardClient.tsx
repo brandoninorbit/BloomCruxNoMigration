@@ -1,7 +1,7 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any */
 // src/components/DashboardClient.tsx
 "use client";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/app/providers/AuthProvider";
 import Link from "next/link";
 import {
@@ -15,14 +15,27 @@ import {
   Zap,
   Star,
 } from "lucide-react";
+import { gradientForBloom, BLOOM_LEVELS } from "@/types/card-catalog";
+import type { DeckBloomLevel } from "@/types/deck-cards";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Progress } from "@/components/ui/progress";
-import { cn } from "@/lib/utils";
+import { cn, formatPercent1 } from "@/lib/utils";
 import AgentCard from "./AgentCard";
+import { getSupabaseClient } from "@/lib/supabase/browserClient";
+import {
+  LineChart as RLineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RTooltip,
+  ResponsiveContainer,
+} from "recharts";
+import DashboardProgressChart from "@/components/DashboardProgressChart";
 
 // Helper component for Progress Ring
 const ProgressRing = ({
@@ -92,7 +105,10 @@ type DeckProgress = {
   level: number;
   xp: number;
   xpToNext: number;
+  // For progress bars (percent-style), keep existing stored mastery percent as 0..100 out of 100
   bloomMastery: Partial<Record<BloomLevel, { correct: number; total: number }>>;
+  // For attempts aggregation in the dashboard window
+  bloomAttempts?: Partial<Record<BloomLevel, { correct: number; total: number }>>;
 };
 
 type GlobalProgress = { level: number; xp: number; xpToNext: number };
@@ -103,6 +119,13 @@ type UserXpStats = {
   isXpBoosted: boolean;
 };
 type UserSettings = { displayName: string; tokens: number };
+type DeckRow = { id: number; title: string | null };
+type MasteryRow = {
+  deck_id: number;
+  bloom_level: BloomLevel | string;
+  mastery_pct: number | null;
+  updated_at?: string;
+};
 
 const MOCK_GLOBAL_PROGRESS: GlobalProgress = {
   level: 5,
@@ -152,19 +175,137 @@ export default function DashboardClient() {
   const { user } = useAuth();
   // Default to real data for logged-in users, mock data if logged out
   const [showExample, setShowExample] = useState(!user);
+  const [realDecks, setRealDecks] = useState<DeckProgress[]>([]);
+  const [userTokens, setUserTokens] = useState<number>(0);
+  const [attemptsHistory, setAttemptsHistory] = useState<Array<{ at: string; acc: number }>>([]);
+
+  // Load real mastery when logged in and not showing example
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!user || showExample) {
+        setRealDecks([]);
+        return;
+      }
+      try {
+        const supabase = getSupabaseClient();
+        // Fetch user's decks, mastery, quest xp, and recent attempts (last 30 days) in parallel
+        const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const [{ data: decks }, { data: mastery }, { data: quest }, { data: attempts }] = await Promise.all([
+          supabase.from("decks").select("id, title").order("created_at", { ascending: false }),
+          supabase
+            .from("user_deck_bloom_mastery")
+            .select("deck_id, bloom_level, mastery_pct")
+            .order("updated_at", { ascending: false }),
+          supabase
+            .from("user_deck_quest_progress")
+            .select("deck_id, xp")
+            .order("updated_at", { ascending: false }),
+          supabase
+            .from("user_deck_mission_attempts")
+            .select("deck_id, bloom_level, score_pct, cards_seen, cards_correct, ended_at")
+            .gte("ended_at", cutoff)
+            .order("ended_at", { ascending: false }),
+        ]);
+
+        if (cancelled) return;
+
+  const byDeck: Record<string, DeckProgress> = {};
+  const deckRows = (decks ?? []) as DeckRow[];
+  deckRows.forEach((d) => {
+          const id = Number(d.id);
+          byDeck[id] = {
+            deckId: String(id),
+            deckName: String(d.title ?? "Untitled Deck"),
+            totalCards: 0,
+            lastStudied: new Date(),
+            isMastered: false,
+            level: 1,
+            xp: 0,
+            xpToNext: 100,
+            bloomMastery: {},
+          } as DeckProgress;
+        });
+
+  const masteryRows = (mastery ?? []) as MasteryRow[];
+  masteryRows.forEach((row) => {
+          const deckId = String(row.deck_id);
+          const level = String(row.bloom_level) as BloomLevel;
+          const pct = Number(row.mastery_pct ?? 0);
+          if (!byDeck[deckId]) return; // skip unrelated rows
+          // Store as correct/total with total=100 so UI math yields pct
+          byDeck[deckId].bloomMastery[level] = { correct: Math.max(0, Math.min(100, pct)), total: 100 };
+        });
+
+        // Aggregate attempts for the window: sum of cards_correct and cards_seen per deck/bloom
+        type AttemptRow = { deck_id: number; bloom_level: BloomLevel | string | null; score_pct: number | null; cards_seen: number | null; cards_correct: number | null; ended_at?: string | null };
+        const attRows = (attempts ?? []) as AttemptRow[];
+        const hist: Array<{ at: string; acc: number }> = [];
+        for (const r of attRows) {
+          const deckId = String(r.deck_id);
+          const lvl = String(r.bloom_level ?? "Remember") as BloomLevel;
+          if (byDeck[deckId]) {
+            const cur = (byDeck[deckId].bloomAttempts ?? {}) as NonNullable<DeckProgress["bloomAttempts"]>;
+            const prev = cur[lvl] ?? { correct: 0, total: 0 };
+            const c = Number(r.cards_correct ?? 0);
+            const t = Number(r.cards_seen ?? 0);
+            cur[lvl] = { correct: prev.correct + c, total: prev.total + t };
+            byDeck[deckId].bloomAttempts = cur;
+          }
+          const t = Math.max(0, Number(r.cards_seen ?? 0));
+          const c = Math.max(0, Number(r.cards_correct ?? 0));
+          const acc = t > 0 ? c / t : 0;
+          const atIso = r.ended_at ?? new Date().toISOString();
+          hist.push({ at: atIso, acc });
+        }
+        // sort ascending by time for chart
+        hist.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+        setAttemptsHistory(hist);
+
+        // Compute deck-level isMastered by averaging available blooms
+        Object.values(byDeck).forEach((deck) => {
+          const vals = Object.values(deck.bloomMastery).filter(Boolean);
+          const avg = vals.length
+            ? (vals.reduce((acc, v) => acc + (v!.correct / Math.max(1, v!.total)), 0) / vals.length) * 100
+            : 0;
+          deck.isMastered = avg >= 80;
+        });
+
+        setRealDecks(Object.values(byDeck));
+
+        // Sum commander XP total across decks as tokens (1:1 for now)
+        const xpRows = (quest ?? []) as Array<{ deck_id: number; xp: unknown }>;
+        let tokens = 0;
+        for (const r of xpRows) {
+          const ledger = (r.xp ?? {}) as { commanderXpTotal?: number };
+          const val = Number(ledger.commanderXpTotal ?? 0);
+          if (!Number.isNaN(val)) tokens += val * 0.25; // tokens = 0.25 * commander XP
+        }
+        setUserTokens(Math.max(0, Math.round(tokens)));
+      } catch (err) {
+        // Silent fail to avoid blocking dashboard
+        setRealDecks([]);
+        // console.warn('[Dashboard] mastery load error:', err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, showExample]);
 
   const progressToDisplay = useMemo<DeckProgress[]>(
-    () => (showExample ? MOCK_DECK_PROGRESS : []),
-    [showExample]
+    () => (showExample ? MOCK_DECK_PROGRESS : realDecks),
+    [showExample, realDecks]
   );
   const globalProgress = useMemo<GlobalProgress>(
     () =>
       showExample ? MOCK_GLOBAL_PROGRESS : { level: 1, xp: 0, xpToNext: 100 },
     [showExample]
   );
-    const userSettings = useMemo<UserSettings>(
-    () => (showExample ? MOCK_SETTINGS : { displayName: 'Agent', tokens: 0 }),
-    [showExample]
+  // Derive simple tokens from commander XP total (1:1) for now
+  const userSettings = useMemo<UserSettings>(
+    () => (showExample ? MOCK_SETTINGS : { displayName: 'Agent', tokens: userTokens }),
+    [showExample, userTokens]
   );
   const xpStats = useMemo<UserXpStats>(
     () =>
@@ -324,11 +465,18 @@ export default function DashboardClient() {
                 </div>
               </div>
               <div className="flex items-center justify-center">
-                 <AgentCard 
-                    displayName={userSettings.displayName}
-                    level={globalProgress.level}
-                    tokens={userSettings.tokens}
-                 />
+                {(() => {
+                  const first = (user?.user_metadata?.full_name || "").trim().split(/\s+/)[0] || (user?.email?.split("@")[0] ?? userSettings.displayName);
+                  const avatar = (user?.user_metadata?.avatar_url as string | undefined) || (user?.user_metadata?.picture as string | undefined) || undefined;
+                  return (
+                    <AgentCard
+                      displayName={first}
+                      level={globalProgress.level}
+                      tokens={userSettings.tokens}
+                      avatarUrl={avatar}
+                    />
+                  );
+                })()}
               </div>
             </div>
           </div>
@@ -355,18 +503,12 @@ export default function DashboardClient() {
                       </h3>
                       <p className="text-sm text-gray-500 text-left">
                         Mastery:{" "}
-                        {Math.round(
-                          (Object.values(deck.bloomMastery).reduce(
-                            (acc, curr) => acc + curr.correct,
-                            0
-                          ) /
-                            Object.values(deck.bloomMastery).reduce(
-                              (acc, curr) => acc + curr.total,
-                              0
-                            )) *
-                            100
-                        )}
-                        % | {deck.xp}/{deck.xpToNext} XP
+                        {(() => {
+                          const sumCorrect = Object.values(deck.bloomMastery).reduce((acc, curr) => acc + curr.correct, 0);
+                          const sumTotal = Object.values(deck.bloomMastery).reduce((acc, curr) => acc + curr.total, 0);
+                          const pct = sumTotal > 0 ? (sumCorrect / sumTotal) * 100 : 0;
+                          return formatPercent1(pct);
+                        })()} | {deck.xp}/{deck.xpToNext} XP
                       </p>
                     </div>
                     <div className="flex items-center flex-shrink-0">
@@ -379,35 +521,66 @@ export default function DashboardClient() {
                 </CollapsibleTrigger>
                 <CollapsibleContent>
                   <div className="space-y-3 mt-4">
-                    {(Object.keys(deck.bloomMastery) as BloomLevel[]).map(
-                      (level) => {
-                        const mastery = deck.bloomMastery[level];
-                        if (!mastery) return null;
-                        const percentage =
-                          (mastery.correct / mastery.total) * 100;
-                        return (
-                          <div key={level} className="flex items-center">
-                            <span className="text-sm font-medium text-gray-600 w-24">
-                              {level}
-                            </span>
-                            <div className="w-full bg-gray-200 rounded-full h-2.5">
+                    {/* Render blooms in defined order (easiest -> hardest) */}
+                    {(
+                      BLOOM_LEVELS as BloomLevel[]
+                    ).map((level) => {
+                      const mastery = deck.bloomMastery[level];
+                      if (!mastery) return null;
+                      const percentage = mastery.total > 0 ? (mastery.correct / mastery.total) * 100 : 0;
+                      const grad = gradientForBloom(level as DeckBloomLevel);
+                      return (
+                        <div key={level} className="flex items-center mb-2 group">
+                          <span className="text-sm font-medium text-gray-600 w-24 relative -top-[2px]">
+                            {level}
+                          </span>
+
+                          <div className="relative w-full">
+                            {/* progress bar background */}
+                            <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
                               <div
-                                className={cn(
-                                  "h-2.5 rounded-full",
-                                  percentage >= 80
-                                    ? "bg-green-500"
-                                    : "bg-orange-400"
-                                )}
-                                style={{ width: `${percentage}%` }}
-                              ></div>
+                                className="h-2.5 rounded-full"
+                                style={{ width: `${percentage}%`, background: grad }}
+                              />
                             </div>
-                            <span className="text-sm font-medium text-gray-600 ml-3">
-                              {Math.round(percentage)}%
-                            </span>
+
+                            {/* GoldMedal badge sticks onto left/top of the progress bar when mastered */}
+                            {percentage >= 80 && (
+                              <>
+                                <div className="absolute left-0 -top-4 transition-transform duration-200 transform group-hover:scale-125" aria-hidden style={{ transform: 'translateX(-50%)' }}>
+                                  <img src="/icons/GoldMedal.svg" alt="Mastered" className="w-7 h-7" />
+                                </div>
+                                <span
+                                  className="absolute left-8 -top-1 opacity-0 group-hover:opacity-100 transform transition-all duration-200 rounded-full px-2 py-0.5 text-xs font-semibold text-white shadow-sm"
+                                  style={{ background: grad }}
+                                >
+                                  MASTERED
+                                </span>
+                              </>
+                            )}
                           </div>
-                        );
-                      }
-                    )}
+
+                          <span className="text-sm font-medium text-gray-600 ml-3">
+                            {formatPercent1(percentage)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {/* Secondary line: show Correct / Total attempts aggregate for this dashboard window */}
+                  <div className="mt-2 space-y-1">
+                    {(BLOOM_LEVELS as BloomLevel[]).map((level) => {
+                      const agg = deck.bloomAttempts?.[level];
+                      if (!agg) return null;
+                      const c = Math.max(0, Math.round(agg.correct));
+                      const t = Math.max(0, Math.round(agg.total));
+                      return (
+                        <div key={`ct-${level}`} className="flex items-center text-xs text-gray-500">
+                          <span className="w-24" />
+                          <span className="ml-0.5">{c} / {t}</span>
+                        </div>
+                      );
+                    })}
                   </div>
                   <div className="flex justify-end items-center mt-4 space-x-4">
                     <button className="text-sm font-medium text-blue-600 hover:text-blue-800 flex items-center">
@@ -434,11 +607,10 @@ export default function DashboardClient() {
             Progress Over Time
           </h2>
           <p className="text-gray-600 mb-6">
-            This chart will show your review activity and mastery trends over
-            the past month. Coming soon!
+            Your last 30 days of mission accuracy. Values are floats; axis labels show percent.
           </p>
-          <div className="bg-white p-6 rounded-2xl shadow-sm text-center text-gray-500 h-48 flex items-center justify-center">
-            Chart data will appear here.
+          <div className="bg-white p-6 rounded-2xl shadow-sm h-64">
+            <DashboardProgressChart showSMAOnly={true} />
           </div>
         </section>
       </div>

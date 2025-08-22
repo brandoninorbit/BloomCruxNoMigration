@@ -417,10 +417,15 @@ function mapCompare(row: CsvRow, idx: number, bloom: Bloom): MapResult {
 }
 
 function mapCER(row: CsvRow, idx: number, bloom: Bloom): MapResult {
-  const question = questionFrom(row);
+  // For CER, prefer Scenario/Prompt as the primary prompt; if absent, fall back to Question/Title
+  const scenarioOrPrompt = pick(row, 'Scenario') ?? pick(row, 'Prompt') ?? pick(row, 'Title');
+  const qCol = pick(row, 'Question');
+  const question = (scenarioOrPrompt ?? qCol ?? '').trim();
   const modeRaw = (pick(row, 'Mode') || '').toLowerCase();
   const mode: CERMode = /multiple|mc/.test(modeRaw) ? 'Multiple Choice' : 'Free Text';
-  const guidance = pick(row, 'Guidance', 'GuidanceQuestion');
+  // If a Scenario/Prompt exists and Guidance is not provided, use the Question column as guidance
+  const guidance =
+    pick(row, 'Guidance', 'GuidanceQuestion') ?? (scenarioOrPrompt ? qCol : undefined);
   const errors: string[] = [];
   if (!question) errors.push(`Row ${idx}: missing Title/Question/Prompt/Scenario`);
   if (mode === 'Free Text') {

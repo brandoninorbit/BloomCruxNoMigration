@@ -15,6 +15,7 @@ import {
 
 import { getSupabaseClient } from "@/lib/supabase/browserClient";
 const supabase = getSupabaseClient();
+import DeckProgressChart from "@/components/decks/DeckProgressChart";
 
 /* ---------- Types ---------- */
 
@@ -28,6 +29,13 @@ interface Deck {
   bloomLevel: string; // e.g., "Remember"
   created_at?: string; // ISO timestamp from Supabase
 }
+
+// Mastery row shape from user_deck_bloom_mastery
+type MasteryRow = {
+  deck_id: number;
+  bloom_level: DeckBloomLevel | string;
+  mastery_pct: number | null;
+};
 
 type ColorName = "blue" | "green" | "yellow" | "purple" | "pink" | "orange" | "gray";
 
@@ -224,6 +232,9 @@ function DecksPage() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Mastery map by deck: { [deck_id]: { [bloom]: percent } }
+  const [masteryByDeck, setMasteryByDeck] = useState<Record<number, Partial<Record<DeckBloomLevel, number>>>>({});
+
   /* ---------- Data Fetch ---------- */
   // Robust fetch for folders and decks
   // const [dataLoading, setDataLoading] = useState(false); // no longer used
@@ -231,13 +242,18 @@ function DecksPage() {
     if (!user) return;
   // setDataLoading(true);
     try {
-      // Fetch folders and decks in parallel for speed
-      const [folderRes, deckRes] = await Promise.all([
+      // Fetch folders, decks, and mastery in parallel for speed
+      const [folderRes, deckRes, masteryRes] = await Promise.all([
         supabase.from("folders").select("*").eq("user_id", user.id),
-        supabase.from("decks").select("*").eq("user_id", user.id)
+        supabase.from("decks").select("*").eq("user_id", user.id),
+        supabase
+          .from("user_deck_bloom_mastery")
+          .select("deck_id, bloom_level, mastery_pct")
+          .eq("user_id", user.id),
       ]);
       const { data: folderData, error: folderError } = folderRes;
       const { data: deckData, error: deckError } = deckRes;
+      const { data: masteryData, error: masteryError } = masteryRes;
       if (!folderError && Array.isArray(folderData)) {
         setFolders((folderData as FolderRow[]).map(mapRowToUI));
       }
@@ -254,6 +270,28 @@ function DecksPage() {
             created_at: typeof d.created_at === 'string' ? d.created_at : undefined
           }))
         );
+      }
+      if (!masteryError && Array.isArray(masteryData)) {
+        const map: Record<number, Partial<Record<DeckBloomLevel, number>>> = {};
+        const norm = (s: string): DeckBloomLevel => {
+          const t = String(s).trim().toLowerCase();
+          if (t.startsWith('remember')) return 'Remember' as DeckBloomLevel;
+          if (t.startsWith('understand')) return 'Understand' as DeckBloomLevel;
+          if (t.startsWith('apply')) return 'Apply' as DeckBloomLevel;
+          if (t.startsWith('analy')) return 'Analyze' as DeckBloomLevel;
+          if (t.startsWith('eval')) return 'Evaluate' as DeckBloomLevel;
+          if (t.startsWith('create')) return 'Create' as DeckBloomLevel;
+          return 'Remember' as DeckBloomLevel;
+        };
+        (masteryData as MasteryRow[]).forEach((row) => {
+          const did = Number(row.deck_id);
+          const lvl = norm(String(row.bloom_level));
+          const raw = Number(row.mastery_pct ?? 0);
+          const pct = raw > 0 && raw <= 1 ? raw * 100 : raw; // normalize 0..1 to 0..100
+          if (!map[did]) map[did] = {};
+          map[did]![lvl] = Math.max(0, Math.min(100, pct));
+        });
+        setMasteryByDeck(map);
       }
     } finally {
       // setDataLoading(false);
@@ -415,14 +453,46 @@ function DecksPage() {
     return decks.filter((d) => d.folderId === activeFolderId);
   }, [activeFolderId, decks]);
 
-  // Derive a future-ready display for Bloom mastery; for now, default decks with missing data
-  // to Remember at 30% to match the placeholder behavior until study mode is wired.
-  function resolveBloomAndMastery(d: Deck): { level: DeckBloomLevel; percent: number } {
-    const level = (BLOOM_LEVELS as readonly DeckBloomLevel[]).includes(d.bloomLevel as DeckBloomLevel)
+  // Resolve Bloom display using mastery table; return prior (most recent accomplished) and goal (current unlocked)
+  function resolveBloomAndMastery(d: Deck): {
+    priorLevel: DeckBloomLevel | null;
+    goalLevel: DeckBloomLevel;
+    priorPercent: number;
+    goalPercent: number;
+  } {
+    const deckMap = masteryByDeck[d.id];
+    const levels: DeckBloomLevel[] = BLOOM_LEVELS as DeckBloomLevel[];
+    const threshold = 80; // same threshold used by Study
+    const capIndex = Math.max(0, levels.indexOf("Evaluate" as DeckBloomLevel));
+
+    if (deckMap && Object.keys(deckMap).length > 0) {
+      let displayIndex = 0;
+      for (let i = 0; i < levels.length; i++) {
+        const lvl = levels[i]!;
+        const mp = Number(deckMap[lvl] ?? 0);
+        if (mp < threshold) { displayIndex = i; break; }
+        if (i >= capIndex) { displayIndex = capIndex; break; }
+        displayIndex = Math.min(i + 1, capIndex);
+        if (displayIndex === capIndex) break;
+      }
+      const goalLevel = levels[displayIndex] ?? ("Remember" as DeckBloomLevel);
+      const goalPercent = Number(deckMap[goalLevel] ?? 0);
+      const priorIndex = Math.max(0, displayIndex - 1);
+      const priorLevel = displayIndex > 0 ? levels[priorIndex] : null;
+      const priorPercent = priorLevel ? Number(deckMap[priorLevel] ?? 0) : 0;
+      return { priorLevel, goalLevel, priorPercent: Math.max(0, Math.min(100, priorPercent)), goalPercent: Math.max(0, Math.min(100, goalPercent)) };
+    }
+
+    // Fallback: no mastery rows, use deck fields or placeholders
+    const fallbackGoal = (BLOOM_LEVELS as readonly DeckBloomLevel[]).includes(d.bloomLevel as DeckBloomLevel)
       ? (d.bloomLevel as DeckBloomLevel)
-      : "Remember";
-    const percent = typeof d.mastery === "number" && d.mastery >= 0 ? d.mastery : 30;
-    return { level, percent };
+      : ("Remember" as DeckBloomLevel);
+    const fallbackGoalPct = typeof d.mastery === "number" && d.mastery >= 0 ? d.mastery : 30;
+    // prior is previous level when possible
+    const goalIdx = (BLOOM_LEVELS as DeckBloomLevel[]).indexOf(fallbackGoal);
+    const priorLevel = goalIdx > 0 ? (BLOOM_LEVELS as DeckBloomLevel[])[Math.max(0, goalIdx - 1)] : null;
+    const priorPct = 0;
+    return { priorLevel, goalLevel: fallbackGoal, priorPercent: priorPct, goalPercent: Math.max(0, Math.min(100, fallbackGoalPct)) };
   }
 
   /* ---------- UI ---------- */
@@ -621,22 +691,36 @@ function DecksPage() {
                     {/* Title at top */}
                     <div className="text-[15px] font-bold text-[#111418] line-clamp-2 pr-6">{d.title}</div>
 
-                    {/* Bloom mastery directly below title */}
+                    {/* Bloom mastery pills (top two mastered; lower level on top, highest below); hide if none */}
                     <div className="mt-2">
                       {(() => {
-                        const { level, percent } = resolveBloomAndMastery(d);
-                        const grad = gradientForBloom(level);
-                        const pct = Math.max(0, Math.min(100, percent));
-                        const color = BLOOM_COLOR_HEX[level] ?? "#4DA6FF";
+                        const deckMap = masteryByDeck[d.id] || {};
+                        const levels = BLOOM_LEVELS as DeckBloomLevel[];
+                        const mastered = levels
+                          .map((lvl) => ({ lvl, pct: Number((deckMap as Partial<Record<DeckBloomLevel, number>>)[lvl] ?? 0) }))
+                          .filter((x) => x.pct >= 80)
+                          .sort((a, b) => levels.indexOf(a.lvl) - levels.indexOf(b.lvl));
+                        const topTwo = mastered.slice(-2); // highest two
+                        if (topTwo.length === 0) return null;
                         return (
-                          <div>
-                            <div className="mb-1 text-[11px] font-semibold" style={{ color }}>{level}</div>
-                            <div className="h-2.5 w-full rounded-full bg-gray-200 overflow-hidden">
-                              <div className="h-full rounded-full" style={{ width: `${pct}%`, background: grad }} />
-                            </div>
+                          <div className="flex flex-col gap-1 items-center">
+                            {topTwo.map((m, idx) => (
+                              <span
+                                key={`${m.lvl}-${idx}`}
+                                className="inline-flex items-center justify-center text-center rounded-full px-2 py-0.5 text-[11px] font-semibold text-white shadow-sm overflow-hidden whitespace-nowrap"
+                                style={{ backgroundColor: BLOOM_COLOR_HEX[m.lvl] ?? "#4DA6FF", width: 'min(22ch, 100%)', boxSizing: 'border-box' }}
+                              >
+                                {`MASTERED: ${m.lvl}`}
+                              </span>
+                            ))}
                           </div>
                         );
                       })()}
+                    </div>
+
+                    {/* Deck progress chart (last 30 days) */}
+                    <div className="mt-1">
+                      <DeckProgressChart deckId={d.id} />
                     </div>
 
                     {/* Spacer */}

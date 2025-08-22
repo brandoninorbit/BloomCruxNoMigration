@@ -140,6 +140,10 @@ export default function EditDeckClient({ deckId }: Props) {
           cards={displayedCards}
           onEdit={onEdit}
           onDelete={onDelete}
+          onContinue={() => {
+            // In edit context, just no-op; the modal will close itself when not provided.
+            // This is here to keep onContinue threaded globally.
+          }}
         />
       )}
 

@@ -12,11 +12,11 @@ export async function fetchProgress(deckId: number): Promise<{ progress: UserBlo
   return { progress: data.per_bloom ?? null, xp: data.xp ?? null };
 }
 
-export async function saveProgressRepo(deckId: number, progress: UserBloomProgress, xp: XpLedger | undefined) {
+export async function saveProgressRepo(deckId: number, progress: UserBloomProgress | undefined, xp: XpLedger | undefined) {
   await fetch(api(deckId, "/progress"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ per_bloom: progress, xp: xp ?? undefined }),
+  body: JSON.stringify({ ...(progress ? { per_bloom: progress } : {}), ...(xp ? { xp } : {}) }),
   });
 }
 
@@ -26,7 +26,7 @@ export async function fetchMission(deckId: number, level: DeckBloomLevel, missio
   u.searchParams.set("missionIndex", String(missionIndex));
   const res = await fetch(u.toString(), { cache: "no-store" });
   if (!res.ok) return null;
-  const data: { found?: boolean; mission?: { sequence_seed: string; card_order: unknown[]; answered?: { cardId: number; correct: boolean }[]; started_at: string; resumed_at?: string | null } } = await res.json();
+  const data: { found?: boolean; mission?: { sequence_seed: string; card_order: unknown[]; answered?: { cardId: number; correct: boolean | number }[]; started_at: string; resumed_at?: string | null } } = await res.json();
   if (!data?.found || !data.mission) return null;
   const m = data.mission;
   return {
@@ -35,8 +35,8 @@ export async function fetchMission(deckId: number, level: DeckBloomLevel, missio
     missionIndex,
     sequenceSeed: m.sequence_seed,
     cardOrder: Array.isArray(m.card_order) ? m.card_order.map((n) => Number(n)) : [],
-    answered: Array.isArray(m.answered) ? m.answered : [],
-    correctCount: (Array.isArray(m.answered) ? m.answered : []).filter((a) => a.correct).length,
+  answered: Array.isArray(m.answered) ? m.answered : [],
+  correctCount: (Array.isArray(m.answered) ? m.answered : []).reduce((s, a) => s + (typeof a.correct === "number" ? Math.max(0, Math.min(1, a.correct)) : a.correct ? 1 : 0), 0),
     startedAt: m.started_at,
     resumedAt: m.resumed_at ?? undefined,
   };

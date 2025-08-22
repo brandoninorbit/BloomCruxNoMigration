@@ -18,7 +18,8 @@ export type MissionState = {
   missionIndex: number; // 0-based index when a level splits to multiple missions
   sequenceSeed: string; // RNG seed or UUID to reshuffle deterministically
   cardOrder: number[]; // card IDs in order for this mission
-  answered: Array<{ cardId: number; correct: boolean }>; // session answers
+  // `correct` may be boolean (legacy) or a fractional number 0..1 (preferred)
+  answered: Array<{ cardId: number; correct: boolean | number }>; // session answers
   correctCount: number;
   startedAt: string; // ISO
   resumedAt?: string; // ISO
@@ -35,6 +36,10 @@ export type BloomProgress = {
   accuracySum?: number; // sum of mission accuracies (0..1) for this level
   accuracyCount?: number; // number of missions counted
   totalMissions?: number; // computed from primary splits
+  // progression history for unlocking
+  recentAttempts?: Array<{ percent: number; at: string }>; // last N mission percents (0-100)
+  weightedAvg?: number; // 0-100 weighted average of recent attempts
+  cleared?: boolean; // meets unlock criteria to clear this Bloom level
 };
 
 export type UserBloomProgress = Record<DeckBloomLevel, BloomProgress>;
@@ -54,6 +59,8 @@ export type MissionComputeInput = {
   // Active filtering. If omitted, treats all as active.
   isActive?: (c: DeckCard) => boolean;
   activeCardIds?: number[]; // alternative to isActive
+  // Optional: override review candidates using precomputed low-accuracy IDs (from mastery math)
+  reviewCandidateIds?: number[];
   // Deterministic composition
   missionIndex?: number; // for split levels
   seed?: string; // custom seed for composition/shuffle
