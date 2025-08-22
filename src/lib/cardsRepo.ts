@@ -268,9 +268,18 @@ export async function update(card: DeckCard): Promise<DeckCard> {
 
 export async function remove(cardId: number): Promise<void> {
   const supabase = getSupabaseClient();
+  // Look up deckId first so we can notify content change after deletion
+  const { data: before } = await supabase
+    .from("cards")
+    .select("deck_id")
+    .eq("id", cardId)
+    .maybeSingle();
+  const deckId = Number((before as { deck_id?: number } | null)?.deck_id ?? NaN);
   const { error } = await supabase.from("cards").delete().eq("id", cardId);
   if (error) throw readableError("Failed to delete card", error);
-  // Best-effort: we don't know deckId; skip notifying here. Callers removing by source will notify once.
+  if (Number.isFinite(deckId)) {
+    try { await fetch(`/api/decks/${deckId}/content-changed`, { method: 'POST' }); } catch {}
+  }
 }
 
 export async function reorder(deckId: number, orderedIds: number[]): Promise<void> {

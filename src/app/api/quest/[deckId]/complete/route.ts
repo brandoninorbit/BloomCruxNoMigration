@@ -22,6 +22,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dec
   if (!bloom_level || Number.isNaN(score_pct)) return NextResponse.json({ error: "invalid payload" }, { status: 400 });
 
   // Insert attempt
+  // Try to snapshot current contentVersion for this level
+  let contentVersion: number | undefined = undefined;
+  try {
+    const sb = supabaseAdmin();
+    const { data: row } = await sb
+      .from("user_deck_quest_progress")
+      .select("per_bloom")
+      .eq("user_id", session.user.id)
+      .eq("deck_id", deckId)
+      .maybeSingle();
+    const per = (row?.per_bloom ?? {}) as Record<string, { contentVersion?: number }>;
+    contentVersion = Number((per[bloom_level]?.contentVersion ?? 0) as number) || 0;
+  } catch {}
+
   const attempt = await recordMissionAttempt({
     userId: session.user.id,
     deckId,
@@ -31,6 +45,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dec
     cardsCorrect: cards_correct,
     startedAt: started_at,
     endedAt: ended_at,
+    contentVersion,
   });
   if (!attempt.ok) return NextResponse.json({ error: attempt.error }, { status: 500 });
 

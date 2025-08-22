@@ -273,7 +273,21 @@ export default function EditDeckForm({ deckId }: Props) {
   setPendingImport(null);
     setShowImportErrors(false);
     setSourceMsg(`Imported ${created} cards from ${filename}`);
-  toast({ title: `Deck updated`, description: `+${created} cards added. Mastery bars recalculating.` });
+    try {
+      // Summarize by Bloom based on parsed rows
+      const bloomCounts: Record<string, number> = {};
+      pendingImport.okRows.forEach((r) => {
+        const lvl = r.payload.bloom || "Remember";
+        bloomCounts[lvl] = (bloomCounts[lvl] ?? 0) + 1;
+      });
+      const byBloom = Object.entries(bloomCounts)
+        .filter(([, n]) => n > 0)
+        .map(([lvl, n]) => `+${n} ${lvl}`)
+        .join(", ");
+      toast({ title: `Deck updated`, description: `${byBloom || `+${created}` } cards added. Mastery bars recalculating.` });
+    } catch {
+      toast({ title: `Deck updated`, description: `+${created} cards added. Mastery bars recalculating.` });
+    }
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("deck-cards:reload"));
     }
@@ -738,7 +752,8 @@ export default function EditDeckForm({ deckId }: Props) {
           if (typeof window !== "undefined") {
             window.dispatchEvent(new CustomEvent("deck-card:created", { detail: { card: created } }));
           }
-          toast({ title: "Card created" });
+          const lvl = payload.bloomLevel || "Remember";
+          toast({ title: "Deck updated", description: `+1 ${lvl} card. Mastery bars recalculating.` });
         }}
       />
     </>

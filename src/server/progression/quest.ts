@@ -13,6 +13,7 @@ export async function recordMissionAttempt(params: {
   cardsCorrect: number;
   startedAt?: string | null;
   endedAt?: string | null;
+  contentVersion?: number;
 }): Promise<{ ok: true; attemptId?: number } | { ok: false; error: string }> {
   const sb = supabaseAdmin();
   const { data, error } = await sb
@@ -26,6 +27,7 @@ export async function recordMissionAttempt(params: {
       cards_correct: params.cardsCorrect,
       started_at: params.startedAt ?? null,
       ended_at: params.endedAt ?? new Date().toISOString(),
+      content_version: Number.isFinite(params.contentVersion as number) ? (params.contentVersion as number) : 0,
     })
     .select("id")
     .maybeSingle();
