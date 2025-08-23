@@ -3,6 +3,8 @@ import type { DeckBloomLevel } from "@/types/deck-cards";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { BLOOM_LEVELS } from "@/types/card-catalog";
 import { DEFAULT_QUEST_SETTINGS } from "@/lib/quest/types";
+import { cookies } from "next/headers";
+import { createServerClient } from "@supabase/ssr";
 
 export async function recordMissionAttempt(params: {
   userId: string;
@@ -14,25 +16,112 @@ export async function recordMissionAttempt(params: {
   startedAt?: string | null;
   endedAt?: string | null;
   contentVersion?: number;
+  mode?: 'quest' | 'remix' | 'drill' | 'study' | 'starred';
+  breakdown?: Record<string, { scorePct: number; cardsSeen: number; cardsCorrect: number }>; // per-bloom summary
 }): Promise<{ ok: true; attemptId?: number } | { ok: false; error: string }> {
-  const sb = supabaseAdmin();
-  const { data, error } = await sb
-    .from("user_deck_mission_attempts")
-    .insert({
-      user_id: params.userId,
-      deck_id: params.deckId,
-      bloom_level: params.bloomLevel,
-      score_pct: params.scorePct,
-      cards_seen: params.cardsSeen,
-      cards_correct: params.cardsCorrect,
-      started_at: params.startedAt ?? null,
-      ended_at: params.endedAt ?? new Date().toISOString(),
-      content_version: Number.isFinite(params.contentVersion as number) ? (params.contentVersion as number) : 0,
-    })
-    .select("id")
-    .maybeSingle();
-  if (error) return { ok: false, error: error.message };
-  return { ok: true, attemptId: data?.id };
+  // Some databases may not allow certain custom modes (e.g., 'starred') via a CHECK constraint.
+  // Clamp to an allowed set to avoid insert failures when schemas lag behind.
+  const modeSafe = ((): 'quest' | 'remix' | 'drill' | 'study' | null => {
+    const m = params.mode as 'quest' | 'remix' | 'drill' | 'study' | 'starred' | undefined;
+    if (!m) return 'quest'; // default to quest when not provided
+  if (m === 'quest' || m === 'remix' || m === 'drill' || m === 'study') return m;
+  return null;
+  })();
+  const basePayload: Record<string, unknown> = {
+    user_id: params.userId,
+    deck_id: params.deckId,
+    bloom_level: params.bloomLevel,
+    score_pct: params.scorePct,
+    cards_seen: params.cardsSeen,
+    cards_correct: params.cardsCorrect,
+    started_at: params.startedAt ?? null,
+    ended_at: params.endedAt ?? new Date().toISOString(),
+    mode: modeSafe,
+    breakdown: params.breakdown ? (params.breakdown as unknown as object) : null,
+  } as const;
+  const withContentVersion: Record<string, unknown> = (Number.isFinite(params.contentVersion as number))
+    ? { ...basePayload, content_version: params.contentVersion as number }
+    : basePayload;
+
+  function payloadVariants(): Array<Record<string, unknown>> {
+    const noCV = { ...basePayload } as Record<string, unknown>;
+    const noCVNoMode = { ...noCV, mode: null };
+    const noCVNoBreakdown = { ...noCV } as Record<string, unknown>;
+    delete (noCVNoBreakdown as Record<string, unknown>)['breakdown'];
+    const noCVNoModeNoBreakdown = { ...noCVNoBreakdown, mode: null };
+    const withCVNoMode = { ...withContentVersion, mode: null };
+    const withCVNoBreakdown = { ...withContentVersion } as Record<string, unknown>;
+    delete (withCVNoBreakdown as Record<string, unknown>)['breakdown'];
+    const withCVNoModeNoBreakdown = { ...withCVNoBreakdown, mode: null };
+    const list: Array<Record<string, unknown>> = [];
+    // Prefer with CV first if present
+    if (withContentVersion !== basePayload) {
+      list.push(withContentVersion, withCVNoMode, withCVNoBreakdown, withCVNoModeNoBreakdown);
+    }
+    list.push(noCV, noCVNoMode, noCVNoBreakdown, noCVNoModeNoBreakdown);
+    return list;
+  }
+
+  async function tryInsert(client: ReturnType<typeof supabaseAdmin> | ReturnType<typeof createServerClient>): Promise<{ ok: true; attemptId?: number } | { ok: false; error: string }> {
+    try {
+      const variants = payloadVariants();
+      let lastErr: string | null = null;
+      for (const p of variants) {
+        const { data, error } = await client
+          .from("user_deck_mission_attempts")
+          .insert(p)
+          .select("id")
+          .maybeSingle();
+        if (!error) return { ok: true, attemptId: (data as { id: number } | null | undefined)?.id };
+        lastErr = String(error?.message || "insert failed");
+        // continue to next variant
+      }
+      return { ok: false, error: lastErr || "insert failed" };
+    } catch (e) {
+      const msg = e && typeof e === "object" && "message" in e ? (e as { message: string }).message : String(e);
+      return { ok: false, error: msg };
+    }
+  }
+
+  // First: try with a session-bound server client (RLS must allow user_id = auth.uid())
+  try {
+    type CookieAdapter = { get: (name: string) => { value: string } | undefined; set: (name: string, value: string, options?: Record<string, unknown>) => void };
+    const jar = cookies() as unknown as CookieAdapter;
+    const sbUser = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          get(name: string) {
+            try { return jar.get(name)?.value; } catch { return undefined; }
+          },
+          set(name: string, value: string, options?: Record<string, unknown>) {
+            try { jar.set(name, value, options); } catch {}
+          },
+          remove(name: string, options?: Record<string, unknown>) {
+            try { jar.set(name, '', { ...(options || {}), maxAge: 0 }); } catch {}
+          },
+        },
+        auth: { autoRefreshToken: false, detectSessionInUrl: false },
+      }
+    );
+  const res = await tryInsert(sbUser);
+  if (res.ok) return res;
+  return res;
+  } catch {
+    // Fall through to admin client as last resort
+  }
+
+  // Last resort: admin client (bypasses RLS)
+  try {
+    const sb = supabaseAdmin();
+    const res = await tryInsert(sb);
+    if (res.ok) return res;
+    return res;
+  } catch (e) {
+    const msg = e && typeof e === "object" && "message" in e ? (e as { message: string }).message : String(e);
+    return { ok: false, error: msg };
+  }
 }
 
 export async function unlockNextBloomLevel(userId: string, deckId: number, levelJustPassed: DeckBloomLevel): Promise<void> {

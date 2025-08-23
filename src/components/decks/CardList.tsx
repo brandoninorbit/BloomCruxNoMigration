@@ -12,6 +12,8 @@ import { DndContext, DragEndEvent, PointerSensor, useDraggable, useDroppable, us
 import { CSS } from "@dnd-kit/utilities";
 import { useMasteryTracker } from "@/lib/useMasteryTracker";
 import { Bloom, defaultBloomForType } from "@/lib/bloom";
+import CardReviewReasonChip from "@/components/decks/CardReviewReasonChip";
+import { fetchCardReasons } from "@/lib/reviewReason";
 // (consolidated all deck-card type imports above)
 
 export type CardListProps = {
@@ -25,6 +27,7 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
   const items = useMemo(() => cards, [cards]);
   const deckId = items[0]?.deckId;
   const [starred, setStarred] = useState<Record<number, boolean>>({});
+  const [reasons, setReasons] = useState<Record<number, import("@/components/decks/CardReviewReasonChip").ReviewReason>>({});
 
   useEffect(() => {
     let alive = true;
@@ -40,6 +43,22 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
     })();
     return () => { alive = false; };
   }, [deckId]);
+
+  // Load review reasons (Due / Low-Acc / Leech) for visible cards
+  useEffect(() => {
+    let cancelled = false;
+    const ids = items.map((c) => c.id);
+    if (ids.length === 0) { setReasons({}); return; }
+    (async () => {
+      try {
+        const map = await fetchCardReasons(ids);
+        if (!cancelled) setReasons(map);
+      } catch {
+        if (!cancelled) setReasons({});
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [items]);
 
   async function toggleStar(cardId: number, deckId: number) {
     const next = !starred[cardId];
@@ -65,9 +84,7 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
     filledText: string;
     mode: "auto";
   } | null>(null);
-  // Sequencing banner state (track last result only)
-  const [seqChecked, setSeqChecked] = useState(false);
-  const [seqResult, setSeqResult] = useState<{ allCorrect: boolean; wrongIndexes?: number[] } | null>(null);
+  // (Sequencing banner state removed: no banner yet in edit modal)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   // Short Answer state
   const [saText, setSaText] = useState("");
@@ -141,9 +158,7 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
   setSaText("");
   setSaChecked(false);
   setSaJudged(null);
-  // reset sequencing state
-  setSeqChecked(false);
-  setSeqResult(null);
+  // (no sequencing banner state to reset)
   // reset sorting state
   setSortAssignments({});
   setSortChecked(false);
@@ -245,7 +260,7 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
       if (mcqChecked) return;
       setMcqChosen(k);
       setMcqChecked(true);
-      setMcqResponseMs((_) => Date.now() - mcqStartRef.current);
+  setMcqResponseMs(() => Date.now() - mcqStartRef.current);
     };
     return (
       <div className="w-full">
@@ -393,7 +408,7 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
           setTtTier2(k);
           // after tier2 pick, reveal outcomes
       setTtChecked(true);
-      setTtResponseMs((_) => Date.now() - ttStartRef.current);
+          setTtResponseMs(() => Date.now() - ttStartRef.current);
         }
       };
       return (
@@ -494,7 +509,7 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
         const allAnswered = parts.every((p) => typeof next[p.key] === "number");
         if (allAnswered) {
           setCerMCQChecked(true);
-          setCerMCQResponseMs((_) => Date.now() - cerMCQStartRef.current);
+          setCerMCQResponseMs(() => Date.now() - cerMCQStartRef.current);
         }
       };
 
@@ -569,7 +584,7 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
 
     const checkFT = () => {
       setCerFreeChecked(true);
-      setCerFreeResponseMs((_) => Date.now() - cerFreeStartRef.current);
+  setCerFreeResponseMs(() => Date.now() - cerFreeStartRef.current);
     };
     const partOk = (k: keyof typeof cerFreeOverride) => cerFreeOverride[k] === "right";
 
@@ -960,10 +975,15 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
               {/* Left: question, type, bloom */}
               <div className="flex-1">
                 <p className="font-semibold text-gray-900">{card.question || "Untitled"}</p>
-                <p className="text-sm text-gray-500 mt-1">
-                  {card.type}
-                  {card.bloomLevel ? <span className="text-gray-400"> · {card.bloomLevel}</span> : null}
-                </p>
+                <div className="flex items-center flex-wrap gap-2 mt-1">
+                  <p className="text-sm text-gray-500">
+                    {card.type}
+                    {card.bloomLevel ? <span className="text-gray-400"> · {card.bloomLevel}</span> : null}
+                  </p>
+                  {reasons[card.id] ? (
+                    <CardReviewReasonChip reason={reasons[card.id]!} />
+                  ) : null}
+                </div>
               </div>
 
               {/* Right: actions */}
@@ -1053,9 +1073,6 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
                     steps={(studying.meta as DeckSequencingMeta).steps}
                     onAnswer={(res) => {
                       // optional handling inside CardList study modal (no mission state here)
-                      // keep seqResult visible by updating local state
-                      setSeqResult({ allCorrect: res.allCorrect, wrongIndexes: res.wrongIndexes });
-                      setSeqChecked(true);
                       // persist mastery - sequencing: fraction = (# positions correct) / total
                       const total = (studying.meta as DeckSequencingMeta).steps.length;
                       const numCorrect = total && res.wrongIndexes ? Math.max(0, total - res.wrongIndexes.length) : (res.allCorrect ? total : 0);

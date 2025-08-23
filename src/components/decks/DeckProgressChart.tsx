@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { getSupabaseClient } from "@/lib/supabase/browserClient";
 import {
   LineChart as RLineChart,
@@ -31,34 +31,52 @@ export function computeSMA(values: number[], k = 5): number[] {
 export default function DeckProgressChart({ deckId, height = 150 }: { deckId: number; height?: number }) {
   const [data, setData] = useState<Array<{ idx: number; acc: number; ended_at: string }>>([]);
 
+  const fetchData = useCallback(async () => {
+    try {
+      const sb = getSupabaseClient();
+      const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const { data: rows } = await sb
+        .from("user_deck_mission_attempts")
+        .select("score_pct, cards_seen, cards_correct, ended_at")
+        .eq("deck_id", deckId)
+        .gte("ended_at", cutoff)
+        .order("ended_at", { ascending: true });
+      const arr: Array<{ idx: number; acc: number; ended_at: string }> = [];
+      type Row = { score_pct?: number | null; cards_seen?: number | null; cards_correct?: number | null; ended_at?: string | null };
+      const rowsTyped = (rows ?? []) as Row[];
+      for (let i = 0; i < rowsTyped.length; i++) {
+        const r = rowsTyped[i];
+        const acc = Number(r?.score_pct ?? 0);
+        arr.push({ idx: i + 1, acc: Math.max(0, Math.min(100, acc)), ended_at: r?.ended_at ?? new Date().toISOString() });
+      }
+      setData(arr);
+    } catch (err) {
+      console.debug('DeckProgressChart fetch error', err);
+    }
+  }, [deckId]);
+
   useEffect(() => {
     let mounted = true;
-    (async () => {
-      try {
-        const sb = getSupabaseClient();
-        const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-        const { data: rows } = await sb
-          .from("user_deck_mission_attempts")
-          .select("score_pct, cards_seen, cards_correct, ended_at")
-          .eq("deck_id", deckId)
-          .gte("ended_at", cutoff)
-          .order("ended_at", { ascending: true });
+    fetchData();
+    // Subscribe to realtime inserts for this deck
+    const sb = getSupabaseClient();
+    const channel = sb
+      .channel(`deck_attempts_${deckId}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'user_deck_mission_attempts', filter: `deck_id=eq.${deckId}` }, () => {
         if (!mounted) return;
-        const arr: Array<{ idx: number; acc: number; ended_at: string }> = [];
-        type Row = { score_pct?: number | null; cards_seen?: number | null; cards_correct?: number | null; ended_at?: string | null };
-        const rowsTyped = (rows ?? []) as Row[];
-        for (let i = 0; i < rowsTyped.length; i++) {
-          const r = rowsTyped[i];
-          const acc = Number(r?.score_pct ?? 0);
-          arr.push({ idx: i + 1, acc: Math.max(0, Math.min(100, acc)), ended_at: r?.ended_at ?? new Date().toISOString() });
-        }
-        setData(arr);
-      } catch (err) {
-        console.debug('DeckProgressChart fetch error', err);
-      }
-    })();
-    return () => { mounted = false; };
-  }, [deckId]);
+        // Fetch fresh data when a new attempt arrives
+        fetchData();
+      })
+      .subscribe();
+    // Fallback: refresh when page/tab becomes visible
+    const onVis = () => { if (document.visibilityState === 'visible') fetchData(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      mounted = false;
+      try { document.removeEventListener('visibilitychange', onVis); } catch {}
+      try { sb.removeChannel(channel); } catch {}
+    };
+  }, [deckId, fetchData]);
 
   const sma = useMemo(() => computeSMA(data.map((d) => d.acc), 5), [data]);
 

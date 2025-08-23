@@ -44,6 +44,8 @@ export default function RemixClient({ deckId }: { deckId: number }) {
   const [done, setDone] = useState<boolean>(false);
   const trackAnswer = useMasteryTracker();
   const [correctSum, setCorrectSum] = useState(0);
+  const perBloomRef = useRef<Record<DeckBloomLevel, { seen: number; correctFloat: number }>>({ Remember: { seen: 0, correctFloat: 0 }, Understand: { seen: 0, correctFloat: 0 }, Apply: { seen: 0, correctFloat: 0 }, Analyze: { seen: 0, correctFloat: 0 }, Evaluate: { seen: 0, correctFloat: 0 }, Create: { seen: 0, correctFloat: 0 } });
+  const startedIsoRef = useRef<string>(new Date().toISOString());
 
   const selectedN = useMemo(() => Math.max(0, Number(sp?.get("n") || 0)), [sp]);
   const selectedLevels = useMemo<DeckBloomLevel[] | null>(() => {
@@ -106,6 +108,17 @@ export default function RemixClient({ deckId }: { deckId: number }) {
     try {
       const val = typeof payload.correctness === "number" ? payload.correctness : (typeof payload.correct === "boolean" ? (payload.correct ? 1 : 0) : 0);
       setCorrectSum((s) => s + (Number.isFinite(val) ? val : 0));
+      // accumulate per-bloom
+      const b = Bloom[payload.bloom] as unknown as DeckBloomLevel | undefined;
+      const bloomKey = (typeof b === 'string' ? b : undefined) as DeckBloomLevel | undefined;
+      if (bloomKey) {
+        const map = perBloomRef.current;
+        const cur = map[bloomKey] ?? { seen: 0, correctFloat: 0 };
+        cur.seen += 1;
+        cur.correctFloat += (Number.isFinite(val) ? val : 0);
+        map[bloomKey] = cur;
+        perBloomRef.current = map;
+      }
     } catch {}
     return trackAnswer(payload).catch(() => {});
   }
@@ -116,11 +129,15 @@ export default function RemixClient({ deckId }: { deckId: number }) {
     const total = Math.max(0, order.length);
     const correct = Math.max(0, correctSum);
     const pct = total > 0 ? Math.max(0, Math.min(100, (correct / total) * 100)) : 0;
+    // Choose a Bloom level to attribute this Remix session to for progress tracking.
+    // If specific levels were selected, take the first; otherwise default to Remember.
+    const bloomLevelForComplete: DeckBloomLevel = (selectedLevels && selectedLevels.length > 0 ? selectedLevels[0]! : ("Remember" as DeckBloomLevel));
     const q = new URLSearchParams();
     q.set("mode", "remix");
     q.set("pct", String(Math.round(pct * 10) / 10));
     q.set("total", String(total));
     q.set("correct", String(Math.round(correct)));
+    q.set("level", bloomLevelForComplete);
     // Fire-and-forget finalize to mint XP/tokens; do not block UX
     try {
       void fetch(`/api/economy/finalize`, {
@@ -129,9 +146,44 @@ export default function RemixClient({ deckId }: { deckId: number }) {
         body: JSON.stringify({ deckId, mode: "remix", correct: Math.round(correct), total, percent: Math.round(pct * 10) / 10 }),
       }).catch(() => {});
     } catch {}
-    router.replace(`/decks/${deckId}/mission-complete?${q.toString()}`);
-  }, [done, order.length, correctSum, deckId, router]);
-
+    // Also record a mission attempt to update progress/attempts history
+    (async () => {
+      try {
+        // Build per-bloom breakdown
+        const map = perBloomRef.current;
+        const breakdown: Record<string, { scorePct: number; cardsSeen: number; cardsCorrect: number }> = {};
+        (Object.keys(map) as DeckBloomLevel[]).forEach((lvl) => {
+          const seen = Math.max(0, Number(map[lvl]?.seen ?? 0));
+          const correctFloat = Math.max(0, Number(map[lvl]?.correctFloat ?? 0));
+          if (seen > 0) {
+            const pct = Math.max(0, Math.min(100, (correctFloat / seen) * 100));
+            breakdown[lvl] = { scorePct: Math.round(pct * 10) / 10, cardsSeen: seen, cardsCorrect: Math.round(correctFloat) };
+          }
+        });
+        const resp = await fetch(`/api/quest/${deckId}/complete`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            mode: "remix",
+            bloom_level: bloomLevelForComplete,
+            score_pct: Math.round(pct * 10) / 10,
+            cards_seen: total,
+            cards_correct: Math.round(correct),
+            started_at: startedIsoRef.current,
+            ended_at: new Date().toISOString(),
+            breakdown,
+          }),
+        });
+        if (resp.ok) {
+          const j = await resp.json().catch(() => null);
+          if (j && typeof j.unlocked !== "undefined") {
+            q.set("unlocked", j.unlocked ? "1" : "0");
+          }
+        }
+      } catch {}
+      router.replace(`/decks/${deckId}/mission-complete?${q.toString()}`);
+    })();
+  }, [done, order.length, correctSum, deckId, router, selectedLevels]);
   // Renderers per type (minimal, reuse existing components)
   function renderStudy(c: DeckCard) {
     const effBloom = toBloom(c.bloomLevel as DeckBloomLevel | undefined, c.type);

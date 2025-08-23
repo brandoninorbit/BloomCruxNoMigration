@@ -41,6 +41,8 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
           setSession(body.session ?? null);
           setUser(body.user ?? null);
         }
+  } catch {
+        // Swallow auth errors and allow UI to proceed; we'll also listen below
       } finally {
         setLoading(false);
       }
@@ -49,10 +51,43 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     // Listen for auth changes (but no auto-refresh since our client has autoRefreshToken: false)
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      try {
+        setSession(session);
+        setUser(session?.user ?? null);
+        if (!session) {
+          // Proactively pull server session to hydrate client view if client is empty
+          try {
+            const res = await fetch('/api/auth/session', { cache: 'no-store' });
+            if (res.ok) {
+              const body = await res.json();
+              setSession(body.session ?? null);
+              setUser(body.user ?? null);
+            }
+          } catch {}
+        }
+      } catch (e) {
+        // If Supabase throws an Invalid Refresh Token error, purge local tokens and fall back to server session
+        const msg = (e && typeof e === 'object' && 'message' in e) ? String((e as { message?: string }).message) : String(e);
+        if (/Invalid Refresh Token/i.test(msg) || /Already Used/i.test(msg)) {
+          try {
+            // Clear local storage tokens to avoid loops
+            const keys: string[] = [];
+            for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k) keys.push(k); }
+            keys.forEach((k) => { if (k.includes('supabase') || k.startsWith('sb-') || k.includes('bloomcrux.supabase.auth')) { try { localStorage.removeItem(k); } catch {} } });
+          } catch {}
+          try {
+            const res = await fetch('/api/auth/session', { cache: 'no-store' });
+            if (res.ok) {
+              const body = await res.json();
+              setSession(body.session ?? null);
+              setUser(body.user ?? null);
+            }
+          } catch {}
+        }
+      } finally {
+        setLoading(false);
+      }
     });
     // Listen for forced-logout events to update UI immediately before navigation
     function onForcedLogout() {

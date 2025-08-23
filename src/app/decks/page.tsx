@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { useAuth } from "@/app/providers/AuthProvider";
 import { Pencil, BookOpen, Trash2 } from "lucide-react";
-import { BLOOM_LEVELS, BLOOM_COLOR_HEX, gradientForBloom } from "@/types/card-catalog";
+import { BLOOM_LEVELS, BLOOM_COLOR_HEX } from "@/types/card-catalog";
 import type { DeckBloomLevel } from "@/types/deck-cards";
 import {
   Dialog,
@@ -208,11 +208,11 @@ async function createFolderRaw(
 
 function DecksPage() {
   const { user, loading: isLoading } = useAuth();
-  const showMock = !user && !isLoading; // ← mock only if logged out
+  const showMock = !user && !isLoading; // mock only when auth has resolved and user is null
 
   // UI state
-  const [decks, setDecks] = useState<Deck[]>(showMock ? MOCK_DECKS : []);
-  const [folders, setFolders] = useState<FolderUI[]>(showMock ? MOCK_FOLDERS : []);
+  const [decks, setDecks] = useState<Deck[]>([]);
+  const [folders, setFolders] = useState<FolderUI[]>([]);
   const [activeFolderId, setActiveFolderId] = useState<number | null>(null);
 
   // Create Folder modal state
@@ -299,10 +299,19 @@ function DecksPage() {
 
   // Fetch on mount and when user changes
   useEffect(() => {
-    if (user && !showMock) {
+    // When auth resolves:
+    if (isLoading) return;
+    if (user) {
+      // Clear any mock leftovers and fetch real data
+      setFolders([]);
+      setDecks([]);
       fetchUserData();
+    } else {
+      // No user: present mocks
+      setFolders(MOCK_FOLDERS);
+      setDecks(MOCK_DECKS);
     }
-  }, [user, showMock, fetchUserData]);
+  }, [user, isLoading, fetchUserData]);
 
           // Inline confirm/cancel handlers are used where needed; keep state reset helper only if used
   // Call fetchUserData after deck/folder creation (patch button logic)
@@ -453,46 +462,7 @@ function DecksPage() {
   }, [activeFolderId, decks]);
 
   // Resolve Bloom display using mastery table; return prior (most recent accomplished) and goal (current unlocked)
-  function resolveBloomAndMastery(d: Deck): {
-    priorLevel: DeckBloomLevel | null;
-    goalLevel: DeckBloomLevel;
-    priorPercent: number;
-    goalPercent: number;
-  } {
-    const deckMap = masteryByDeck[d.id];
-    const levels: DeckBloomLevel[] = BLOOM_LEVELS as DeckBloomLevel[];
-    const threshold = 80; // same threshold used by Study
-    const capIndex = Math.max(0, levels.indexOf("Evaluate" as DeckBloomLevel));
-
-    if (deckMap && Object.keys(deckMap).length > 0) {
-      let displayIndex = 0;
-      for (let i = 0; i < levels.length; i++) {
-        const lvl = levels[i]!;
-        const mp = Number(deckMap[lvl] ?? 0);
-        if (mp < threshold) { displayIndex = i; break; }
-        if (i >= capIndex) { displayIndex = capIndex; break; }
-        displayIndex = Math.min(i + 1, capIndex);
-        if (displayIndex === capIndex) break;
-      }
-      const goalLevel = levels[displayIndex] ?? ("Remember" as DeckBloomLevel);
-      const goalPercent = Number(deckMap[goalLevel] ?? 0);
-      const priorIndex = Math.max(0, displayIndex - 1);
-      const priorLevel = displayIndex > 0 ? levels[priorIndex] : null;
-      const priorPercent = priorLevel ? Number(deckMap[priorLevel] ?? 0) : 0;
-      return { priorLevel, goalLevel, priorPercent: Math.max(0, Math.min(100, priorPercent)), goalPercent: Math.max(0, Math.min(100, goalPercent)) };
-    }
-
-    // Fallback: no mastery rows, use deck fields or placeholders
-    const fallbackGoal = (BLOOM_LEVELS as readonly DeckBloomLevel[]).includes(d.bloomLevel as DeckBloomLevel)
-      ? (d.bloomLevel as DeckBloomLevel)
-      : ("Remember" as DeckBloomLevel);
-    const fallbackGoalPct = typeof d.mastery === "number" && d.mastery >= 0 ? d.mastery : 30;
-    // prior is previous level when possible
-    const goalIdx = (BLOOM_LEVELS as DeckBloomLevel[]).indexOf(fallbackGoal);
-    const priorLevel = goalIdx > 0 ? (BLOOM_LEVELS as DeckBloomLevel[])[Math.max(0, goalIdx - 1)] : null;
-    const priorPct = 0;
-    return { priorLevel, goalLevel: fallbackGoal, priorPercent: priorPct, goalPercent: Math.max(0, Math.min(100, fallbackGoalPct)) };
-  }
+  // ...removed unused resolveBloomAndMastery helper
 
   /* ---------- UI ---------- */
 

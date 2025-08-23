@@ -1,23 +1,17 @@
 "use client";
 import { Suspense, useEffect } from "react";
 
-import { getSupabaseClient } from "@/lib/supabase/browserClient";
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/app/providers/AuthProvider";
 import EmailAuthForm from "@/components/auth/EmailAuthForm";
 
 function GoogleLoginButton() {
-  const supabase = getSupabaseClient();
   const searchParams = useSearchParams();
   const redirect = searchParams?.get("redirect") || "/dashboard";
   const handleGoogleLogin = async () => {
-    await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback?redirect=${encodeURIComponent(redirect)}`,
-      },
-    });
+  const qs = new URLSearchParams({ redirect }).toString();
+  window.location.assign(`/api/auth/signin/google?${qs}`);
   };
   return (
     <button

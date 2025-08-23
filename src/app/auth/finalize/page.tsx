@@ -13,20 +13,33 @@ function FinalizeContent() {
   useEffect(() => {
     async function syncIfNeeded() {
       try {
-        // Try to read any existing client session (persisted in localStorage)
+        // 1) If the client already has a session, ensure server cookies are synced
         const { data: s } = await supabaseClient.auth.getSession();
-        const curr = s.session ?? null;
-        if (curr?.access_token && curr?.refresh_token) {
+        const clientSess = s.session ?? null;
+        if (clientSess?.access_token && clientSess?.refresh_token) {
           try {
             await fetch("/api/auth/sync", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ access_token: curr.access_token, refresh_token: curr.refresh_token }),
+              body: JSON.stringify({ access_token: clientSess.access_token, refresh_token: clientSess.refresh_token }),
             });
-          } catch {
-            // ignore sync errors; we'll still attempt the redirect below
+          } catch {}
+          return; // client + server both set; proceed to redirect
+        }
+
+        // 2) Else, fetch the server session and mirror it into the client
+  const res = await fetch('/api/auth/session', { cache: 'no-store' });
+        if (res.ok) {
+          const body = await res.json();
+          const server = body.session as { access_token?: string; refresh_token?: string } | null;
+          if (server?.access_token && server?.refresh_token) {
+            try {
+              await supabaseClient.auth.setSession({ access_token: server.access_token, refresh_token: server.refresh_token });
+            } catch {}
           }
         }
+  // Touch the session endpoint again to ensure cookies are set for subsequent SSR fetches
+  try { await fetch('/api/auth/session', { cache: 'no-store' }); } catch {}
       } finally {
         // Always proceed to the target to avoid getting stuck on /auth/finalize
         const target = new URL(redirect, window.location.origin);

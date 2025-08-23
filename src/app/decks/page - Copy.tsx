@@ -43,7 +43,7 @@ export default function DecksPage() {
             type="search"
             placeholder="Search your decks... (Coming Soon)"
             disabled
-            className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-200 bg-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#1f8fff] focus:border-transparent transition-shadow shadow-sm"
+            className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-200 bg-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#1f8fff] focus:border-transparent transition-shadow shadow-sm cursor-default"
           />
           <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
             <svg

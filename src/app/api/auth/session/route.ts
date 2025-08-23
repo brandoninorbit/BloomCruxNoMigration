@@ -14,7 +14,9 @@ export async function GET() {
         },
         setAll(cookiesToSet) {
           for (const c of cookiesToSet) {
-            store.set({ name: c.name, value: c.value, ...(c.options ?? {}) });
+            const dev = process.env.NODE_ENV !== 'production';
+            const opts = { ...(c.options ?? {}), secure: !dev };
+            store.set({ name: c.name, value: c.value, ...opts });
           }
         },
       },

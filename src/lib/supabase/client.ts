@@ -7,8 +7,9 @@ export function createClient() {
   return createBrowserClient(url, key, {
     auth: {
       persistSession: true,
-      autoRefreshToken: false,
-      detectSessionInUrl: true,
+  autoRefreshToken: false,
+  // Avoid client-side code exchange; server handles it
+  detectSessionInUrl: false,
       storageKey: 'bloomcrux.supabase.auth',
     },
   });

@@ -189,6 +189,8 @@ export default function DashboardClient() {
   const [userTokens, setUserTokens] = useState<number>(0);
   const [commanderXpTotal, setCommanderXpTotal] = useState<number>(0);
   const [attemptsHistory, setAttemptsHistory] = useState<Array<{ at: string; acc: number }>>([]);
+  const [explainerOpen, setExplainerOpen] = useState<{ deckId: number; level: BloomLevel } | null>(null);
+  const [explainerData, setExplainerData] = useState<{ rows: Array<{ at: string; mode?: string | null; acc: number; seen: number; correct: number }>; note?: string } | null>(null);
 
   // Load real mastery when logged in and not showing example
   useEffect(() => {
@@ -199,22 +201,23 @@ export default function DashboardClient() {
         return;
       }
       try {
-        const supabase = getSupabaseClient();
-        // Fetch user's decks, mastery, quest xp, and recent attempts (last 30 days) in parallel
-        const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const supabase = getSupabaseClient();
+  // Fetch user's decks, quest xp, and recent attempts (last 90 days) in parallel
+  const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
   const [{ data: decks }, { data: mastery }, { data: quest }, { data: attempts }] = await Promise.all([
           supabase.from("decks").select("id, title").order("created_at", { ascending: false }),
-          supabase
-            .from("user_deck_bloom_mastery")
-            .select("deck_id, bloom_level, mastery_pct")
-            .order("updated_at", { ascending: false }),
+    // Keep mastery in case we need a fallback for decks with zero attempts in window
+    supabase
+      .from("user_deck_bloom_mastery")
+      .select("deck_id, bloom_level, mastery_pct")
+      .order("updated_at", { ascending: false }),
           supabase
             .from("user_deck_quest_progress")
             .select("deck_id, xp")
             .order("updated_at", { ascending: false }),
           supabase
             .from("user_deck_mission_attempts")
-            .select("deck_id, bloom_level, score_pct, cards_seen, cards_correct, ended_at")
+            .select("deck_id, bloom_level, score_pct, cards_seen, cards_correct, ended_at, mode, breakdown")
             .gte("ended_at", cutoff)
             .order("ended_at", { ascending: false }),
         ]);
@@ -239,29 +242,34 @@ export default function DashboardClient() {
         });
 
   const masteryRows = (mastery ?? []) as MasteryRow[];
-  masteryRows.forEach((row) => {
-          const deckId = String(row.deck_id);
-          const level = String(row.bloom_level) as BloomLevel;
-          const pct = Number(row.mastery_pct ?? 0);
-          if (!byDeck[deckId]) return; // skip unrelated rows
-          // Store as correct/total with total=100 so UI math yields pct
-          byDeck[deckId].bloomMastery[level] = { correct: Math.max(0, Math.min(100, pct)), total: 100 };
-        });
 
         // Aggregate attempts for the window: sum of cards_correct and cards_seen per deck/bloom
-        type AttemptRow = { deck_id: number; bloom_level: BloomLevel | string | null; score_pct: number | null; cards_seen: number | null; cards_correct: number | null; ended_at?: string | null };
+        type AttemptRow = { deck_id: number; bloom_level: BloomLevel | string | null; score_pct: number | null; cards_seen: number | null; cards_correct: number | null; ended_at?: string | null; mode?: string | null; breakdown?: Record<string, { scorePct: number; cardsSeen: number; cardsCorrect: number }> | null };
         const attRows = (attempts ?? []) as AttemptRow[];
         const hist: Array<{ at: string; acc: number }> = [];
         for (const r of attRows) {
           const deckId = String(r.deck_id);
-          const lvl = String(r.bloom_level ?? "Remember") as BloomLevel;
-          if (byDeck[deckId]) {
-            const cur = (byDeck[deckId].bloomAttempts ?? {}) as NonNullable<DeckProgress["bloomAttempts"]>;
-            const prev = cur[lvl] ?? { correct: 0, total: 0 };
-            const c = Number(r.cards_correct ?? 0);
-            const t = Number(r.cards_seen ?? 0);
-            cur[lvl] = { correct: prev.correct + c, total: prev.total + t };
-            byDeck[deckId].bloomAttempts = cur;
+          const cur = byDeck[deckId] ? ((byDeck[deckId].bloomAttempts ?? {}) as NonNullable<DeckProgress["bloomAttempts"]>) : null;
+          // If breakdown present, split contributions per bloom; else attribute to row.bloom_level
+          const b = r.breakdown && typeof r.breakdown === 'object' ? (r.breakdown as Record<string, { scorePct: number; cardsSeen: number; cardsCorrect: number }>) : null;
+          if (cur) {
+            if (b) {
+              for (const key of Object.keys(b)) {
+                const lvl = String(key) as BloomLevel;
+                const part = b[key]!;
+                const prev = cur[lvl] ?? { correct: 0, total: 0 };
+                const cc = Math.max(0, Number(part.cardsCorrect ?? 0));
+                const tt = Math.max(0, Number(part.cardsSeen ?? 0));
+                cur[lvl] = { correct: prev.correct + cc, total: prev.total + tt };
+              }
+            } else {
+              const lvl = String(r.bloom_level ?? "Remember") as BloomLevel;
+              const prev = cur[lvl] ?? { correct: 0, total: 0 };
+              const c = Number(r.cards_correct ?? 0);
+              const t = Number(r.cards_seen ?? 0);
+              cur[lvl] = { correct: prev.correct + c, total: prev.total + t };
+            }
+            byDeck[deckId]!.bloomAttempts = cur;
           }
           const t = Math.max(0, Number(r.cards_seen ?? 0));
           const c = Math.max(0, Number(r.cards_correct ?? 0));
@@ -272,6 +280,19 @@ export default function DashboardClient() {
         // sort ascending by time for chart
         hist.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
         setAttemptsHistory(hist);
+
+        // Display mastery from persisted mastery table; attempts remain as history for the explainer.
+        const masteryRowsForDecks = (mastery ?? []) as MasteryRow[];
+        Object.values(byDeck).forEach((deck) => {
+          const stored = masteryRowsForDecks.filter((row) => String(row.deck_id) === deck.deckId);
+          const m: NonNullable<DeckProgress["bloomMastery"]> = {};
+          for (const row of stored) {
+            const lvl = String(row.bloom_level) as BloomLevel;
+            const pct = Number(row.mastery_pct ?? 0);
+            m[lvl] = { correct: Math.max(0, Math.min(100, pct)), total: 100 };
+          }
+          deck.bloomMastery = m;
+        });
 
         // Compute deck-level isMastered by averaging available blooms
         Object.values(byDeck).forEach((deck) => {
@@ -345,7 +366,7 @@ export default function DashboardClient() {
     <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="max-w-4xl mx-auto">
         <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold text-gray-900">
+          <h1 className="text-3xl font-extrabold text-gray-900">
             Commander Debriefing
           </h1>
           <button
@@ -582,9 +603,43 @@ export default function DashboardClient() {
                             )}
                           </div>
 
-                          <span className="text-sm font-medium text-gray-600 ml-3">
+                          <button
+                            type="button"
+                            className="text-sm font-medium text-blue-600 ml-3 hover:underline"
+                            title="How is this mastery calculated?"
+                            onClick={async () => {
+                              try {
+                                setExplainerOpen({ deckId: Number(deck.deckId), level });
+                                const sb = getSupabaseClient();
+                                const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+                                // Fetch attempts for this deck over 90 days (quest + non-quest), parse breakdown per bloom
+                                const { data: attempts } = await sb
+                                  .from("user_deck_mission_attempts")
+                                  .select("bloom_level, score_pct, cards_seen, cards_correct, ended_at, mode, breakdown")
+                                  .eq("deck_id", Number(deck.deckId))
+                                  .gte("ended_at", cutoff)
+                                  .order("ended_at", { ascending: false })
+                                  .limit(50);
+                                const rows: Array<{ at: string; mode?: string | null; acc: number; seen: number; correct: number }> = [];
+                                const lvl = level as string;
+                                for (const r of (attempts ?? []) as Array<{ bloom_level?: string | null; score_pct?: number | null; cards_seen?: number | null; cards_correct?: number | null; ended_at?: string | null; mode?: string | null; breakdown?: Record<string, { scorePct?: number; cardsSeen?: number; cardsCorrect?: number }> | null }>) {
+                                  const ended = r.ended_at ?? new Date().toISOString();
+                                  if (r.breakdown && typeof r.breakdown === 'object' && r.breakdown[lvl]) {
+                                    const b = r.breakdown[lvl]!;
+                                    rows.push({ at: ended, mode: r.mode ?? null, acc: Number(b.scorePct ?? 0), seen: Number(b.cardsSeen ?? 0), correct: Number(b.cardsCorrect ?? 0) });
+                                  } else if ((r.bloom_level ?? '') === lvl) {
+                                    const acc = Number(r.score_pct ?? 0);
+                                    rows.push({ at: ended, mode: r.mode ?? null, acc, seen: Number(r.cards_seen ?? 0), correct: Number(r.cards_correct ?? 0) });
+                                  }
+                                }
+                                setExplainerData({ rows });
+                              } catch {
+                                setExplainerData({ rows: [], note: 'Could not load attempts. Ensure you are logged in and have recent activity.' });
+                              }
+                            }}
+                          >
                             {formatPercent1(percentage)}
-                          </span>
+                          </button>
                         </div>
                       );
                     })}
@@ -642,11 +697,7 @@ export default function DashboardClient() {
                 </CollapsibleContent>
               </Collapsible>
             ))}
-            <div className="text-center py-4">
-              <p className="text-sm text-gray-500 font-mono">
-                -- Agent Classified --
-              </p>
-            </div>
+            
           </div>
         </section>
 
@@ -698,6 +749,47 @@ export default function DashboardClient() {
             </div>
           </DialogContent>
         </Dialog>
+      {/* Mastery explainer dialog */}
+      <Dialog open={!!explainerOpen} onOpenChange={(open) => { if (!open) { setExplainerOpen(null); setExplainerData(null); } }}>
+      <DialogContent className="bg-white max-w-xl">
+        <DialogHeader>
+          <DialogTitle>How this mastery is computed</DialogTitle>
+          <DialogDescription>
+            Mastery = 0.6 × Retention + 0.3 × Correctness EWMA + 0.1 × Coverage
+          </DialogDescription>
+        </DialogHeader>
+        <div className="text-sm text-gray-700 space-y-3">
+          <div>
+            <div className="font-medium">Recent attempts for this Bloom</div>
+            <div className="mt-1 rounded border border-gray-200 bg-gray-50 max-h-56 overflow-auto">
+              {(explainerData?.rows ?? []).length === 0 ? (
+                <div className="p-3 text-gray-500">No recent attempts found for this Bloom.</div>
+              ) : (
+                <ul className="divide-y divide-gray-200">
+                    {(explainerData?.rows ?? []).map((r, i) => (
+                    <li key={i} className="px-3 py-2 flex items-center justify-between">
+                      <div>
+                        <div className="text-xs text-gray-500">{new Date(r.at).toLocaleString()} · {r.mode ?? 'quest'}</div>
+                        <div className="text-sm">Accuracy {r.acc.toFixed(1)}% · {r.correct} / {r.seen}</div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+          {explainerData?.note && <div className="text-xs text-red-600">{explainerData.note}</div>}
+          <div className="text-xs text-gray-600">
+            Notes:
+            <ul className="list-disc list-inside space-y-1">
+              <li>Correctness EWMA updates with your most recent mission(s) for this Bloom.</li>
+              <li>Retention and Coverage come from per-card SRS stats in this deck/Bloom.</li>
+              <li>If you expect an attempt to appear but don’t see it, verify it in user_deck_mission_attempts.</li>
+            </ul>
+          </div>
+        </div>
+      </DialogContent>
+      </Dialog>
       </div>
     </main>
   );

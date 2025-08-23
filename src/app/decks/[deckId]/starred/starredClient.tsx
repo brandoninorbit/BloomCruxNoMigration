@@ -23,6 +23,8 @@ export default function StarredClient({ deckId }: { deckId: number }) {
   const [done, setDone] = useState(false);
   const [correctSum, setCorrectSum] = useState(0);
   const trackAnswer = useMasteryTracker();
+  const perBloomRef = useRef<Record<DeckBloomLevel, { seen: number; correctFloat: number }>>({ Remember: { seen: 0, correctFloat: 0 }, Understand: { seen: 0, correctFloat: 0 }, Apply: { seen: 0, correctFloat: 0 }, Analyze: { seen: 0, correctFloat: 0 }, Evaluate: { seen: 0, correctFloat: 0 }, Create: { seen: 0, correctFloat: 0 } });
+  const startedIsoRef = useRef<string>(new Date().toISOString());
 
   // Load starred ids then cards
   useEffect(() => {
@@ -59,11 +61,21 @@ export default function StarredClient({ deckId }: { deckId: number }) {
     try {
       const val = typeof payload.correctness === "number" ? payload.correctness : (typeof payload.correct === "boolean" ? (payload.correct ? 1 : 0) : 0);
       setCorrectSum((s) => s + (Number.isFinite(val) ? val : 0));
+      // accumulate per-bloom
+      const key = Bloom[payload.bloom] as unknown as DeckBloomLevel | undefined;
+      if (key) {
+        const map = perBloomRef.current;
+        const cur = map[key] ?? { seen: 0, correctFloat: 0 };
+        cur.seen += 1;
+        cur.correctFloat += (Number.isFinite(val) ? val : 0);
+        map[key] = cur;
+        perBloomRef.current = map;
+      }
     } catch {}
     return trackAnswer(payload).catch(() => {});
   }
 
-  // redirect to mission-complete when done
+  // redirect to mission-complete when done; also record an attempt row with per-bloom breakdown
   useEffect(() => {
     if (!done) return;
     const total = Math.max(0, order.length);
@@ -81,8 +93,49 @@ export default function StarredClient({ deckId }: { deckId: number }) {
         body: JSON.stringify({ deckId, mode: "starred", correct: Math.round(correct), total, percent: Math.round(pct * 10) / 10 }),
       }).catch(() => {});
     } catch {}
-    router.replace(`/decks/${deckId}/mission-complete?${q.toString()}`);
-  }, [done, order.length, correctSum, deckId, router]);
+    // Record mission attempt to update history and mastery per-bloom
+    (async () => {
+      try {
+        const map = perBloomRef.current;
+        const breakdown: Record<string, { scorePct: number; cardsSeen: number; cardsCorrect: number }> = {};
+        (Object.keys(map) as DeckBloomLevel[]).forEach((lvl) => {
+          const seen = Math.max(0, Number(map[lvl]?.seen ?? 0));
+          const correctFloat = Math.max(0, Number(map[lvl]?.correctFloat ?? 0));
+          if (seen > 0) {
+            const pctLvl = Math.max(0, Math.min(100, (correctFloat / seen) * 100));
+            breakdown[lvl] = { scorePct: Math.round(pctLvl * 10) / 10, cardsSeen: seen, cardsCorrect: Math.round(correctFloat) };
+          }
+        });
+        // Attribute to the first card's bloom if available, else Remember
+        let attributed: DeckBloomLevel = "Remember" as DeckBloomLevel;
+        try {
+          const firstId = order[0];
+          if (typeof firstId === 'number' && cards) {
+            const c = cards.find((x) => x.id === firstId);
+            if (c) {
+              const eff = toBloom(c.bloomLevel as DeckBloomLevel | undefined, c.type);
+              attributed = eff;
+            }
+          }
+        } catch {}
+        await fetch(`/api/quest/${deckId}/complete`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            mode: "starred",
+            bloom_level: attributed,
+            score_pct: Math.round(pct * 10) / 10,
+            cards_seen: total,
+            cards_correct: Math.round(correct),
+            started_at: startedIsoRef.current,
+            ended_at: new Date().toISOString(),
+            breakdown,
+          }),
+        }).catch(() => {});
+      } catch {}
+      router.replace(`/decks/${deckId}/mission-complete?${q.toString()}`);
+    })();
+  }, [done, order.length, correctSum, deckId, router, cards, order]);
 
   const total = order.length;
   const remaining = Math.max(0, total - idx);

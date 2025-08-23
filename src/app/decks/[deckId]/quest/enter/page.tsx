@@ -143,7 +143,7 @@ export default async function QuestEnterPage({ params }: { params: Promise<{ dec
                 aria-disabled={!li.unlocked}
               >
                 <div className="text-left">
-                  <div className="font-semibold" style={{ color }}>{li.level}</div>
+                  <div className="font-extrabold" style={{ color }}>{li.level}</div>
                   <div className="text-sm text-slate-600">
                     {comingSoon
                       ? "Coming soon"

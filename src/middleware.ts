@@ -31,8 +31,10 @@ export async function middleware(req: NextRequest) {
         },
         setAll(cookiesToSet) {
           for (const c of cookiesToSet) {
+            const dev = process.env.NODE_ENV !== 'production';
+            const opts = { ...(c.options ?? {}), secure: !dev };
             // NextResponse cookies API accepts name, value, and options
-            res.cookies.set({ name: c.name, value: c.value, ...(c.options ?? {}) });
+            res.cookies.set({ name: c.name, value: c.value, ...opts });
           }
         },
       },

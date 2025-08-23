@@ -3,6 +3,7 @@ import { getSupabaseSession } from "@/lib/supabase/session";
 import { recordMissionAttempt, unlockNextBloomLevel, updateQuestProgressOnComplete } from "@/server/progression/quest";
 import { updateBloomMastery } from "@/server/mastery/updateBloomMastery";
 import type { DeckBloomLevel } from "@/types/deck-cards";
+import { BLOOM_LEVELS } from "@/types/card-catalog";
 import { supabaseAdmin } from "@/lib/supabase/server";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ deckId: string }> }) {
@@ -19,6 +20,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dec
   const cards_correct = Number(body?.cards_correct ?? 0);
   const started_at = typeof body?.started_at === "string" ? body.started_at : null;
   const ended_at = typeof body?.ended_at === "string" ? body.ended_at : null;
+  const mode = typeof body?.mode === 'string' ? (body.mode as 'quest'|'remix'|'drill'|'study'|'starred') : undefined;
+  const breakdown = typeof body?.breakdown === 'object' && body.breakdown ? (body.breakdown as Record<string, { scorePct: number; cardsSeen: number; cardsCorrect: number }>) : undefined;
   if (!bloom_level || Number.isNaN(score_pct)) return NextResponse.json({ error: "invalid payload" }, { status: 400 });
 
   // Insert attempt
@@ -39,24 +42,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dec
   const attempt = await recordMissionAttempt({
     userId: session.user.id,
     deckId,
-  bloomLevel: bloom_level,
+    bloomLevel: bloom_level,
     scorePct: score_pct,
     cardsSeen: cards_seen,
     cardsCorrect: cards_correct,
     startedAt: started_at,
     endedAt: ended_at,
     contentVersion,
+    mode,
+    breakdown,
   });
   if (!attempt.ok) return NextResponse.json({ error: attempt.error }, { status: 500 });
 
-  // Unlock next on single pass (>=65)
-  if (score_pct >= 65) {
-  await unlockNextBloomLevel(session.user.id, deckId, bloom_level);
+  // Unlock next on single pass (>=65) only for quest missions
+  if ((mode ?? 'quest') === 'quest' && score_pct >= 65) {
+    await unlockNextBloomLevel(session.user.id, deckId, bloom_level);
   }
 
   // Update per_bloom aggregates for counters and averages
   try {
-    await updateQuestProgressOnComplete({ userId: session.user.id, deckId, level: bloom_level, scorePct: score_pct, cardsSeen: cards_seen });
+    if ((mode ?? 'quest') === 'quest') {
+      await updateQuestProgressOnComplete({ userId: session.user.id, deckId, level: bloom_level, scorePct: score_pct, cardsSeen: cards_seen });
+    }
   } catch {}
 
   // Adjust updatedSinceLastRun and add lastCompletion snapshot; never relock missionUnlocked
@@ -68,7 +75,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dec
       .eq("user_id", session.user.id)
       .eq("deck_id", deckId)
       .maybeSingle();
-    if (row?.per_bloom) {
+  if (row?.per_bloom && (mode ?? 'quest') === 'quest') {
       type PB = Partial<{ updatedSinceLastRun: number; missionUnlocked: boolean; cleared: boolean; accuracyCount: number; lastCompletion: { percent: number; timestamp: string; attempts: number } }>;
       const per = row.per_bloom as Record<string, PB>;
       const cur = (per[bloom_level] ?? {}) as PB;
@@ -88,7 +95,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dec
 
   // Update mastery aggregates (EWMA + retention + coverage)
   try {
-  await updateBloomMastery({ userId: session.user.id, deckId, bloomLevel: bloom_level, lastScorePct: score_pct });
+    if (breakdown && typeof breakdown === 'object') {
+      // Update each bloom present in the breakdown
+      for (const key of Object.keys(breakdown)) {
+        if ((BLOOM_LEVELS as string[]).includes(key)) {
+          const lvl = key as DeckBloomLevel;
+          const part = breakdown[key]! as { scorePct: number; cardsSeen?: number };
+          const pct = Number(part?.scorePct ?? NaN);
+          const seen = Number(part?.cardsSeen ?? 0);
+          if (!Number.isNaN(pct) && seen > 0) {
+            await updateBloomMastery({ userId: session.user.id, deckId, bloomLevel: lvl, lastScorePct: Math.max(0, Math.min(100, pct)) });
+          }
+        }
+      }
+    } else {
+      // Fallback: update the attributed bloom only, but ignore 0-card attempts
+      if (cards_seen > 0) {
+        await updateBloomMastery({ userId: session.user.id, deckId, bloomLevel: bloom_level, lastScorePct: score_pct });
+      }
+    }
   } catch {}
 
   return NextResponse.json({ ok: true, attemptId: attempt.attemptId, unlocked: score_pct >= 65 });

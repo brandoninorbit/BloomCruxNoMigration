@@ -10,7 +10,8 @@ export function getSupabaseClient() {
       {
         auth: {
           persistSession: true,
-          detectSessionInUrl: true,
+          // Avoid client-side code exchange; server does it in /auth/callback
+          detectSessionInUrl: false,
           storageKey: 'bloomcrux.supabase.auth',
           autoRefreshToken: false, // Prevent "Already Used" refresh token errors
         }
