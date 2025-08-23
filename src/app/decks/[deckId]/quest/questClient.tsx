@@ -8,6 +8,7 @@ import { BLOOM_LEVELS, BLOOM_COLOR_HEX, defaultBloomFor as defaultBloomForTypeCa
 import { startMission, resumeMission, recordAnswer, computePass, initUserBloomProgress, composeMission, initXpLedger } from "@/lib/quest/engine";
 import { updateCardMastery } from "@/lib/mastery";
 import type { ReviewOutcome, CardMastery } from "@/types/mastery";
+import { createDefaultSRSState } from "@/lib/srs";
 import { Bloom } from "@/lib/bloom";
 import type { MissionState, SRSPerformance, UserBloomProgress, MissionComposition } from "@/lib/quest/types";
 // import { DEFAULT_QUEST_SETTINGS } from "@/lib/quest/types";
@@ -114,7 +115,7 @@ export default function QuestClient({ deckId }: { deckId: number }) {
   // helper: default state for a new card
   const freshState = useCallback((cardId: string, bloom: Bloom): CardMastery => ({
     cardId, bloom,
-    srs: { ef: 2.5, reps: 0, intervalDays: 0, nextDueIso: new Date().toISOString(), history: [] },
+    srs: createDefaultSRSState(),
     spacing: { spacedShortOk: false, spacedLongOk: false, consecutiveSpacedSuccesses: 0 },
     accuracy: { k: 6, ptr: -1, outcomes: [] },
     confidence: { ewma: 0.5, lambda: 0.6 },

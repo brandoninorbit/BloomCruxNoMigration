@@ -1,6 +1,6 @@
 import { test, expect } from "vitest";
 import { normalizeCorrectness } from "@/types/mastery";
-import { gradeFromOutcome } from "@/lib/srs";
+import { gradeFromOutcome, createDefaultSRSState } from "@/lib/srs";
 import { updateCardMastery } from "@/lib/mastery";
 import { Bloom } from "@/lib/bloom";
 import type { CardMastery, ReviewOutcome } from "@/types/mastery";
@@ -9,7 +9,7 @@ import type { CardMastery, ReviewOutcome } from "@/types/mastery";
 const freshCard = (cardId = "1"): CardMastery => ({
   cardId,
   bloom: Bloom.Remember,
-  srs: { ef: 2.5, reps: 0, intervalDays: 0, nextDueIso: new Date().toISOString(), history: [] },
+  srs: createDefaultSRSState(),
   spacing: { spacedShortOk: false, spacedLongOk: false, consecutiveSpacedSuccesses: 0 },
   accuracy: { k: 5, ptr: -1, outcomes: [] as (0|1)[] },
   confidence: { ewma: 0, lambda: 0.6 },

@@ -22,6 +22,13 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogDescription,
+  DialogHeader,
+} from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { cn, formatPercent1 } from "@/lib/utils";
 import AgentCard from "./AgentCard";
@@ -332,6 +339,8 @@ export default function DashboardClient() {
     return { reviewed: totalReviewed, masteredDecks };
   }, [progressToDisplay]);
 
+  const [smaOpen, setSmaOpen] = useState(false);
+
   return (
     <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="max-w-4xl mx-auto">
@@ -596,7 +605,10 @@ export default function DashboardClient() {
                     })}
                   </div>
                   {/* Per-deck 30-day trend chart: X=attempt index, Y=score_pct, blue raw + green SMA(5) */}
-                  <div className="mt-4">
+                  <div className="mt-4 relative">
+                    <div className="absolute right-0 -top-8">
+                      <button onClick={() => setSmaOpen(true)} className="px-3 py-1 rounded-full bg-gray-100 text-sm text-gray-700 border border-gray-200 hover:bg-gray-200">What is SMA?</button>
+                    </div>
                     <DeckProgressChart deckId={Number(deck.deckId)} height={150} />
                   </div>
                   {/* Gentle banner if any non-Create mastery < 80 after updates (non-punitive) */}
@@ -639,16 +651,53 @@ export default function DashboardClient() {
         </section>
 
         <section>
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">
-            Progress Over Time
-          </h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-2xl font-bold text-gray-900">
+              Progress Over Time
+            </h2>
+            {/* Fallback visible help button so "What is SMA?" is reachable on all layouts */}
+            <div className="ml-4">
+              <button
+                onClick={() => setSmaOpen(true)}
+                className="inline-flex items-center px-3 py-1 rounded-full bg-gray-100 text-sm text-gray-700 border border-gray-200 hover:bg-gray-200"
+                aria-label="What is SMA? Open help"
+              >
+                What is SMA?
+              </button>
+            </div>
+          </div>
           <p className="text-gray-600 mb-6">
             Your last 30 days of mission accuracy. Values are floats; axis labels show percent.
           </p>
-          <div className="bg-white p-6 rounded-2xl shadow-sm h-64">
+          <div className="bg-white p-6 rounded-2xl shadow-sm h-64 relative">
+            <div className="absolute right-4 top-4">
+              <button onClick={() => setSmaOpen(true)} className="px-3 py-1 rounded-full bg-gray-100 text-sm text-gray-700 border border-gray-200 hover:bg-gray-200">What is SMA?</button>
+            </div>
             <DashboardProgressChart showSMAOnly={true} />
           </div>
         </section>
+        <Dialog open={smaOpen} onOpenChange={setSmaOpen}>
+          <DialogContent className="bg-white">
+            <DialogHeader>
+              <DialogTitle>What is SMA?</DialogTitle>
+              <DialogDescription>
+                SMA (Simple Moving Average) smooths recent mission accuracy to highlight trends over time.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="mt-2 space-y-3 text-sm text-gray-700">
+              <p>
+                We plot your raw accuracy and a short-window SMA to make direction-of-change easier to see.
+              </p>
+              <div>
+                <p className="font-semibold mb-1">When to look at which</p>
+                <ul className="list-disc list-inside space-y-2">
+                  <li><strong>Blue (Accuracy):</strong> “How did I do on that specific run?”</li>
+                  <li><strong>Green (SMA):</strong> “Am I generally getting better or worse lately?” (It lags a little by design.)</li>
+                </ul>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </main>
   );

@@ -3,6 +3,7 @@
 import { getSupabaseClient } from "@/lib/supabase/browserClient";
 import { updateCardMastery } from "@/lib/mastery";
 import type { CardMastery, ReviewOutcome } from "@/types/mastery";
+import { createDefaultSRSState } from "@/lib/srs";
 import { Bloom } from "@/lib/bloom";
 import { loadUserCardState, upsertUserCardState } from "@/lib/masteryRepo";
 
@@ -12,7 +13,7 @@ function defaultCardMastery(cardId: number | string, bloom: Bloom): CardMastery 
   return {
     cardId: String(cardId),
     bloom,
-    srs: { ef: 2.5, reps: 0, intervalDays: 0, nextDueIso: now, history: [] },
+    srs: createDefaultSRSState(),
     spacing: { spacedShortOk: false, spacedLongOk: false, consecutiveSpacedSuccesses: 0 },
     accuracy: { k: 6, ptr: -1, outcomes: [] },
     confidence: { ewma: 0.5, lambda: 0.6 },

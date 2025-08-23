@@ -17,7 +17,6 @@ type Props = {
   blanks: BlankSpec[];
   wordBank?: string[];
   explanation?: string;
-  selfCheck?: boolean;
   submitLabel?: string;
   onAnswer: (result: { perBlank: Record<string | number, boolean>; allCorrect: boolean; filledText: string; mode: "auto"; responseMs?: number; confidence?: 0|1|2|3; guessed?: boolean }) => void;
   onContinue?: () => void;
@@ -114,7 +113,7 @@ function BlankSlot({
   );
 }
 
-export default function FillBlankStudy({ stem, blanks, wordBank, explanation, selfCheck: _selfCheck, submitLabel = "Submit answer", onAnswer, onContinue }: Props) {
+export default function FillBlankStudy({ stem, blanks, wordBank, explanation, submitLabel = "Submit answer", onAnswer, onContinue }: Props) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const [placements, setPlacements] = useState<Record<string | number, string>>({});
   const [bank, setBank] = useState<string[]>(() => [...(wordBank ?? [])]);
@@ -125,17 +124,21 @@ export default function FillBlankStudy({ stem, blanks, wordBank, explanation, se
   const [guessed, setGuessed] = useState(false);
   const startRef = React.useRef<number>(Date.now());
 
-  const bankKey = bank.join(",");
+  // Keys to detect content changes from props
+  const propBankKey = useMemo(() => (wordBank ?? []).join(","), [wordBank]);
   const blanksKey = useMemo(() => JSON.stringify(blanks), [blanks]);
   useEffect(() => {
-    // Reset check state when content actually changes
+    // Reset all transient state whenever the card content changes
     setChecked(false);
     setPerBlank({});
     setShowCorrect(false);
-  setConfidence(undefined);
-  setGuessed(false);
-  startRef.current = Date.now();
-  }, [stem, blanksKey, bankKey]);
+    setConfidence(undefined);
+    setGuessed(false);
+    setPlacements({});
+    // Replace bank from incoming props so we don't leak the prior card's tokens
+    setBank([...(wordBank ?? [])]);
+    startRef.current = Date.now();
+  }, [stem, blanksKey, propBankKey, wordBank]);
 
   // Support legacy __n__ markers by normalizing them to [[n]]
   const normalizedStem = useMemo(() => stem.replace(/__(\d+)__/g, "[[$1]]"), [stem]);

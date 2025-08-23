@@ -1,18 +1,9 @@
 import { Bloom } from "@/lib/bloom";
+// Import types from srs.ts to use as canonical versions
+import type { ReviewOutcome, SRSState } from "@/lib/srs";
 
-export type ReviewOutcome = {
-  /**
-   * New: numeric correctness in [0,1]. Use for multi-part cards (fraction correct).
-   * Deprecated: keep `correct` for legacy boolean-only callers.
-   */
-  correctness?: number;
-  correct?: boolean; // deprecated, kept for backward compatibility
-  responseMs?: number;       // optional latency signal
-  confidence?: 0 | 1 | 2 | 3; // 0=low, 3=high; optional metacognition
-  guessed?: boolean;         // optional UX flag if user marked a guess
-  cardType?: string;         // for Apply+ diversity checks
-  nowIso?: string;           // overrideable 'now' for tests
-};
+// Re-export for convenience
+export type { ReviewOutcome, SRSState };
 
 // Helper: normalize correctness from number|boolean|undefined -> 0..1
 export function normalizeCorrectness(x: number | boolean | undefined): number {
@@ -24,15 +15,6 @@ export function normalizeCorrectness(x: number | boolean | undefined): number {
   }
   return 0;
 }
-
-export type SRSState = {
-  // SM-2 style
-  ef: number;              // easiness factor (default 2.5)
-  reps: number;            // consecutive successful reviews
-  intervalDays: number;    // last assigned interval
-  nextDueIso: string;      // ISO timestamp next review due
-  history: Array<{ ts: string; grade: number }>;
-};
 
 export type SpacingEvidence = {
   spacedShortOk: boolean;  // success after gap >= T_b/2

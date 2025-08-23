@@ -1018,7 +1018,6 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
                         blanks={blanks}
                         wordBank={wordBank}
                         explanation={studying.explanation}
-                        selfCheck={true}
                         submitLabel="Submit answer"
                         onAnswer={(res) => {
                           setFibResult(res);
