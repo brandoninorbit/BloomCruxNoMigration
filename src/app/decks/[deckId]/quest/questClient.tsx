@@ -523,6 +523,15 @@ export default function QuestClient({ deckId }: { deckId: number }) {
             params.set("pct", String(Math.round(summary.percent * 10) / 10));
             params.set("total", String(summary.total));
             params.set("correct", String(summary.correct));
+
+            // Fire-and-forget finalize to mint XP/tokens for Quest as well
+            try {
+              void fetch(`/api/economy/finalize`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ deckId, mode: "quest", correct: Math.round(summary.correct), total: summary.total, percent: Math.round(summary.percent * 10) / 10 }),
+              }).catch(() => {});
+            } catch {}
           }
           router.push(`/decks/${deckId}/mission-complete?${params.toString()}`);
         } catch {}

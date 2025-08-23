@@ -11,7 +11,6 @@ const links = [
   { href: '/about', label: 'About' },
   { href: '/decks', label: 'Decks' },
   { href: '/dashboard', label: 'Dashboard' },
-  { href: '/shop', label: 'Shop' },
 ];
 
 export default function Nav() {
@@ -23,7 +22,7 @@ export default function Nav() {
         {/* Brand with logo */}
   <Link href="/" className="font-valid font-bold tracking-tight text-2xl md:text-3xl">
           <span className="inline-flex items-center gap-2">
-            <Image src="/logo.svg" alt="BloomCrux logo" width={24} height={24} priority />
+            <Image src="/logo.svg" alt="BloomCrux logo" width={24} height={24} priority className="size-18" />
             <span>BloomCrux</span>
           </span>
         </Link>
@@ -37,8 +36,8 @@ export default function Nav() {
                 key={l.href}
                 href={l.href}
                 className={cn(
-      'rounded-lg px-3 py-2 transition-colors',
-      isActive ? 'text-slate-950 text-xl' : 'text-lg text-slate-600 hover:text-slate-900'
+                  "px-3 py-2 rounded transition-colors",
+                  isActive ? "bg-primary text-primary-foreground" : "hover:bg-muted"
                 )}
               >
                 {l.label}

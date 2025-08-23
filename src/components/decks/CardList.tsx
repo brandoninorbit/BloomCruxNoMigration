@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import * as starsRepo from "@/lib/starsRepo";
 import type { DeckCard, DeckBloomLevel, DeckMCQMeta, DeckShortMeta, DeckFillMeta, DeckFillMetaV3, DeckSortingMeta, DeckSequencingMeta, DeckCompareContrastMeta, DeckTwoTierMCQMeta, DeckCERMeta, DeckShortAnswer, DeckStandardMCQ, DeckFillBlank, DeckSorting, DeckCompareContrast, DeckTwoTierMCQ, DeckCER, DeckCERPart } from "@/types/deck-cards";
 import AddCardModal from "@/components/decks/AddCardModal";
 import Modal from "@/components/ui/Modal";
@@ -22,6 +23,32 @@ export type CardListProps = {
 
 export default function CardList({ cards, onEdit, onDelete, onContinue }: CardListProps) {
   const items = useMemo(() => cards, [cards]);
+  const deckId = items[0]?.deckId;
+  const [starred, setStarred] = useState<Record<number, boolean>>({});
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      if (!deckId) return;
+      try {
+        const ids = await starsRepo.listStarredIds(deckId);
+        if (!alive) return;
+        const map: Record<number, boolean> = {};
+        for (const id of ids) map[id] = true;
+        setStarred(map);
+      } catch {}
+    })();
+    return () => { alive = false; };
+  }, [deckId]);
+
+  async function toggleStar(cardId: number, deckId: number) {
+    const next = !starred[cardId];
+    setStarred((m) => ({ ...m, [cardId]: next }));
+    try { await starsRepo.setStar(cardId, deckId, next); } catch {
+      // revert on failure
+      setStarred((m) => ({ ...m, [cardId]: !next }));
+    }
+  }
   const [editing, setEditing] = useState<DeckCard | null>(null);
   const [studying, setStudying] = useState<DeckCard | null>(null);
   // MCQ modal interaction state
@@ -941,8 +968,8 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
 
               {/* Right: actions */}
               <div className="flex items-center gap-2">
-                <IconButton label="Star" onClick={() => { /* TODO: persist star */ }}>
-                  <StarIcon />
+                <IconButton label="Star" onClick={() => toggleStar(card.id, card.deckId)}>
+                  <StarIcon filled={Boolean(starred[card.id])} />
                 </IconButton>
                 <IconButton label="View" onClick={() => setStudying(card)}>
                   <EyeIcon />
@@ -1288,10 +1315,10 @@ function IconButton({ label, onClick, children, danger }: { label: string; onCli
   );
 }
 
-function StarIcon() {
+function StarIcon({ filled }: { filled?: boolean }) {
   return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
-      <path d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.11a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.57a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.845.61l-4.725-2.885a.563.563 0 00-.586 0L6.258 20.506a.562.562 0 01-.845-.61l1.285-5.385a.563.563 0 00-.182-.557l-4.204-3.57a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345l2.125-5.11z" />
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="h-5 w-5" fill={filled ? "#eab308" : "none"} stroke="currentColor" strokeWidth={filled ? 0 : 2}>
+      <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
     </svg>
   );
 }

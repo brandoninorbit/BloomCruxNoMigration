@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { formatPercent1 } from "@/lib/utils";
 import { useParams, useSearchParams } from "next/navigation";
 import AgentCard from "@/components/AgentCard";
+import { commanderLevel as commanderLevelCalc } from "@/lib/xp";
 import { getSupabaseClient } from "@/lib/supabase/browserClient";
 import type { DeckBloomLevel } from "@/types/deck-cards";
 import { BLOOM_LEVELS } from "@/types/card-catalog";
@@ -19,6 +20,7 @@ type MissionSummary = {
   answered: number;
   xpEarned: number;
   tokensEarned: number;
+  tokensBalance?: number;
   commanderLevel: number;
   user: { name: string; avatarUrl?: string | null } | null;
   nextHref?: string | null;
@@ -56,7 +58,7 @@ function LeftAgentCard({ deckId }: { deckId: number | null }) {
         <AgentCard
           displayName={summary?.user?.name || "Agent"}
           level={summary?.commanderLevel ?? 1}
-          tokens={Math.max(0, Math.round(summary?.tokensEarned ?? 0))}
+          tokens={Math.max(0, Math.round(summary?.tokensBalance ?? 0))}
           avatarUrl={summary?.user?.avatarUrl}
           className="h-full aspect-auto lg:max-w-none"
         />
@@ -252,15 +254,31 @@ async function loadSummary(deckId: number, modeParam: string | null, hints?: { u
   const pctFromParam = hints?.pctParam ? Number(hints.pctParam) : NaN;
   if (!Number.isNaN(pctFromParam)) accuracyPercent = Math.max(0, Math.min(100, Math.round(pctFromParam * 10) / 10));
 
-  const commanderXpTotal = (progJson && typeof progJson.xp?.commanderXpTotal === "number") ? progJson.xp.commanderXpTotal : 0;
-  const commanderLevel = 1 + Math.floor(commanderXpTotal / 100);
-  const tokensEarned = xpEarned;
+  // If we didn't find xp events (new mode or race), fallback XP ~= correct answers for this mission
+  if (!(apiSummary?.found) && xpEarned <= 0 && typeof correctOut === "number" && correctOut >= 0) {
+    xpEarned = Math.max(0, Math.round(correctOut));
+  }
+
+  // Fetch wallet for commander XP + tokens; fall back to quest aggregates
+  let walletCommanderXp = 0;
+  let walletTokens = 0;
+  try {
+    const wallet = await fetch(`/api/economy/wallet`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    if (wallet) {
+      walletCommanderXp = Number(wallet.commander_xp ?? 0);
+      walletTokens = Number(wallet.tokens ?? 0);
+    }
+  } catch {}
+  const commanderXpTotal = walletCommanderXp || (progJson && typeof progJson.xp?.commanderXpTotal === "number" ? progJson.xp.commanderXpTotal : 0);
+  const commanderLevel = commanderLevelCalc(commanderXpTotal).level;
+  // tokensEarned shows this-mission tokens; minted at 0.25 per XP
+  const tokensEarned = Math.max(0, Math.round(xpEarned * 0.25));
 
   const displayName = (user?.user_metadata?.full_name as string | undefined) || user?.email?.split("@")[0] || "Agent";
   const avatarUrl = (user?.user_metadata?.avatar_url as string | undefined) || (user?.user_metadata?.picture as string | undefined) || null;
 
   let modeLabel = "Quest";
-  if (modeParam) modeLabel = modeParam === "topics" ? "Topic Trek" : modeParam === "timed" ? "Timed Drill" : modeParam === "boost" ? "Boost" : "Quest";
+  if (modeParam) modeLabel = modeParam === "topics" ? "Topic Trek" : modeParam === "timed" ? "Timed Drill" : modeParam === "boost" ? "Boost" : modeParam === "remix" ? "Random Remix" : modeParam === "starred" ? "Starred" : "Quest";
 
   // Compute the next mission href using the same logic as quest enter unlocks
   let nextHref: string | null = null;
@@ -326,7 +344,8 @@ async function loadSummary(deckId: number, modeParam: string | null, hints?: { u
   total: totalOut,
     answered,
     xpEarned,
-    tokensEarned,
+  tokensEarned,
+  tokensBalance: walletTokens,
     commanderLevel,
   user: user ? { name: displayName, avatarUrl } : null,
   nextHref,

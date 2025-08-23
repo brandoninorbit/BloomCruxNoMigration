@@ -1,0 +1,38 @@
+{
+    "piny.project_settings": {
+        "open-pages": [
+            "pinyfakepage.html"
+        ],
+        "app-routes": {
+            "routes": [
+                "/",
+                "/_app",
+                "/about",
+                "/account/security",
+                "/auth/debug",
+                "/auth/finalize",
+                "/dashboard",
+                "/decks",
+                "/decks/106464/study",
+                "/dev/agent-card",
+                "/dev/csv-test",
+                "/dev/mission-complete",
+                "/dev/reset-quest",
+                "/docs/csv-import",
+                "/folders/new",
+                "/login",
+                "/progress",
+                "/shop"
+            ],
+            "current_route": "/dashboard"
+        },
+        "tw-external-config": {
+            "external_source_url": "tailwind.config.ts"
+        },
+        "source-folders": [
+            "src"
+        ],
+        "preview-url": "http://localhost:3000",
+        "ai-project-brief": null
+    }
+}

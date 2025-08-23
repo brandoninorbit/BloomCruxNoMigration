@@ -10,23 +10,16 @@ export default async function HomePage() {
     <main className="flex flex-col items-center justify-center min-h-[60vh] p-8">
       <h1 className="text-5xl font-bold mb-4 text-center">BloomCrux</h1>
       <p className="text-lg mb-8 text-center max-w-xl text-gray-700">
-        The simplest way for students of any major to create, organize, and study flashcard decks. No coding required—just start learning!
+        This page will be finished soon, go to decks!
       </p>
       <div className="flex gap-4">
         <Link
           href="/decks"
-          className="bg-blue-600 text-white px-6 py-3 rounded shadow hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400"
+          className="bg-blue-600 text-white px-6 py-3 rounded shadow hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 -left-1 -left-2 -inset-2 border-none"
         >
           Go to Decks
         </Link>
-        <a
-          href="https://github.com/brandoninorbit/BloomCruxGit"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="bg-gray-100 text-gray-800 px-6 py-3 rounded shadow hover:bg-gray-200 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-400"
-        >
-          View Code
-        </a>
+        
       </div>
     </main>
   );

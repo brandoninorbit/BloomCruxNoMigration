@@ -1,4 +1,5 @@
 import AuthProvider from '@/app/providers/AuthProvider';
+import Script from 'next/script';
 import './globals.css';
 import type { Metadata } from 'next';
 import { Inter, League_Spartan, Plus_Jakarta_Sans } from 'next/font/google';
@@ -40,6 +41,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Nav />
           {children}
         </AuthProvider>
+        {process.env.NODE_ENV === 'development' && process.env.PINY_VISUAL_SELECT === 'true' && (
+          <Script src={'/_piny/piny.phone.js'} strategy="beforeInteractive" />
+        )}
       </body>
     </html>
   );

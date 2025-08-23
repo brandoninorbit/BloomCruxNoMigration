@@ -36,6 +36,8 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import DashboardProgressChart from "@/components/DashboardProgressChart";
+import Image from "next/image";
+import { commanderLevel as commanderLevelCalc } from "@/lib/xp";
 import DeckProgressChart from "@/components/decks/DeckProgressChart";
 
 // Helper component for Progress Ring
@@ -178,6 +180,7 @@ export default function DashboardClient() {
   const [showExample, setShowExample] = useState(!user);
   const [realDecks, setRealDecks] = useState<DeckProgress[]>([]);
   const [userTokens, setUserTokens] = useState<number>(0);
+  const [commanderXpTotal, setCommanderXpTotal] = useState<number>(0);
   const [attemptsHistory, setAttemptsHistory] = useState<Array<{ at: string; acc: number }>>([]);
 
   // Load real mastery when logged in and not showing example
@@ -274,15 +277,16 @@ export default function DashboardClient() {
 
         setRealDecks(Object.values(byDeck));
 
-        // Sum commander XP total across decks as tokens (1:1 for now)
-        const xpRows = (quest ?? []) as Array<{ deck_id: number; xp: unknown }>;
-        let tokens = 0;
-        for (const r of xpRows) {
-          const ledger = (r.xp ?? {}) as { commanderXpTotal?: number };
-          const val = Number(ledger.commanderXpTotal ?? 0);
-          if (!Number.isNaN(val)) tokens += val * 0.25; // tokens = 0.25 * commander XP
-        }
-        setUserTokens(Math.max(0, Math.round(tokens)));
+        // Load wallet tokens and commander XP from server API
+        try {
+          const wallet = await fetch(`/api/economy/wallet`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+          if (wallet) {
+            const tokens = Math.max(0, Number(wallet.tokens ?? 0));
+            const cxp = Math.max(0, Number(wallet.commander_xp ?? 0));
+            setUserTokens(Math.round(tokens));
+            setCommanderXpTotal(cxp);
+          }
+        } catch {}
       } catch (err) {
         // Silent fail to avoid blocking dashboard
         setRealDecks([]);
@@ -298,11 +302,11 @@ export default function DashboardClient() {
     () => (showExample ? MOCK_DECK_PROGRESS : realDecks),
     [showExample, realDecks]
   );
-  const globalProgress = useMemo<GlobalProgress>(
-    () =>
-      showExample ? MOCK_GLOBAL_PROGRESS : { level: 1, xp: 0, xpToNext: 100 },
-    [showExample]
-  );
+  const globalProgress = useMemo<GlobalProgress>(() => {
+    if (showExample) return MOCK_GLOBAL_PROGRESS;
+    const lvl = commanderLevelCalc(commanderXpTotal);
+    return { level: lvl.level, xp: lvl.xpIntoLevel, xpToNext: lvl.xpToNext };
+  }, [showExample, commanderXpTotal]);
   // Derive simple tokens from commander XP total (1:1) for now
   const userSettings = useMemo<UserSettings>(
     () => (showExample ? MOCK_SETTINGS : { displayName: 'Agent', tokens: userTokens }),
@@ -557,7 +561,7 @@ export default function DashboardClient() {
                             {percentage >= 80 && (
                               <>
                                 <div className="absolute left-0 -top-4 transition-transform duration-200 transform group-hover:scale-125" aria-hidden style={{ transform: 'translateX(-50%)' }}>
-                                  <img src="/icons/GoldMedal.svg" alt="Mastered" className="w-7 h-7" />
+                                  <Image src="/icons/GoldMedal.svg" alt="Mastered" width={28} height={28} />
                                 </div>
                                 <span
                                   className="absolute left-8 -top-1 opacity-0 group-hover:opacity-100 transform transition-all duration-200 rounded-full px-2 py-0.5 text-xs font-semibold text-white shadow-sm"

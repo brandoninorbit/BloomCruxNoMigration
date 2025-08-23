@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { ClipboardList, FileText, Timer, Target, Compass, Shuffle, Star, GraduationCap } from "lucide-react";
-import { gradientForBloom, BLOOM_COLOR_HEX, BLOOM_LEVELS } from "@/types/card-catalog";
+import { BLOOM_COLOR_HEX, BLOOM_LEVELS } from "@/types/card-catalog";
 import type { DeckBloomLevel } from "@/types/deck-cards";
 import QuestModalLauncher from "@/components/QuestModalLauncher";
 import { supabaseAdmin } from "@/lib/supabase/server";
@@ -59,15 +59,7 @@ export default async function StudyPage({ params }: { params: Promise<{ deckId: 
     displayIndex = Math.min(i + 1, capIndex);
     if (displayIndex === capIndex) break;
   }
-  const goalLevel: DeckBloomLevel = levels[displayIndex] ?? ("Remember" as DeckBloomLevel);
-  const goalPercent = Math.max(0, Math.min(100, Math.round(Number(mastery[goalLevel] ?? 0))));
-  const priorIndex = Math.max(0, displayIndex - 1);
-  const priorLevel: DeckBloomLevel | null = displayIndex > 0 ? levels[priorIndex] : null;
-  const priorPercent = priorLevel ? Math.max(0, Math.min(100, Math.round(Number(mastery[priorLevel] ?? 0)))) : 0;
-  const goalGrad = gradientForBloom(goalLevel);
-  const priorGrad = priorLevel ? gradientForBloom(priorLevel) : undefined;
-  const goalColor = BLOOM_COLOR_HEX[goalLevel] ?? "#4DA6FF";
-  const priorColor = priorLevel ? BLOOM_COLOR_HEX[priorLevel] ?? "#9CA3AF" : "#9CA3AF";
+  // Unused computed values were removed to satisfy typecheck.
 
   return (
     <main className="container mx-auto px-4 py-8">
@@ -109,7 +101,7 @@ export default async function StudyPage({ params }: { params: Promise<{ deckId: 
       {/* Study mode tiles: Quest + other modes (Timed Drill, Topic Trek, Target Practice, Random, Starred, Level Up) */}
       <div className="grid justify-center gap-8 [grid-template-columns:repeat(auto-fit,_minmax(18rem,_18rem))]">
         {/* Quest (modal) */}
-        <div className="bg-white rounded-xl shadow-lg p-6 aspect-square flex flex-col hover:transform hover:-translate-y-1 transition-transform duration-300">
+        <div className="bg-white rounded-xl shadow-lg p-6 aspect-square flex flex-col hover:transform hover:-translate-y-1 transition-transform duration-300 p-5 p-4.5 p-4">
           <div className="flex items-center mb-4">
             <FileText className="text-blue-600 h-6 w-6 mr-3" />
             <h3 className="text-xl font-semibold text-gray-800">Operation: Quest</h3>
@@ -152,10 +144,10 @@ export default async function StudyPage({ params }: { params: Promise<{ deckId: 
         <div className="bg-white rounded-xl shadow-lg p-6 aspect-square flex flex-col hover:transform hover:-translate-y-1 transition-transform duration-300">
           <div className="flex items-center mb-4">
             <Shuffle className="text-blue-600 h-6 w-6 mr-3" />
-            <h3 className="text-xl font-semibold text-gray-800">Random Practice</h3>
+            <h3 className="text-xl font-semibold text-gray-800">Random Remix</h3>
           </div>
-          <p className="text-gray-500 mb-6 line-clamp-4">A randomized selection to keep your recall sharp across the deck.</p>
-          <a href={`/decks/${id}/quest?mode=random`} className="mt-auto w-full text-center bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700">Start Random</a>
+          <p className="text-gray-500 mb-6 line-clamp-4">Shuffle the deck with your custom mix of levels and types.</p>
+          <a href={`/decks/${id}/remix/enter`} className="mt-auto w-full text-center bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700">Start Random</a>
         </div>
 
         {/* Starred */}
@@ -165,7 +157,7 @@ export default async function StudyPage({ params }: { params: Promise<{ deckId: 
             <h3 className="text-xl font-semibold text-gray-800">Starred</h3>
           </div>
           <p className="text-gray-500 mb-6 line-clamp-4">Focus on cards you&apos;ve starred for targeted review.</p>
-          <a href={`/decks/${id}/quest?mode=starred`} className="mt-auto w-full text-center bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700">Study Starred</a>
+          <a href={`/decks/${id}/starred`} className="mt-auto w-full text-center bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700">Study Starred</a>
         </div>
 
         {/* Level Up */}
