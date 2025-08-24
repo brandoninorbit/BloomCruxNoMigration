@@ -303,6 +303,53 @@
 			"type": "shell",
 			"command": "npm run -s build",
 			"group": "build"
+		},
+		{
+			"label": "Run unit tests",
+			"type": "shell",
+			"command": "npm run -s test"
+		},
+		{
+			"label": "Build Next.js project",
+			"type": "shell",
+			"command": "npm run -s build",
+			"group": "build"
+		},
+		{
+			"label": "Build Next.js project",
+			"type": "shell",
+			"command": "npm run -s build",
+			"group": "build"
+		},
+		{
+			"label": "Build Next.js project",
+			"type": "shell",
+			"command": "npm run -s build",
+			"group": "build"
+		},
+		{
+			"label": "Build Next.js project",
+			"type": "shell",
+			"command": "npm run -s build",
+			"group": "build"
+		},
+		{
+			"label": "Build Next.js project",
+			"type": "shell",
+			"command": "npm run -s build",
+			"group": "build"
+		},
+		{
+			"label": "Build Next.js project",
+			"type": "shell",
+			"command": "npm run -s build",
+			"group": "build"
+		},
+		{
+			"label": "Build Next.js project",
+			"type": "shell",
+			"command": "npm run -s build",
+			"group": "build"
 		}
 	]
 }

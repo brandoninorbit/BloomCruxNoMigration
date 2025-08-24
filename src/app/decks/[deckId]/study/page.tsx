@@ -167,24 +167,11 @@ export default async function StudyPage({ params }: { params: Promise<{ deckId: 
             <h3 className="text-xl font-semibold text-gray-800">Level Up</h3>
           </div>
           <p className="text-gray-500 mb-6 line-clamp-4">Practice optimally to level up faster and earn tokens.</p>
-          <a href={`/decks/${id}/quest?mode=levelup`} className="mt-auto w-full text-center bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700">Start Level Up</a>
+          <a href={`/decks/${id}/levelup/enter`} className="mt-auto w-full text-center bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700">Start Level Up</a>
         </div>
       </div>
 
-      {/* Debug panel: raw mastery rows and computed map used for the progress bar */}
-      <details className="mt-8 border rounded p-3 bg-slate-50">
-        <summary className="cursor-pointer text-sm text-slate-700">Debug: Bloom mastery rows + computed map</summary>
-        <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div>
-            <div className="text-xs text-slate-600 mb-1">Rows from user_deck_bloom_mastery</div>
-            <pre className="text-xs whitespace-pre-wrap bg-white border rounded p-2">{JSON.stringify(masteryRows, null, 2)}</pre>
-          </div>
-          <div>
-            <div className="text-xs text-slate-600 mb-1">Computed mastery map</div>
-            <pre className="text-xs whitespace-pre-wrap bg-white border rounded p-2">{JSON.stringify(mastery, null, 2)}</pre>
-          </div>
-        </div>
-      </details>
+  {/* Debug panel removed per request */}
     </main>
   );
 }

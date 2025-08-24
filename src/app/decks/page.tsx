@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 
 import { getSupabaseClient } from "@/lib/supabase/browserClient";
+import GradientBackgroundWrapper from "@/components/GradientBackgroundWrapper";
 const supabase = getSupabaseClient();
 
 /* ---------- Types ---------- */
@@ -467,7 +468,8 @@ function DecksPage() {
   /* ---------- UI ---------- */
 
   return (
-    <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <GradientBackgroundWrapper>
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* accents */}
       <div
         aria-hidden
@@ -480,7 +482,7 @@ function DecksPage() {
 
       <div aria-hidden className="pointer-events-none fixed bottom-0 right-0 -z-10 w-1/2 h-1/2 bg-gradient-to-tr from-cyan-50 to-blue-100 opacity-20 blur-3xl" />
 
-      <div className="max-w-4xl mx-auto">
+  <div className="max-w-4xl mx-auto">
         <h2 className="text-3xl font-bold text-[#111418] mb-2">
           {(() => {
             if (!user) return "Welcome Back, Agent";
@@ -867,7 +869,8 @@ function DecksPage() {
           </Dialog>
         </section>
       </div>
-    </main>
+      </div>
+    </GradientBackgroundWrapper>
   );
 }
 

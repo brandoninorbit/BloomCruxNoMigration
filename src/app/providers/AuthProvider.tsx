@@ -4,6 +4,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { getSupabaseClient } from '@/lib/supabase/browserClient';
 import type { User, Session } from '@supabase/supabase-js';
+import { repairClientSession } from '@/lib/supabase/repair';
 
 interface AuthContextType {
   user: User | null;
@@ -41,7 +42,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
           setSession(body.session ?? null);
           setUser(body.user ?? null);
         }
-  } catch {
+      } catch {
         // Swallow auth errors and allow UI to proceed; we'll also listen below
       } finally {
         setLoading(false);
@@ -56,34 +57,30 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
         setSession(session);
         setUser(session?.user ?? null);
         if (!session) {
-          // Proactively pull server session to hydrate client view if client is empty
-          try {
-            const res = await fetch('/api/auth/session', { cache: 'no-store' });
-            if (res.ok) {
-              const body = await res.json();
-              setSession(body.session ?? null);
-              setUser(body.user ?? null);
-            }
-          } catch {}
+          // Attempt to repair client from server cookies when tokens are missing/invalid
+          const rep = await repairClientSession();
+          if (rep.ok) {
+            try {
+              const { data } = await supabase.auth.getSession();
+              setSession(data.session ?? null);
+              setUser(data.session?.user ?? null);
+            } catch {}
+          } else {
+            try {
+              const res = await fetch('/api/auth/session', { cache: 'no-store' });
+              if (res.ok) {
+                const body = await res.json();
+                setSession(body.session ?? null);
+                setUser(body.user ?? null);
+              }
+            } catch {}
+          }
         }
       } catch (e) {
-        // If Supabase throws an Invalid Refresh Token error, purge local tokens and fall back to server session
+        // If Supabase throws an Invalid Refresh Token error, purge and repair
         const msg = (e && typeof e === 'object' && 'message' in e) ? String((e as { message?: string }).message) : String(e);
-        if (/Invalid Refresh Token/i.test(msg) || /Already Used/i.test(msg)) {
-          try {
-            // Clear local storage tokens to avoid loops
-            const keys: string[] = [];
-            for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k) keys.push(k); }
-            keys.forEach((k) => { if (k.includes('supabase') || k.startsWith('sb-') || k.includes('bloomcrux.supabase.auth')) { try { localStorage.removeItem(k); } catch {} } });
-          } catch {}
-          try {
-            const res = await fetch('/api/auth/session', { cache: 'no-store' });
-            if (res.ok) {
-              const body = await res.json();
-              setSession(body.session ?? null);
-              setUser(body.user ?? null);
-            }
-          } catch {}
+        if (/Invalid Refresh Token/i.test(msg) || /Already Used/i.test(msg) || /Refresh Token Not Found/i.test(msg)) {
+          try { await repairClientSession(); } catch {}
         }
       } finally {
         setLoading(false);
@@ -99,7 +96,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       window.addEventListener('auth:logout', onForcedLogout as EventListener);
     }
 
-  return () => {
+    return () => {
       subscription.unsubscribe();
       if (typeof window !== 'undefined') {
         window.removeEventListener('auth:logout', onForcedLogout as EventListener);

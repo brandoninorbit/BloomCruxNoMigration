@@ -6,9 +6,9 @@ import { useParams, useSearchParams } from "next/navigation";
 import AgentCard from "@/components/AgentCard";
 import { commanderLevel as commanderLevelCalc } from "@/lib/xp";
 import { getSupabaseClient } from "@/lib/supabase/browserClient";
-import type { DeckBloomLevel } from "@/types/deck-cards";
 import { BLOOM_LEVELS } from "@/types/card-catalog";
 import { DEFAULT_QUEST_SETTINGS } from "@/lib/quest/types";
+import type { DeckBloomLevel } from "@/types/deck-cards";
 
 type MissionSummary = {
   deckId: number | null;
@@ -49,14 +49,66 @@ export default function MissionCompleteProdPage() {
   );
 }
 
+function LevelUpMasteryResult({ deckId, level }: { deckId: number | null; level: DeckBloomLevel }) {
+  const sp = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+  const startHint = sp?.get("startMastery");
+  const [startPct, setStartPct] = useState<number | null>(startHint ? Math.max(0, Math.min(100, Math.round(Number(startHint)))) : null);
+  const [postPct, setPostPct] = useState<number | null>(null);
+  useEffect(() => {
+    let ignore = false;
+    (async () => {
+      if (deckId === null) return;
+      try {
+  const res = await fetch(`/api/decks/${deckId}/mastery`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  if (ignore) return;
+  const mastery = (res?.mastery ?? {}) as Partial<Record<DeckBloomLevel, number>>;
+  const after = Number(mastery?.[level] ?? NaN);
+        const nextPost = Number.isFinite(after) ? Math.max(0, Math.min(100, Math.round(after))) : null;
+        setPostPct(nextPost);
+        if (startPct === null && nextPost !== null) setStartPct(nextPost);
+      } catch {}
+    })();
+    return () => { ignore = true; };
+  }, [deckId, level, startPct]);
+
+  const pctStart = Math.max(0, Math.round(startPct ?? 0));
+  const pctNew = Math.max(0, Math.round(postPct ?? startPct ?? 0));
+  const grew = pctNew > pctStart;
+  const delta = pctNew - pctStart;
+  return (
+    <div className="mb-6">
+      <div className="mb-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-900 px-4 py-3 text-sm">
+        {`Bloom ${level} mastery ${grew ? "increased" : "updated"} to ${pctNew}%${Number.isFinite(delta) && delta !== 0 ? ` (${delta > 0 ? "+" : ""}${delta}%)` : ""}.`}
+      </div>
+      <div className="w-full h-3 bg-slate-200 rounded-full overflow-hidden" aria-label="New mastery percent">
+        <div className="h-full rounded-full transition-[width] duration-700" style={{ width: `${pctNew}%`, backgroundColor: "var(--primary-color)" }} />
+      </div>
+    </div>
+  );
+}
+
 function LeftAgentCard({ deckId }: { deckId: number | null }) {
   const [summary, setSummary] = useState<MissionSummary | null>(null);
   useEffect(() => { if (deckId !== null) void loadSummary(deckId, null).then(setSummary); }, [deckId]);
+  const fullName = summary?.user?.name || "Agent";
+  const firstName = useMemo(() => {
+    try {
+      const n = String(fullName);
+      // handle names with spaces or underscores; if email-like, take part before dot/plus
+      if (n.includes(" ")) return n.split(" ")[0] || n;
+      if (n.includes("_")) return n.split("_")[0] || n;
+      if (n.includes("@")) {
+        const local = n.split("@")[0] || n;
+        return (local.split(".")[0] || local.split("+")[0] || local) || n;
+      }
+      return n;
+    } catch { return fullName; }
+  }, [fullName]);
   return (
     <div className="lg:col-span-1 flex justify-center lg:justify-start">
       <div className="w-full h-full">
         <AgentCard
-          displayName={summary?.user?.name || "Agent"}
+          displayName={firstName}
           level={summary?.commanderLevel ?? 1}
           tokens={Math.max(0, Math.round(summary?.tokensBalance ?? 0))}
           avatarUrl={summary?.user?.avatarUrl}
@@ -79,10 +131,10 @@ function MissionPanel({ deckId, mode, unlockedParam, pctParam, levelParam }: { d
 
   return (
     <section className="lg:col-span-2 bg-[var(--secondary-color)]/90 backdrop-blur-sm rounded-xl p-6 md:p-8 shadow-sm border border-slate-200 relative h-full">
-      <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+    <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-widest text-[var(--primary-color)]">Mission Complete</p>
-          <p className="text-[var(--text-secondary)] text-lg">{summary?.modeLabel || "Quest"} — {summary?.deckTitle || "Your Latest Deck"}</p>
+      <p className="text-sm font-semibold uppercase tracking-widest text-[var(--primary-color)]">Mission Complete</p>
+      <p className="text-[var(--text-secondary)] text-lg">{summary?.modeLabel || (typeof summary?.modeLabel === "string" ? summary.modeLabel : "Quest")} — {summary?.deckTitle || "Your Latest Deck"}</p>
         </div>
         <div className="w-full md:w-auto">
           <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={100} aria-label="Mission completion">
@@ -91,7 +143,7 @@ function MissionPanel({ deckId, mode, unlockedParam, pctParam, levelParam }: { d
           <p className="text-xs text-center mt-1 text-[var(--text-secondary)]">100% Complete</p>
         </div>
       </header>
-      <div className="flex flex-col items-center text-center my-8 md:my-12">
+  <div className="flex flex-col items-center text-center my-8 md:my-12">
         <div className="relative w-36 h-36 mb-6">
           <div className="absolute inset-0 rounded-full border-2 border-[var(--primary-color)]/20 animate-rotate-slow" />
           <div className="absolute inset-2 rounded-full border-2 border-[var(--primary-color)]/30 animate-rotate-slow" style={{ animationDirection: "reverse" }} />
@@ -104,8 +156,16 @@ function MissionPanel({ deckId, mode, unlockedParam, pctParam, levelParam }: { d
         <h1 className="text-4xl font-bold">Agent, mission accomplished.</h1>
         <p className="text-lg text-[var(--text-secondary)] mt-2">You have successfully completed your objective.</p>
       </div>
-      {typeof summary?.accuracyPercent === "number" && (
-        (() => {
+      {(() => {
+        // Level Up customization: show mastery increase banner and bar when mode is levelup
+        const mode = (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("mode") : null) || null;
+        const lvlParam = (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("level") : null) as DeckBloomLevel | null;
+        if (mode === "levelup" && lvlParam) {
+          // Fetch mastery delta lazily on client
+          return <LevelUpMasteryResult deckId={deckId} level={lvlParam} />;
+        }
+        // Otherwise keep original pass/fail banners
+        return (typeof summary?.accuracyPercent === "number") ? (() => {
           const pct = Math.max(0, Math.round(summary!.accuracyPercent));
           const pass = summary?.unlocked === true ? true : pct >= DEFAULT_QUEST_SETTINGS.passThreshold;
           const softPass = pass && pct < 75;
@@ -120,8 +180,8 @@ function MissionPanel({ deckId, mode, unlockedParam, pctParam, levelParam }: { d
             </div>
           );
           return null;
-        })()
-      )}
+        })() : null;
+      })()}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         {stats.map(({ k, v, c }) => (
           <div key={k} className="rounded-lg p-4 border text-center shadow-sm" style={{ backgroundColor: `color-mix(in srgb, var(${c}), white 90%)`, borderColor: `color-mix(in srgb, var(${c}), transparent 70%)` }}>
@@ -132,29 +192,48 @@ function MissionPanel({ deckId, mode, unlockedParam, pctParam, levelParam }: { d
       </div>
 
       <div className="flex flex-col sm:flex-row justify-center gap-4">
-        <a
-          href="/decks"
-          className="bg-white text-[var(--text-primary)] border border-slate-300 rounded-lg px-6 py-3 font-semibold text-center hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-300 focus:ring-offset-2 focus:ring-offset-white transition-all duration-200"
-        >
-          Return to HQ
-        </a>
-        <a
-          href={summary?.nextHref || (deckId !== null ? `/decks/${deckId}/quest` : "/decks")}
-          className="bg-[var(--primary-color)] text-white rounded-lg px-6 py-3 font-semibold text-center hover:bg-[var(--accent-color)] focus:outline-none focus:ring-2 focus:ring-[var(--primary-color)] focus:ring-offset-2 focus:ring-offset-white transition-all duration-200 shadow-lg shadow-[var(--primary-color)]/15"
-        >
-          Start Next Mission
-        </a>
+        {(() => {
+          const sp = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+          const mode = sp?.get("mode") || null;
+          const lvl = sp?.get("level") || null;
+          if (mode === "levelup" && lvl && deckId !== null) {
+            return (
+              <>
+                <a
+                  href={`/decks/${deckId}/levelup?level=${encodeURIComponent(lvl)}`}
+                  className="bg-white text-[var(--text-primary)] border border-slate-300 rounded-lg px-6 py-3 font-semibold text-center hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-300 focus:ring-offset-2 focus:ring-offset-white transition-all duration-200"
+                >
+                  Retry
+                </a>
+                <a
+                  href={`/decks/${deckId}/levelup/enter`}
+                  className="bg-[var(--primary-color)] text-white rounded-lg px-6 py-3 font-semibold text-center hover:bg-[var(--accent-color)] focus:outline-none focus:ring-2 focus:ring-[var(--primary-color)] focus:ring-offset-2 focus:ring-offset-white transition-all duration-200 shadow-lg shadow-[var(--primary-color)]/15"
+                >
+                  Choose another level
+                </a>
+              </>
+            );
+          }
+          return (
+            <>
+              <a
+                href="/decks"
+                className="bg-white text-[var(--text-primary)] border border-slate-300 rounded-lg px-6 py-3 font-semibold text-center hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-300 focus:ring-offset-2 focus:ring-offset-white transition-all duration-200"
+              >
+                Return to HQ
+              </a>
+              <a
+                href={summary?.nextHref || (deckId !== null ? `/decks/${deckId}/quest` : "/decks")}
+                className="bg-[var(--primary-color)] text-white rounded-lg px-6 py-3 font-semibold text-center hover:bg-[var(--accent-color)] focus:outline-none focus:ring-2 focus:ring-[var(--primary-color)] focus:ring-offset-2 focus:ring-offset-white transition-all duration-200 shadow-lg shadow-[var(--primary-color)]/15"
+              >
+                Start Next Mission
+              </a>
+            </>
+          );
+        })()}
       </div>
 
-      {/* Tiny debug echo: server per_bloom snapshot */}
-  {(() => { const pb = summary?.perBloomRaw; return Boolean(pb) && typeof pb === "object"; })() && (
-        <details className="mt-6">
-          <summary className="cursor-pointer text-xs text-slate-600">Debug: per_bloom (server snapshot)</summary>
-          <pre className="mt-2 text-[10px] leading-tight p-2 bg-slate-50 border rounded overflow-auto max-h-64 text-slate-700">
-    {JSON.stringify((summary?.perBloomRaw ?? {}) as Record<string, unknown>, null, 2)}
-          </pre>
-        </details>
-      )}
+      
     </section>
   );
 }
@@ -278,7 +357,7 @@ async function loadSummary(deckId: number, modeParam: string | null, hints?: { u
   const avatarUrl = (user?.user_metadata?.avatar_url as string | undefined) || (user?.user_metadata?.picture as string | undefined) || null;
 
   let modeLabel = "Quest";
-  if (modeParam) modeLabel = modeParam === "topics" ? "Topic Trek" : modeParam === "timed" ? "Timed Drill" : modeParam === "boost" ? "Boost" : modeParam === "remix" ? "Random Remix" : modeParam === "starred" ? "Starred" : "Quest";
+  if (modeParam) modeLabel = modeParam === "topics" ? "Topic Trek" : modeParam === "timed" ? "Timed Drill" : modeParam === "boost" ? "Boost" : modeParam === "remix" ? "Random Remix" : modeParam === "starred" ? "Starred" : modeParam === "levelup" ? "Level Up" : "Quest";
 
   // Compute the next mission href using the same logic as quest enter unlocks
   let nextHref: string | null = null;

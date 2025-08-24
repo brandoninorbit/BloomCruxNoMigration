@@ -68,10 +68,31 @@ export async function POST(req: NextRequest) {
     // Upsert wallet totals via RPC to increment
     const { error: e3 } = await sb.rpc("increment_user_economy", { p_user_id: userId, p_tokens_delta: tokensDelta, p_xp_delta: commanderDelta });
     if (e3) return NextResponse.json({ error: e3.message }, { status: 500 });
+
+    // After increment, compute commander_level and persist
+    const { data: row1, error: e4 } = await sb.from("user_economy").select("commander_xp").eq("user_id", userId).maybeSingle();
+    if (!e4) {
+      const totalXp = Number(row1?.commander_xp ?? 0);
+      // Using the same thresholds as client: L2=200, L3=500, 1.5x thereafter
+      const calcLevel = (() => {
+        // inline thresholds
+        const thresholds: number[] = [0];
+        let cost = 200;
+        for (let lvl = 2; lvl <= 100; lvl++) {
+          const rounded = Math.round(cost / 50) * 50;
+          thresholds.push(thresholds[thresholds.length - 1] + rounded);
+          cost = cost * 1.5;
+        }
+        let idx = 0;
+        for (let i = 0; i < thresholds.length; i++) { if (totalXp >= thresholds[i]!) idx = i; else break; }
+        return idx + 1;
+      })();
+      await sb.from("user_economy").update({ commander_level: calcLevel }).eq("user_id", userId);
+    }
   }
 
   // Return wallet
-  const { data: walletRow, error } = await sb.from("user_economy").select("tokens, commander_xp").eq("user_id", userId).maybeSingle();
+  const { data: walletRow, error } = await sb.from("user_economy").select("tokens, commander_xp, commander_level").eq("user_id", userId).maybeSingle();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true, tokens: Number(walletRow?.tokens ?? 0), commander_xp: Number(walletRow?.commander_xp ?? 0) });
+  return NextResponse.json({ ok: true, tokens: Number(walletRow?.tokens ?? 0), commander_xp: Number(walletRow?.commander_xp ?? 0), commander_level: Number(walletRow?.commander_level ?? 1) });
 }

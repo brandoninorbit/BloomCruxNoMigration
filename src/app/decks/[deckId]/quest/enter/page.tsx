@@ -108,15 +108,7 @@ export default async function QuestEnterPage({ params }: { params: Promise<{ dec
         <a href={`/decks/${id}/study`} className="text-sm text-blue-700 hover:underline">Back to Study</a>
       </div>
 
-      {/* Debug: show why each level is unlocked or locked and the raw per_bloom snapshot */}
-      <details className="mb-4 border rounded p-3 bg-slate-50">
-        <summary className="cursor-pointer text-sm text-slate-700">Debug: unlock reasoning + per_bloom</summary>
-        <div className="mt-2 text-xs text-slate-700">
-          <div className="mb-2">Unlock checks use: previous.mastered OR previous.cleared (single pass ≥ {DEFAULT_QUEST_SETTINGS.passThreshold}%) OR (prev missions ≥ 1 AND prev average ≥ {DEFAULT_QUEST_SETTINGS.passThreshold}%).</div>
-          <div className="mb-2 whitespace-pre-wrap">{JSON.stringify({ levels: levels.map((l) => ({ level: l.level, unlocked: l.unlocked, missionsCompleted: l.missionsCompleted, totalMissions: l.totalMissions })), unlockWhy }, null, 2)}</div>
-          <div className="whitespace-pre-wrap">{JSON.stringify(per ?? {}, null, 2)}</div>
-        </div>
-      </details>
+  {/* Debug panel removed per request */}
 
       <div className="space-y-3">
         {levels.map((li, idx) => {

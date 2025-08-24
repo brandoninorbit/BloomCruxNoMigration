@@ -121,7 +121,7 @@ type DeckProgress = {
   bloomAttempts?: Partial<Record<BloomLevel, { correct: number; total: number }>>;
 };
 
-type GlobalProgress = { level: number; xp: number; xpToNext: number };
+type GlobalProgress = { level: number; xpIntoLevel: number; xpForLevel: number; xpToNext: number };
 type UserXpStats = {
   sessionXP: number;
   dailyXP: number;
@@ -137,11 +137,7 @@ type MasteryRow = {
   updated_at?: string;
 };
 
-const MOCK_GLOBAL_PROGRESS: GlobalProgress = {
-  level: 5,
-  xp: 250,
-  xpToNext: 1000,
-};
+const MOCK_GLOBAL_PROGRESS: GlobalProgress = { level: 5, xpIntoLevel: 250, xpForLevel: 1000, xpToNext: 750 };
 const MOCK_SETTINGS: UserSettings = { displayName: "Mock User", tokens: 1250 };
 const MOCK_DECK_PROGRESS: DeckProgress[] = [
   {
@@ -333,7 +329,7 @@ export default function DashboardClient() {
   const globalProgress = useMemo<GlobalProgress>(() => {
     if (showExample) return MOCK_GLOBAL_PROGRESS;
     const lvl = commanderLevelCalc(commanderXpTotal);
-    return { level: lvl.level, xp: lvl.xpIntoLevel, xpToNext: lvl.xpToNext };
+    return { level: lvl.level, xpIntoLevel: lvl.xpIntoLevel, xpForLevel: lvl.xpForLevel, xpToNext: lvl.xpToNext };
   }, [showExample, commanderXpTotal]);
   // Derive simple tokens from commander XP total (1:1) for now
   const userSettings = useMemo<UserSettings>(
@@ -431,18 +427,19 @@ export default function DashboardClient() {
               <div className="flex flex-col justify-center items-center">
                 <div className="flex items-center justify-center space-x-[-3rem]">
                     <div className="relative w-48 h-48">
-                    <ProgressRing
-                        value={globalProgress.xp}
-                        maxValue={globalProgress.xpToNext}
-                        className="text-blue-500"
-                    />
+          <ProgressRing
+            value={globalProgress.xpIntoLevel}
+            maxValue={globalProgress.xpForLevel}
+            className="text-blue-500"
+          />
                     <div className="absolute inset-0 flex flex-col items-center justify-center">
                         <span className="text-2xl font-bold text-gray-900">
-                        {globalProgress.xp}
+            {globalProgress.xpIntoLevel}
                         </span>
                         <span className="text-sm text-gray-500">
-                        / {globalProgress.xpToNext} XP
+            / {globalProgress.xpForLevel} XP
                         </span>
+            <span className="mt-1 text-xs text-gray-400">Remaining: {globalProgress.xpToNext}</span>
                     </div>
                     </div>
                     <div className="flex flex-col items-center">
