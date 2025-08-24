@@ -117,7 +117,7 @@ export default async function StudyPage({ params }: { params: Promise<{ deckId: 
             <h3 className="text-xl font-semibold text-gray-800">Timed Drill</h3>
           </div>
           <p className="text-gray-500 mb-6 line-clamp-4">A high‑pressure test of speed and accuracy to boost recall.</p>
-          <a href={`/decks/${id}/quest?mode=timed`} className="mt-auto w-full text-center bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700">Start Timed Drill</a>
+          <button disabled aria-disabled className="mt-auto w-full text-center bg-gray-100 text-gray-500 py-2 rounded-lg font-medium cursor-not-allowed">Coming soon</button>
         </div>
 
         {/* Topic Trek */}
@@ -127,7 +127,7 @@ export default async function StudyPage({ params }: { params: Promise<{ deckId: 
             <h3 className="text-xl font-semibold text-gray-800">Topic Trek</h3>
           </div>
           <p className="text-gray-500 mb-6 line-clamp-4">Explore specific topics and reinforce targeted concepts.</p>
-          <a href={`/decks/${id}/quest?mode=topics`} className="mt-auto w-full text-center bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700">Start Topic Trek</a>
+          <button disabled aria-disabled className="mt-auto w-full text-center bg-gray-100 text-gray-500 py-2 rounded-lg font-medium cursor-not-allowed">Coming soon</button>
         </div>
 
         {/* Target Practice / Boost */}
@@ -137,7 +137,7 @@ export default async function StudyPage({ params }: { params: Promise<{ deckId: 
             <h3 className="text-xl font-semibold text-gray-800">Target Practice</h3>
           </div>
           <p className="text-gray-500 mb-6 line-clamp-4">Focus on weak cards and shore up trouble spots with concentrated practice.</p>
-          <a href={`/decks/${id}/quest?mode=boost`} className="mt-auto w-full text-center bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700">Start Target Practice</a>
+          <button disabled aria-disabled className="mt-auto w-full text-center bg-gray-100 text-gray-500 py-2 rounded-lg font-medium cursor-not-allowed">Coming soon</button>
         </div>
 
         {/* Random Practice */}

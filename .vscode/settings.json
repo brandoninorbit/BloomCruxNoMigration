@@ -13,6 +13,7 @@
                 "/auth/finalize",
                 "/dashboard",
                 "/decks",
+                "/decks/106351/edit",
                 "/decks/106464/quest/enter",
                 "/decks/106464/study",
                 "/dev/agent-card",

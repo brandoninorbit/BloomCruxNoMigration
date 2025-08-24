@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import AuthStatus from '@/components/AuthStatus'; // ✅ added
+import SettingsSheet from '@/components/settings/SettingsSheet';
 import Image from 'next/image';
 
 const links = [
@@ -46,8 +47,11 @@ export default function Nav() {
           })}
         </div>
 
-        {/* 🔁 Only this right-side auth area changed */}
-        <AuthStatus />
+        {/* Right side: settings gear + auth menu */}
+        <div className="flex items-center gap-3">
+          <SettingsSheet />
+          <AuthStatus />
+        </div>
       </nav>
     </header>
   );
