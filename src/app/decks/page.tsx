@@ -15,6 +15,7 @@ import {
 
 import { getSupabaseClient } from "@/lib/supabase/browserClient";
 import GradientBackgroundWrapper from "@/components/GradientBackgroundWrapper";
+import { SunriseCover } from "@/components/DeckCovers";
 const supabase = getSupabaseClient();
 
 /* ---------- Types ---------- */
@@ -25,6 +26,7 @@ interface Deck {
   tag: string;
   title: string;
   locked: boolean;
+  cover?: string | null;
   mastery: number; // percentage 0-100
   bloomLevel: string; // e.g., "Remember"
   created_at?: string; // ISO timestamp from Supabase
@@ -644,7 +646,7 @@ function DecksPage() {
                 className="group [perspective:1000px] cursor-pointer"
                 onClick={() => (window.location.href = `/decks/${d.id}/edit`)}
               >
-                <div className="relative w-full aspect-[3/4] bg-white rounded-xl shadow-md transition-all duration-500 group-hover:shadow-xl group-hover:-translate-y-2 [transform-style:preserve-3d] group-hover:[transform:rotateY(3deg)]">
+                <div className="relative w-full aspect-[3/4] bg-white rounded-xl shadow-md transition-all duration-500 group-hover:shadow-xl group-hover:-translate-y-2 [transform-style:preserve-3d] group-hover:[transform:rotateY(3deg)] overflow-hidden">
                   {/* Card background */}
                   <div className="absolute inset-0 bg-gray-100 rounded-xl" />
 
@@ -657,10 +659,28 @@ function DecksPage() {
                     </div>
                   )}
 
+                  {/* Card cover (fills and is clipped by parent) */}
+                  {d.cover && (
+                    <div className="absolute inset-0 z-0 pointer-events-none">
+                      {/* Lazy-render known cover components by id; fallback to gray if unknown */}
+                      {/* Currently only 'Sunrise' is available */}
+                      {d.cover === 'Sunrise' ? (
+                        // import dynamically to avoid SSR mismatch; component accepts fill to stretch
+                        <div className="h-full w-full">
+                          <SunriseCover fill className="h-full w-full" />
+                        </div>
+                      ) : (
+                        <div className="h-full w-full bg-gray-100" />
+                      )}
+                    </div>
+                  )}
+
                   {/* Content layout */}
-                  <div className="absolute inset-0 p-4 flex flex-col">
-                    {/* Title at top */}
-                    <div className="text-[15px] font-bold text-[#111418] line-clamp-2 pr-6">{d.title}</div>
+                  <div className="absolute inset-0 p-4 flex flex-col z-10">
+                    {/* Title band at top with backdrop blur for readability */}
+                    <div className="inline-block bg-white/30 backdrop-blur-sm rounded-md px-3 py-1 text-[15px] font-bold text-[#111418] line-clamp-2 pr-6">
+                      {d.title}
+                    </div>
 
                     {/* Bloom mastery pills (top two mastered; lower level on top, highest below); hide if none */}
                     <div className="mt-2">

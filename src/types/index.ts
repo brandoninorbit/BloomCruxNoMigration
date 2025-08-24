@@ -58,6 +58,7 @@ export type Deck = {
   cards?: Card[];
   user_id?: string;
   folder_id?: number | null;
+  cover?: string | null;
   created_at?: string;
   updatedAt?: string;
 };

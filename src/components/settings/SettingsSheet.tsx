@@ -5,9 +5,42 @@ import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Settings as SettingsIcon } from "lucide-react";
+import { SunriseCover } from '@/components/DeckCovers';
+import { supabaseRepo } from '@/lib/repo/supabaseRepo';
 
 export default function SettingsSheet() {
-  const [value, setValue] = React.useState<string>("unlock");
+  const [avatarFrame, setAvatarFrame] = React.useState<string>("unlock");
+  const [value, setValue] = React.useState<string>("");
+  const [sunrisePurchased, setSunrisePurchased] = React.useState<boolean>(false);
+  // loading state intentionally omitted for brevity
+
+  React.useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const def = await supabaseRepo.getUserDefaultCover();
+        const purchased = await supabaseRepo.hasPurchasedCover("Sunrise");
+        if (!mounted) return;
+        // use sentinel for system default because SelectItem requires non-empty value
+        setValue(def ?? '__system_default');
+        setSunrisePurchased(!!purchased);
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
+
+  const onChangeDefault = async (v: string) => {
+    setValue(v);
+    try {
+      const coverId = v === '__system_default' ? null : v;
+      await supabaseRepo.setUserDefaultCover(coverId);
+    } catch {
+      // swallow for now
+    }
+  };
+
   return (
     <Sheet>
       <SheetTrigger asChild>
@@ -36,7 +69,7 @@ export default function SettingsSheet() {
 
               <div className="grid gap-2 max-w-md">
                 <Label htmlFor="avatar-frame">Animated avatar frames</Label>
-                <Select value={value} onValueChange={setValue}>
+                <Select value={avatarFrame} onValueChange={setAvatarFrame}>
                   <SelectTrigger id="avatar-frame" className="w-full">
                     <SelectValue placeholder="Choose a frame" />
                   </SelectTrigger>
@@ -51,6 +84,35 @@ export default function SettingsSheet() {
                 </p>
               </div>
             </section>
+
+                <section className="mb-8">
+                  <h2 className="text-base font-semibold text-slate-800">Deck Covers</h2>
+                  <p className="text-sm text-slate-500">Choose a default deck cover applied to new and existing decks.</p>
+                  <Separator className="my-4" />
+                  <div className="grid gap-2 max-w-md">
+                        <Label htmlFor="deck-cover">Default Deck Cover</Label>
+                        <Select value={value ?? ''} onValueChange={onChangeDefault}>
+                          <SelectTrigger id="deck-cover" className="w-full">
+                            <SelectValue placeholder="System default" />
+                          </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__system_default">System default</SelectItem>
+                            {/* Sunrise only enabled if purchased */}
+                            {sunrisePurchased ? (
+                              <SelectItem value="Sunrise">Sunrise</SelectItem>
+                            ) : (
+                              <SelectItem value="Sunrise" disabled>Sunrise (locked)</SelectItem>
+                            )}
+                          </SelectContent>
+                        </Select>
+                        <div className="mt-2">
+                          {value === 'Sunrise' ? (
+                            <div className="w-72"><SunriseCover /></div>
+                          ) : null}
+                        </div>
+                    <p className="text-xs text-slate-500">Covers unlock with Commander Level and may be purchased in the Token Shop.</p>
+                  </div>
+                </section>
 
             {/* Future settings sections go here */}
           </div>

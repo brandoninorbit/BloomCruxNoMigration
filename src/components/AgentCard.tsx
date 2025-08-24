@@ -68,8 +68,31 @@ export default function AgentCard({
   avatarUrl,
   className,
 }: AgentCardProps) {
-  const nextUnlockLabel = 'Lvl 10';
-  const nextUnlockName = 'Animated Avatar Frames';
+  // Minimal unlock table (extendable)
+  const unlocks: Array<{ name: string; level: number; id: string }> = [
+    { id: 'sunrise', name: 'Sunrise Deck Cover', level: 3 },
+    { id: 'avatarFrames', name: 'Animated Avatar Frames', level: 10 },
+  ];
+
+  // Find the next unlock the user hasn't reached yet
+  const next = unlocks.find((u) => level < u.level) ?? unlocks[unlocks.length - 1];
+  const nextUnlockLabel = `Lvl ${next.level}`;
+  const nextUnlockName = next.name;
+  // Determine if the next unlock is already available (level met)
+  const hasUnlocked = level >= (next.level ?? 999);
+  // For covers, also reflect purchase state in dev (localStorage)
+  let nextStatus = '';
+  try {
+    if (next.id === 'sunrise') {
+      const unlocked = localStorage.getItem('dc:Sunrise:unlocked') === '1' || level >= 3;
+      const purchased = localStorage.getItem('dc:Sunrise:purchased') === '1';
+      nextStatus = unlocked ? (purchased ? 'Purchased' : 'Unlocked — buy in shop') : `Unlocks at L3`;
+    } else {
+      nextStatus = hasUnlocked ? 'Unlocked' : `Unlocks at ${next.level}`;
+    }
+  } catch {
+    nextStatus = hasUnlocked ? 'Unlocked' : `Unlocks at ${next.level}`;
+  }
 
   return (
     <Card
@@ -138,6 +161,7 @@ export default function AgentCard({
             <span className="h-6 w-6"><Shield /></span>
           </div>
           <div className="text-xs text-muted-foreground">{nextUnlockName}</div>
+          <div className="text-xs text-muted-foreground">{nextStatus}</div>
         </div>
       </div>
     </Card>

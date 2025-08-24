@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/ui/use-toast";
 import useDeck from "@/hooks/useDeck";
+import { supabaseRepo } from '@/lib/repo/supabaseRepo';
 import useFolders from "@/hooks/useFolders";
 import AddCardModal from "@/components/decks/AddCardModal";
 import * as cardsRepo from "@/lib/cardsRepo";
@@ -19,6 +20,21 @@ export default function EditDeckForm({ deckId }: Props) {
   const router = useRouter();
   const { toast } = useToast();
   const { deck, setDeck, save, loading, error } = useDeck(deckId);
+
+  const [sunrisePurchased, setSunrisePurchased] = useState<boolean>(false);
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const ok = await supabaseRepo.hasPurchasedCover("Sunrise");
+        if (!mounted) return;
+        setSunrisePurchased(!!ok);
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
 
   const [sourceMsg, setSourceMsg] = useState<string>("");
   const [showInstructions, setShowInstructions] = useState<boolean>(false);
@@ -302,6 +318,19 @@ export default function EditDeckForm({ deckId }: Props) {
   toast({ title: "Deck saved", description: "Deck updated. Mastery bars recalculating." });
   };
 
+  // Typed cover value (fallback to global default in localStorage)
+  const coverValue: string = (() => {
+    if (deck && typeof deck === 'object' && 'cover' in deck) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const c = (deck as any).cover;
+      if (typeof c === 'string') return c;
+    }
+    if (typeof window !== 'undefined') return localStorage.getItem('dc:defaultCover') ?? '';
+    return '';
+  })();
+
+
+
   return (
     <>
       {/* Header row */}
@@ -382,6 +411,20 @@ export default function EditDeckForm({ deckId }: Props) {
                 </option>
               ))}
             </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="deck-cover">Deck Cover</label>
+            <select
+              id="deck-cover"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow"
+              value={coverValue}
+              onChange={(e) => setDeck((prev) => (prev ? { ...prev, cover: e.target.value || null } : prev))}
+            >
+              <option value="">System default</option>
+              {/* Sunrise will show but only be meaningful if purchased */}
+              <option value="Sunrise" disabled={!sunrisePurchased}>Sunrise</option>
+            </select>
+            <p className="text-xs text-gray-500 mt-2">Choose a deck cover (applies as a visual only). Locked covers will appear but cannot be selected in production until purchased.</p>
           </div>
         </div>
       </div>

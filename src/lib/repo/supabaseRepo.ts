@@ -15,7 +15,7 @@ export const supabaseRepo = {
     // Rely on RLS to scope rows to the current session; avoid auth.getUser() on client
     const { data, error } = await supabase
       .from("decks")
-      .select("id, title, description, folder_id, user_id, created_at")
+      .select("id, title, description, folder_id, user_id, created_at, cover")
       .eq("id", id)
       .maybeSingle();
 
@@ -29,6 +29,7 @@ export const supabaseRepo = {
       folder_id: (data?.folder_id as number | null) ?? null,
       user_id: (data?.user_id as string) ?? "",
       created_at: (data?.created_at as string) ?? "",
+      cover: (data?.cover as string | null) ?? null,
   updatedAt: undefined,
       // sources/cards may exist in DB in the future; default to empty for UI safety
       sources: [],
@@ -46,6 +47,7 @@ export const supabaseRepo = {
       title: deck.title ?? "",
       description: deck.description ?? null,
       folder_id: deck.folder_id ?? null,
+      cover: deck.cover ?? null,
     };
 
     const { error } = await supabase
@@ -70,11 +72,11 @@ export const supabaseRepo = {
     const { data, error } = await supabase
       .from("decks")
       .insert([row])
-      .select("id, title, description, folder_id")
+      .select("id, title, description, folder_id, cover")
       .single();
 
     if (error) throw error;
-    return data as { id: number; title: string; description: string; folder_id: number | null };
+  return data as { id: number; title: string; description: string; folder_id: number | null; cover?: string | null };
   },
 
   async listRecentDecks(): Promise<Deck[]> {
@@ -149,5 +151,71 @@ export const supabaseRepo = {
   updatedAt: undefined,
       deckIds: [],
     } satisfies Folder;
+  },
+
+  // Check whether current user has purchased a specific cover
+  async hasPurchasedCover(coverId: string): Promise<boolean> {
+    const supabase = getSupabaseClient();
+    const { data: userData } = await supabase.auth.getUser();
+    const uid = userData?.user?.id;
+    if (!uid) return false;
+
+    const { data, error } = await supabase
+      .from("user_cover_purchases")
+      .select("user_id")
+      .eq("user_id", uid)
+      .eq("cover_id", coverId)
+      .limit(1)
+      .maybeSingle();
+
+    if (error) return false;
+    return !!data;
+  },
+
+  // Record a purchase for the current user (idempotent)
+  async purchaseCover(coverId: string): Promise<void> {
+    const supabase = getSupabaseClient();
+    const { data: userData, error: uerr } = await supabase.auth.getUser();
+    if (uerr || !userData?.user) throw new Error("Not signed in");
+    const uid = userData.user.id;
+
+    // Upsert the purchase row
+    const { error } = await supabase
+      .from("user_cover_purchases")
+      .upsert([{ user_id: uid, cover_id: coverId, purchased_at: new Date().toISOString() }], { onConflict: "user_id,cover_id" });
+
+    if (error) throw error;
+  },
+
+  // Get or null the user's default cover from user_settings
+  async getUserDefaultCover(): Promise<string | null> {
+    const supabase = getSupabaseClient();
+    const { data: userData } = await supabase.auth.getUser();
+    const uid = userData?.user?.id;
+    if (!uid) return null;
+
+    const { data, error } = await supabase
+      .from("user_settings")
+      .select("default_cover")
+      .eq("user_id", uid)
+      .maybeSingle();
+
+    if (error) return null;
+    return (data?.default_cover as string | null) ?? null;
+  },
+
+  // Set the user's default cover in user_settings (insert or update)
+  async setUserDefaultCover(coverId: string | null): Promise<void> {
+    const supabase = getSupabaseClient();
+    const { data: userData, error: uerr } = await supabase.auth.getUser();
+    if (uerr || !userData?.user) throw new Error("Not signed in");
+    const uid = userData.user.id;
+
+    const payload = { user_id: uid, default_cover: coverId };
+    const { error } = await supabase
+      .from("user_settings")
+      .upsert([payload], { onConflict: "user_id" });
+
+    if (error) throw error;
   },
 };
