@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
-import { getSupabaseSession } from "@/lib/supabase/session";
+import { getSupabaseSession } from "@/app/supabase/session";
 
 // Query string expects bloomLevel and missionIndex
 export async function GET(req: NextRequest, { params }: { params: Promise<{ deckId: string }> }) {

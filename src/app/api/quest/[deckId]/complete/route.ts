@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseSession } from "@/lib/supabase/session";
+import { getSupabaseSession } from "@/app/supabase/session";
 import { recordMissionAttempt, unlockNextBloomLevel, updateQuestProgressOnComplete } from "@/server/progression/quest";
 import { updateBloomMastery } from "@/server/mastery/updateBloomMastery";
 import type { DeckBloomLevel } from "@/types/deck-cards";

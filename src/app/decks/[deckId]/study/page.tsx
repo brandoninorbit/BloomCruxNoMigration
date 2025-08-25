@@ -4,7 +4,7 @@ import { BLOOM_COLOR_HEX, BLOOM_LEVELS } from "@/types/card-catalog";
 import type { DeckBloomLevel } from "@/types/deck-cards";
 import QuestModalLauncher from "@/components/QuestModalLauncher";
 import { supabaseAdmin } from "@/lib/supabase/server";
-import { getSupabaseSession } from "@/lib/supabase/session";
+import { getSupabaseSession } from "@/app/supabase/session";
 
 export const dynamic = "force-dynamic";
 
@@ -65,11 +65,13 @@ export default async function StudyPage({ params }: { params: Promise<{ deckId: 
     <main className="container mx-auto px-4 py-8">
       {/* Agent Briefing */}
       <div className="text-center mb-12">
-        <div className="inline-block bg-blue-100 p-4 rounded-full mb-4">
-          <ClipboardList className="text-blue-600 h-10 w-10" />
+        <div className="inline-flex items-center gap-3 bg-blue-100 px-4 py-3 rounded-[46px] mx-auto">
+          <ClipboardList className="text-blue-600 h-6 w-6" />
+          <h1 className="text-2xl font-bold text-gray-800 leading-tight">Agent Briefing</h1>
         </div>
-        <h1 className="text-4xl font-bold text-gray-800 mb-2">Agent Briefing</h1>
-  <p className="text-gray-500">Agent, your dossier for <span className="font-semibold text-gray-700">{title}</span> is ready. Select your assignment.</p>
+        <p className="mt-3 text-gray-600">
+          Agent, your dossier for <span className="font-semibold text-gray-700">{title}</span> is ready. Select your assignment.
+        </p>
       </div>
 
       {/* Mastery pills (top two mastered; lower level on top, highest below). No pills if nothing mastered. */}
@@ -101,7 +103,7 @@ export default async function StudyPage({ params }: { params: Promise<{ deckId: 
       {/* Study mode tiles: Quest + other modes (Timed Drill, Topic Trek, Target Practice, Random, Starred, Level Up) */}
       <div className="grid justify-center gap-8 [grid-template-columns:repeat(auto-fit,_minmax(18rem,_18rem))]">
         {/* Quest (modal) */}
-        <div className="bg-white rounded-xl shadow-lg p-6 aspect-square flex flex-col hover:transform hover:-translate-y-1 transition-transform duration-300 p-5 p-4.5 p-4">
+        <div className="bg-white rounded-[46px] shadow-lg p-6 aspect-square flex flex-col hover:transform hover:-translate-y-1 transition-transform duration-300 p-5 p-4.5 p-4">
           <div className="flex items-center mb-4">
             <FileText className="text-blue-600 h-6 w-6 mr-3" />
             <h3 className="text-xl font-semibold text-gray-800">Operation: Quest</h3>
@@ -111,63 +113,63 @@ export default async function StudyPage({ params }: { params: Promise<{ deckId: 
         </div>
 
         {/* Timed Drill */}
-        <div className="bg-white rounded-xl shadow-lg p-6 aspect-square flex flex-col hover:transform hover:-translate-y-1 transition-transform duration-300">
+        <div className="bg-white rounded-[46px] shadow-lg p-6 aspect-square flex flex-col hover:transform hover:-translate-y-1 transition-transform duration-300">
           <div className="flex items-center mb-4">
             <Timer className="text-blue-600 h-6 w-6 mr-3" />
             <h3 className="text-xl font-semibold text-gray-800">Timed Drill</h3>
           </div>
           <p className="text-gray-500 mb-6 line-clamp-4">A high‑pressure test of speed and accuracy to boost recall.</p>
-          <button disabled aria-disabled className="mt-auto w-full text-center bg-gray-100 text-gray-500 py-2 rounded-lg font-medium cursor-not-allowed">Coming soon</button>
+          <button disabled aria-disabled className="mt-auto w-full text-center bg-gray-100 text-gray-500 py-2 rounded-[46px] font-medium cursor-not-allowed">Coming soon</button>
         </div>
 
         {/* Topic Trek */}
-        <div className="bg-white rounded-xl shadow-lg p-6 aspect-square flex flex-col hover:transform hover:-translate-y-1 transition-transform duration-300">
+        <div className="bg-white rounded-[46px] shadow-lg p-6 aspect-square flex flex-col hover:transform hover:-translate-y-1 transition-transform duration-300">
           <div className="flex items-center mb-4">
             <Compass className="text-blue-600 h-6 w-6 mr-3" />
             <h3 className="text-xl font-semibold text-gray-800">Topic Trek</h3>
           </div>
           <p className="text-gray-500 mb-6 line-clamp-4">Explore specific topics and reinforce targeted concepts.</p>
-          <button disabled aria-disabled className="mt-auto w-full text-center bg-gray-100 text-gray-500 py-2 rounded-lg font-medium cursor-not-allowed">Coming soon</button>
+          <button disabled aria-disabled className="mt-auto w-full text-center bg-gray-100 text-gray-500 py-2 rounded-[46px] font-medium cursor-not-allowed">Coming soon</button>
         </div>
 
         {/* Target Practice / Boost */}
-        <div className="bg-white rounded-xl shadow-lg p-6 aspect-square flex flex-col hover:transform hover:-translate-y-1 transition-transform duration-300">
+        <div className="bg-white rounded-[46px] shadow-lg p-6 aspect-square flex flex-col hover:transform hover:-translate-y-1 transition-transform duration-300">
           <div className="flex items-center mb-4">
             <Target className="text-blue-600 h-6 w-6 mr-3" />
             <h3 className="text-xl font-semibold text-gray-800">Target Practice</h3>
           </div>
           <p className="text-gray-500 mb-6 line-clamp-4">Focus on weak cards and shore up trouble spots with concentrated practice.</p>
-          <button disabled aria-disabled className="mt-auto w-full text-center bg-gray-100 text-gray-500 py-2 rounded-lg font-medium cursor-not-allowed">Coming soon</button>
+          <button disabled aria-disabled className="mt-auto w-full text-center bg-gray-100 text-gray-500 py-2 rounded-[46px] font-medium cursor-not-allowed">Coming soon</button>
         </div>
 
         {/* Random Practice */}
-        <div className="bg-white rounded-xl shadow-lg p-6 aspect-square flex flex-col hover:transform hover:-translate-y-1 transition-transform duration-300">
+        <div className="bg-white rounded-[46px] shadow-lg p-6 aspect-square flex flex-col hover:transform hover:-translate-y-1 transition-transform duration-300">
           <div className="flex items-center mb-4">
             <Shuffle className="text-blue-600 h-6 w-6 mr-3" />
             <h3 className="text-xl font-semibold text-gray-800">Random Remix</h3>
           </div>
           <p className="text-gray-500 mb-6 line-clamp-4">Shuffle the deck with your custom mix of levels and types.</p>
-          <a href={`/decks/${id}/remix/enter`} className="mt-auto w-full text-center bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700">Start Random</a>
+          <a href={`/decks/${id}/remix/enter`} className="mt-auto w-full text-center bg-blue-600 text-white py-2 rounded-[46px] font-medium hover:bg-blue-700">Start Random</a>
         </div>
 
         {/* Starred */}
-        <div className="bg-white rounded-xl shadow-lg p-6 aspect-square flex flex-col hover:transform hover:-translate-y-1 transition-transform duration-300">
+        <div className="bg-white rounded-[46px] shadow-lg p-6 aspect-square flex flex-col hover:transform hover:-translate-y-1 transition-transform duration-300">
           <div className="flex items-center mb-4">
             <Star className="text-blue-600 h-6 w-6 mr-3" />
             <h3 className="text-xl font-semibold text-gray-800">Starred</h3>
           </div>
           <p className="text-gray-500 mb-6 line-clamp-4">Focus on cards you&apos;ve starred for targeted review.</p>
-          <a href={`/decks/${id}/starred`} className="mt-auto w-full text-center bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700">Study Starred</a>
+          <a href={`/decks/${id}/starred`} className="mt-auto w-full text-center bg-blue-600 text-white py-2 rounded-[46px] font-medium hover:bg-blue-700">Study Starred</a>
         </div>
 
         {/* Level Up */}
-        <div className="bg-white rounded-xl shadow-lg p-6 aspect-square flex flex-col hover:transform hover:-translate-y-1 transition-transform duration-300">
+        <div className="bg-white rounded-[46px] shadow-lg p-6 aspect-square flex flex-col hover:transform hover:-translate-y-1 transition-transform duration-300">
           <div className="flex items-center mb-4">
             <GraduationCap className="text-blue-600 h-6 w-6 mr-3" />
             <h3 className="text-xl font-semibold text-gray-800">Level Up</h3>
           </div>
           <p className="text-gray-500 mb-6 line-clamp-4">Practice optimally to level up faster and earn tokens.</p>
-          <a href={`/decks/${id}/levelup/enter`} className="mt-auto w-full text-center bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700">Start Level Up</a>
+          <a href={`/decks/${id}/levelup/enter`} className="mt-auto w-full text-center bg-blue-600 text-white py-2 rounded-[46px] font-medium hover:bg-blue-700">Start Level Up</a>
         </div>
       </div>
 

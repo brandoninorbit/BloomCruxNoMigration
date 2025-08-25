@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
-import { getSupabaseSession } from "@/lib/supabase/session";
+import { getSupabaseSession } from "@/app/supabase/session";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ deckId: string }> }) {
   const { deckId: deckIdStr } = await params;

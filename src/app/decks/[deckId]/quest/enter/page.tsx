@@ -1,11 +1,12 @@
 import { notFound } from "next/navigation";
+import Image from "next/image";
 import type { DeckBloomLevel } from "@/types/deck-cards";
 import { BLOOM_LEVELS, BLOOM_COLOR_HEX } from "@/types/card-catalog";
 import { DEFAULT_QUEST_SETTINGS } from "@/lib/quest/types";
 import { fetchProgress } from "@/lib/quest/repo";
 import * as cardsRepo from "@/lib/cardsRepo";
 import { Lock as LockIcon } from "lucide-react";
-import { getSupabaseSession } from "@/lib/supabase/session";
+import { getSupabaseSession } from "@/app/supabase/session";
 import { supabaseAdmin } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -101,6 +102,16 @@ export default async function QuestEnterPage({ params }: { params: Promise<{ dec
     levels[i]!.unlocked = prevMastered || prevCleared || fallbackUnlock;
   }
 
+  // Icon mapping for each Bloom level
+  const ICONS: Record<DeckBloomLevel, string> = {
+    Remember: "/icons/PhotoIcon_Remember.svg",
+    Understand: "/icons/LightBulbIcon_Understand.svg",
+    Apply: "/icons/BuildIcon_Apply.svg",
+    Analyze: "/icons/ChartIcon_Analyze.svg",
+    Evaluate: "/icons/GaveIcon_Evaluate.svg",
+    Create: "/icons/PalleteIcon_Create.svg",
+  } as const;
+
   return (
     <main className="container mx-auto px-4 py-8">
       <div className="mb-6 flex items-center justify-between">
@@ -111,7 +122,7 @@ export default async function QuestEnterPage({ params }: { params: Promise<{ dec
   {/* Debug panel removed per request */}
 
       <div className="space-y-3">
-        {levels.map((li, idx) => {
+  {levels.map((li, idx) => {
           const color = BLOOM_COLOR_HEX[li.level] || "#e2e8f0";
           const isStarted = li.missionsCompleted > 0 && li.missionsCompleted < li.totalMissions;
           const isCompleted = li.totalMissions > 0 && li.missionsCompleted >= li.totalMissions;
@@ -125,18 +136,19 @@ export default async function QuestEnterPage({ params }: { params: Promise<{ dec
           return (
             <div key={li.level}>
               <div
-                className="w-full flex items-center justify-between rounded-lg border p-4"
+                className="w-full flex items-center justify-between rounded-[28px] shadow-lg p-4"
                 style={{
                   // Light tint of the bloom color for background, readable text foreground
                   backgroundColor: li.unlocked ? `${color}1A` : "#f8fafc", // ~10% opacity
-                  borderColor: li.unlocked ? color : "#e2e8f0",
                   opacity: li.unlocked ? 1 : 0.9,
                 }}
                 aria-disabled={!li.unlocked}
               >
-                <div className="text-left">
-                  <div className="font-extrabold" style={{ color }}>{li.level}</div>
-                  <div className="text-sm text-slate-600">
+                <div className="flex items-center gap-3">
+                  <Image src={ICONS[li.level]} alt={`${li.level} icon`} width={28} height={28} className="h-7 w-7" />
+                  <div className="text-left">
+                    <div className="font-extrabold" style={{ color }}>{li.level}</div>
+                    <div className="text-sm text-slate-600">
                     {comingSoon
                       ? "Coming soon"
                       : li.totalMissions === 0
@@ -151,19 +163,20 @@ export default async function QuestEnterPage({ params }: { params: Promise<{ dec
                         Updated: +{li.updatedSinceLastRun} new
                       </span>
                     )}
+                    </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
           {li.unlocked ? (
                     <>
             {comingSoon ? (
-                        <span className="text-sm font-medium px-3 py-1.5 rounded bg-slate-200 text-slate-600 cursor-not-allowed" aria-disabled>Coming Soon</span>
+                        <span className="text-sm font-medium px-3 py-1.5 rounded-[20px] bg-slate-200 text-slate-600 cursor-not-allowed" aria-disabled>Coming Soon</span>
                       ) : !hasMissions ? (
-                        <span className="text-sm font-medium px-3 py-1.5 rounded bg-slate-200 text-slate-600 cursor-not-allowed" aria-disabled>Start</span>
+                        <span className="text-sm font-medium px-3 py-1.5 rounded-[20px] bg-slate-200 text-slate-600 cursor-not-allowed" aria-disabled>Start</span>
                       ) : isCompleted || li.mastered ? (
                         <a
                           href={`/decks/${id}/quest?level=${encodeURIComponent(li.level)}&restart=1`}
-                          className="text-sm font-medium px-3 py-1.5 rounded bg-slate-200 text-slate-700"
+                          className="text-sm font-medium px-3 py-1.5 rounded-[20px] bg-slate-200 text-slate-700"
                         >
               {shouldNudge ? "Try again to increase accuracy" : "Restart"}
                         </a>
@@ -171,13 +184,13 @@ export default async function QuestEnterPage({ params }: { params: Promise<{ dec
                         <>
                           <a
                             href={`/decks/${id}/quest?level=${encodeURIComponent(li.level)}`}
-                            className="text-sm font-medium px-3 py-1.5 rounded bg-blue-600 text-white hover:bg-blue-700"
+                            className="text-sm font-medium px-3 py-1.5 rounded-[20px] bg-blue-600 text-white hover:bg-blue-700"
                           >
                             Resume
                           </a>
                           <a
                             href={`/decks/${id}/quest?level=${encodeURIComponent(li.level)}&restart=1`}
-                            className="text-sm font-medium px-3 py-1.5 rounded bg-slate-200 text-slate-700"
+                            className="text-sm font-medium px-3 py-1.5 rounded-[20px] bg-slate-200 text-slate-700"
                           >
                             Restart
                           </a>
@@ -185,7 +198,7 @@ export default async function QuestEnterPage({ params }: { params: Promise<{ dec
                       ) : (
                         <a
                           href={`/decks/${id}/quest?level=${encodeURIComponent(li.level)}`}
-                          className="text-sm font-medium px-3 py-1.5 rounded bg-blue-600 text-white hover:bg-blue-700"
+                          className="text-sm font-medium px-3 py-1.5 rounded-[20px] bg-blue-600 text-white hover:bg-blue-700"
                         >
               {shouldNudge ? "Try again to increase accuracy" : `Start ${li.level}`}
                         </a>
@@ -219,7 +232,7 @@ export default async function QuestEnterPage({ params }: { params: Promise<{ dec
                           </div>
                           <a
                             href={`/decks/${id}/quest?level=${encodeURIComponent(li.level)}`}
-                            className={`text-sm font-medium px-3 py-1.5 rounded ${actionable ? "bg-blue-600 text-white hover:bg-blue-700" : "bg-slate-200 text-slate-600 cursor-not-allowed"}`}
+                            className={`text-sm font-medium px-3 py-1.5 rounded-[20px] ${actionable ? "bg-blue-600 text-white hover:bg-blue-700" : "bg-slate-200 text-slate-600 cursor-not-allowed"}`}
                             aria-disabled={!actionable}
                             onClick={(e) => { if (!actionable) e.preventDefault(); }}
                           >

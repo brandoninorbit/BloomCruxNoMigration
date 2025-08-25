@@ -25,6 +25,26 @@
     --input: 214.3 31.8% 91.4%;
     --ring: 221.2 83.2% 53.3%;
     --radius: 1rem;
+        /* ---- BloomCrux Bloom Level Tokens ---- */
+    --bloom-remember:   #4DA6FF; /* Remember  */
+    --bloom-understand: #34C759; /* Understand */
+    --bloom-apply:      #FFD60A; /* Apply      */
+    --bloom-analyze:    #FF9F0A; /* Analyze    */
+    --bloom-evaluate:   #FF375F; /* Evaluate   */
+    --bloom-create:     #9D4EDD; /* Create     */
+
+    --radius-md: 12px;
+    --shadow-soft: 0 8px 24px rgba(0,0,0,.08);
+ /* ---- BloomCrux dark mode tokens ---- */
+    --bloom-remember:   #3B8CE0;
+    --bloom-understand: #2FB24F;
+    --bloom-apply:      #E6C20A;
+    --bloom-analyze:    #E68808;
+    --bloom-evaluate:   #E02F55;
+    --bloom-create:     #8C3EDA;
+
+    --radius-md: 12px;
+    --shadow-soft: 0 8px 24px rgba(0,0,0,.35);
   }
 
   .dark {
@@ -58,10 +78,6 @@
 
 /* Study quest helpers */
 @layer utilities {
-  :root {
-    /* Remember Bloom color to reuse in outlines */
-    --bloom-remember: #4DA6FF;
-  }
   .dragging { cursor: grabbing !important; }
   .droppable-over { outline: 2px solid var(--bloom-remember); outline-offset: 2px; }
   .focus-ring:focus { outline: 2px solid color(display-p3 0.3 0.45 1 / 0.75); outline-offset: 2px; }

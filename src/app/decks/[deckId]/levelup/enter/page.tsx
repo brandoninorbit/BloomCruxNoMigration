@@ -3,7 +3,7 @@ import { BLOOM_LEVELS, BLOOM_COLOR_HEX } from "@/types/card-catalog";
 import type { DeckBloomLevel } from "@/types/deck-cards";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import LevelUpEnterClient from "../LevelUpEnterClient";
-import { getSupabaseSession } from "@/lib/supabase/session";
+import { getSupabaseSession } from "@/app/supabase/session";
 
 export const dynamic = "force-dynamic";
 

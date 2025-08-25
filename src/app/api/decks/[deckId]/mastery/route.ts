@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseSession } from "@/lib/supabase/session";
+import { getSupabaseSession } from "@/app/supabase/session";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import type { DeckBloomLevel } from "@/types/deck-cards";
 

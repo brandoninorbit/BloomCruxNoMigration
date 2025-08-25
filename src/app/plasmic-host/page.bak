@@ -1,0 +1,46 @@
+// src/app/plasmic-host/page.tsx
+'use client';
+
+import { PlasmicCanvasHost, registerComponent, type CodeComponentMeta } from "@plasmicapp/host";
+import { MasteryPill, type BloomLevel } from "../../components/decks/MasteryPill";
+import { DeckCardShell, type DeckCardShellProps } from "../../components/decks/DeckCardShell";
+
+/**
+ * IMPORTANT:
+ * - App Router wants a React component page, not a Route handler that uses renderToString.
+ * - We keep registrations in the same file for simplicity. You may move them to a separate module if you like.
+ */
+
+const masteryPillMeta: CodeComponentMeta<typeof MasteryPill> = {
+  name: "MasteryPill",
+  importPath: "../../components/decks/MasteryPill",
+  props: {
+    level: {
+      type: "choice",
+      options: ["Remember", "Understand", "Apply", "Analyze", "Evaluate", "Create"],
+      defaultValue: "Remember",
+    },
+    percent: { type: "number", defaultValue: 0 },
+    className: "string",
+  },
+};
+
+const deckCardShellMeta: CodeComponentMeta<DeckCardShellProps> = {
+  name: "DeckCardShell",
+  importPath: "../../components/decks/DeckCardShell",
+  props: {
+    title: { type: "string", defaultValue: "Untitled Deck" },
+    cover: { type: "slot" },
+    children: { type: "slot" },
+    footer: { type: "slot" },
+    onClick: { type: "eventHandler", argTypes: [] },
+    className: "string",
+  },
+};
+
+registerComponent(MasteryPill, masteryPillMeta);
+registerComponent(DeckCardShell, deckCardShellMeta);
+
+export default function PlasmicHostPage() {
+  return <PlasmicCanvasHost />;
+}

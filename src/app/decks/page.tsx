@@ -16,6 +16,13 @@ import {
 import { getSupabaseClient } from "@/lib/supabase/browserClient";
 import GradientBackgroundWrapper from "@/components/GradientBackgroundWrapper";
 import { SunriseCover } from "@/components/DeckCovers";
+import { DeckCardShell } from "@/components/decks/DeckCardShell";
+// MasteryPill types no longer used here
+
+// BLOOM_CHOICES removed (unused)
+
+// helpers removed (unused)
+
 const supabase = getSupabaseClient();
 
 /* ---------- Types ---------- */
@@ -640,131 +647,110 @@ function DecksPage() {
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
-            {decksToDisplay.map((d) => (
+  {decksToDisplay.map((d) => (
+    <DeckCardShell
+      key={d.id}
+      title={d.title}
+      titleBelow={(() => {
+        const deckMap = masteryByDeck[d.id] || {};
+        const levels = BLOOM_LEVELS as DeckBloomLevel[];
+        const mastered = levels
+          .map((lvl) => ({ lvl, pct: Number((deckMap as Partial<Record<DeckBloomLevel, number>>)[lvl] ?? 0) }))
+          .filter((x) => x.pct >= 80)
+          .sort((a, b) => levels.indexOf(a.lvl) - levels.indexOf(b.lvl));
+        const top = mastered[mastered.length - 1];
+        if (!top) return null;
+        const bg = BLOOM_COLOR_HEX[top.lvl] ?? "#4DA6FF";
+        return (
+          <div className="px-2 w-full flex justify-center">
+            <span
+              className="inline-flex items-center justify-center rounded-full px-2.5 py-0.5 text-xs font-semibold text-white shadow-sm whitespace-nowrap max-w-[20ch]"
+              style={{ backgroundColor: bg }}
+            >
+              {`Mastered: ${top.lvl}`}
+            </span>
+          </div>
+        );
+      })()}
+      onClick={() => (window.location.href = `/decks/${d.id}/edit`)}
+      cover={
+        d.cover ? (
+          <div className="absolute inset-0 z-0 pointer-events-none">
+            {d.cover === "Sunrise" ? (
+              <div className="h-full w-full">
+                <SunriseCover fill className="h-full w-full" />
+              </div>
+            ) : (
+              <div className="h-full w-full bg-gray-100" />
+            )}
+          </div>
+        ) : null
+      }
+      footer={
+        <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+          <button
+            type="button"
+            className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-[#2481f9] text-white text-[13px] font-semibold py-2 shadow-sm hover:bg-blue-600"
+            onClick={(e) => {
+              e.stopPropagation();
+              window.location.href = `/decks/${d.id}/study`;
+            }}
+          >
+            <BookOpen className="h-4 w-4" />
+            Study deck
+          </button>
+          <div className="mt-2 flex flex-col items-center gap-2">
+            <button
+              type="button"
+              aria-label="Delete deck"
+              title="Delete deck"
+              className="inline-flex items-center justify-center rounded-md border border-slate-200 bg-white p-2 text-slate-600 shadow-sm hover:text-red-600 hover:border-red-300 transition-colors"
+              onClick={(e) => {
+                e.stopPropagation();
+                requestDeleteConfirm(d.id);
+              }}
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+            {confirmDeleteId === d.id && (
               <div
-                key={d.id}
-                className="group [perspective:1000px] cursor-pointer"
-                onClick={() => (window.location.href = `/decks/${d.id}/edit`)}
+                className="w-full max-w-[220px] rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 shadow-sm"
+                onClick={(e) => e.stopPropagation()}
               >
-                <div className="relative w-full aspect-[3/4] bg-white rounded-xl shadow-md transition-all duration-500 group-hover:shadow-xl group-hover:-translate-y-2 [transform-style:preserve-3d] group-hover:[transform:rotateY(3deg)] overflow-hidden">
-                  {/* Card background */}
-                  <div className="absolute inset-0 bg-gray-100 rounded-xl" />
-
-                  {/* Lock icon */}
-                  {d.locked && (
-                    <div className="absolute top-2 right-2 p-1.5 bg-[#ffc107]/20 text-[#ffc107] rounded-full">
-                      <svg className="h-4 w-4" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg" fill="currentColor" aria-hidden>
-                        <path fillRule="evenodd" clipRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" />
-                      </svg>
-                    </div>
-                  )}
-
-                  {/* Card cover (fills and is clipped by parent) */}
-                  {d.cover && (
-                    <div className="absolute inset-0 z-0 pointer-events-none">
-                      {/* Lazy-render known cover components by id; fallback to gray if unknown */}
-                      {/* Currently only 'Sunrise' is available */}
-                      {d.cover === 'Sunrise' ? (
-                        // import dynamically to avoid SSR mismatch; component accepts fill to stretch
-                        <div className="h-full w-full">
-                          <SunriseCover fill className="h-full w-full" />
-                        </div>
-                      ) : (
-                        <div className="h-full w-full bg-gray-100" />
-                      )}
-                    </div>
-                  )}
-
-                  {/* Content layout */}
-                  <div className="absolute inset-0 p-4 flex flex-col z-10">
-                    {/* Title band at top with backdrop blur for readability */}
-                    <div className="inline-block bg-white/30 backdrop-blur-sm rounded-md px-3 py-1 text-[15px] font-bold text-[#111418] line-clamp-2 pr-6">
-                      {d.title}
-                    </div>
-
-                    {/* Bloom mastery pills (top two mastered; lower level on top, highest below); hide if none */}
-                    <div className="mt-2">
-                      {(() => {
-                        const deckMap = masteryByDeck[d.id] || {};
-                        const levels = BLOOM_LEVELS as DeckBloomLevel[];
-                        const mastered = levels
-                          .map((lvl) => ({ lvl, pct: Number((deckMap as Partial<Record<DeckBloomLevel, number>>)[lvl] ?? 0) }))
-                          .filter((x) => x.pct >= 80)
-                          .sort((a, b) => levels.indexOf(a.lvl) - levels.indexOf(b.lvl));
-                        const topTwo = mastered.slice(-2); // highest two
-                        if (topTwo.length === 0) return null;
-                        return (
-                          <div className="flex flex-col gap-1 items-center">
-                            {topTwo.map((m, idx) => (
-                              <span
-                                key={`${m.lvl}-${idx}`}
-                                className="inline-flex items-center justify-center text-center rounded-full px-2 py-0.5 text-[11px] font-semibold text-white shadow-sm overflow-hidden whitespace-nowrap"
-                                style={{ backgroundColor: BLOOM_COLOR_HEX[m.lvl] ?? "#4DA6FF", width: 'min(22ch, 100%)', boxSizing: 'border-box' }}
-                              >
-                                {`MASTERED: ${m.lvl}`}
-                              </span>
-                            ))}
-                          </div>
-                        );
-                      })()}
-                    </div>
-
-                    {/* Deck progress chart removed per spec; only shown in Dashboard Deck Dossier */}
-
-                    {/* Spacer */}
-                    <div className="flex-1" />
-
-                    {/* Hover actions at bottom: Study, then centered Delete icon below */}
-                    <div className="pt-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        type="button"
-                        className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-[#2481f9] text-white text-[13px] font-semibold py-2 shadow-sm hover:bg-blue-600"
-                        onClick={(e) => { e.stopPropagation(); window.location.href = `/decks/${d.id}/study`; }}
-                      >
-                        <BookOpen className="h-4 w-4" />
-                        Study deck
-                      </button>
-                      <div className="mt-2 flex flex-col items-center gap-2">
-                        <button
-                          type="button"
-                          aria-label="Delete deck"
-                          title="Delete deck"
-                          className="inline-flex items-center justify-center rounded-md border border-slate-200 bg-white p-2 text-slate-600 shadow-sm hover:text-red-600 hover:border-red-300 transition-colors"
-                          onClick={(e) => { e.stopPropagation(); requestDeleteConfirm(d.id); }}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                        {confirmDeleteId === d.id && (
-                          <div
-                            className="w-full max-w-[220px] rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 shadow-sm"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <div className="mb-2 font-medium">Delete this deck?</div>
-                            <div className="flex items-center justify-center gap-2">
-                              <button
-                                type="button"
-                                className="px-2.5 py-1 rounded bg-red-600 text-white hover:bg-red-700"
-                                onClick={(e) => { e.stopPropagation(); handleDeleteDeck(d.id); setConfirmDeleteId(null); }}
-                              >
-                                Delete
-                              </button>
-                              <button
-                                type="button"
-                                className="px-2.5 py-1 rounded border border-slate-200 text-slate-700 hover:bg-slate-50"
-                                onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null); }}
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
+                <div className="mb-2 font-medium">Delete this deck?</div>
+                <div className="flex items-center justify-center gap-2">
+                  <button
+                    type="button"
+                    className="px-2.5 py-1 rounded bg-red-600 text-white hover:bg-red-700"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteDeck(d.id);
+                      setConfirmDeleteId(null);
+                    }}
+                  >
+                    Delete
+                  </button>
+                  <button
+                    type="button"
+                    className="px-2.5 py-1 rounded border border-slate-200 text-slate-700 hover:bg-slate-50"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setConfirmDeleteId(null);
+                    }}
+                  >
+                    Cancel
+                  </button>
                 </div>
               </div>
-            ))}
+            )}
           </div>
+        </div>
+      }
+    >
+      {/* mastery pill moved to titleBelow */}
+    </DeckCardShell>
+  ))}
+</div>
         </section>
 
         {/* Folders */}

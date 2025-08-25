@@ -1,0 +1,97 @@
+import * as React from "react";
+import { notFound } from "next/navigation";
+// Note: Client-only PLASMIC loader is used inside PlasmicDeckStudyClient.
+import { ClipboardList, FileText } from "lucide-react"; // keep for Quest button, etc.
+import QuestModalLauncher from "@/components/QuestModalLauncher";
+import type { DeckBloomLevel } from "@/types/deck-cards";
+import { supabaseAdmin } from "@/lib/supabase/server";
+import { getSupabaseSession } from "@/app/supabase/session";
+import MasteryPills, { type MasteryMap } from "@/components/study/page/MasteryPills";
+import StudyModesGrid from "@/components/study/page/StudyModesGrid";
+import PlasmicDeckStudyClient from "./PlasmicDeckStudyClient";
+
+export const dynamic = "force-dynamic";
+
+export default async function StudyPage({
+  params,
+}: { params: Promise<{ deckId: string }> }) {
+  const { deckId: deckIdStr } = await params;
+  const deckId = Number(deckIdStr);
+  if (!Number.isFinite(deckId)) notFound();
+
+  const title = `Deck #${deckId}`;
+
+  // --- Fetch mastery (same logic as before) ---
+  type MasteryRow = { bloom_level: DeckBloomLevel; mastery_pct: number | null };
+  const mastery: MasteryMap = {};
+  try {
+    const session = await getSupabaseSession();
+    if (session?.user?.id) {
+      const sb = supabaseAdmin();
+      const { data } = await sb
+        .from("user_deck_bloom_mastery")
+        .select("bloom_level, mastery_pct")
+        .eq("deck_id", deckId)
+        .eq("user_id", session.user.id);
+
+      const norm = (s: string): DeckBloomLevel => {
+        const t = String(s).trim().toLowerCase();
+        if (t.startsWith("remember")) return "Remember";
+        if (t.startsWith("understand")) return "Understand";
+        if (t.startsWith("apply")) return "Apply";
+        if (t.startsWith("analy")) return "Analyze";
+        if (t.startsWith("eval")) return "Evaluate";
+        if (t.startsWith("create")) return "Create";
+        return "Remember";
+      };
+
+      for (const row of (data ?? []) as MasteryRow[]) {
+        const raw = typeof row.mastery_pct === "number" ? row.mastery_pct : 0;
+        const pct = raw > 0 && raw <= 1 ? raw * 100 : raw;
+        mastery[norm(row.bloom_level)] = pct;
+      }
+    }
+  } catch {
+    // swallow; show 0% mastery
+  }
+
+  // --- Try to render Plasmic component "DeckStudy" ---
+  // Render client wrapper; it will fetch Plasmic data client-side if needed.
+  return (
+    <PlasmicDeckStudyClient
+      title={title}
+      mastery={mastery}
+      deckId={deckId}
+    />
+  );
+  // --- Legacy fallback (unreachable unless you conditionally return) ---
+  return (
+    <main className="container mx-auto px-4 py-8">
+      <div className="text-center mb-12">
+        <div className="inline-block bg-blue-100 p-4 rounded-full mb-4">
+          <ClipboardList className="text-blue-600 h-10 w-10" />
+        </div>
+        <h1 className="text-4xl font-bold text-gray-800 mb-2">Agent Briefing</h1>
+        <p className="text-gray-500">
+          Agent, your dossier for <span className="font-semibold text-gray-700">{title}</span> is ready. Select your assignment.
+        </p>
+      </div>
+
+      <MasteryPills mastery={mastery} threshold={80} />
+
+      <div className="grid justify-center gap-8 [grid-template-columns:repeat(auto-fit,_minmax(18rem,_18rem))]">
+        {/* Quest stays here for now since it uses a modal */}
+        <div className="bg-white rounded-xl shadow-lg p-6 aspect-square flex flex-col hover:transform hover:-translate-y-1 transition-transform duration-300">
+          <div className="flex items-center mb-4">
+            <FileText className="text-blue-600 h-6 w-6 mr-3" />
+            <h3 className="text-xl font-semibold text-gray-800">Operation: Quest</h3>
+          </div>
+          <p className="text-gray-500 mb-6 line-clamp-4">Enter, resume, or replay unlocked missions. Locked missions are shown and greyed out.</p>
+          <QuestModalLauncher deckId={deckId} />
+        </div>
+
+        <StudyModesGrid deckId={deckId} />
+      </div>
+    </main>
+  );
+}
