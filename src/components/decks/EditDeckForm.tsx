@@ -22,13 +22,19 @@ export default function EditDeckForm({ deckId }: Props) {
   const { deck, setDeck, save, loading, error } = useDeck(deckId);
 
   const [sunrisePurchased, setSunrisePurchased] = useState<boolean>(false);
+  const [deepPurchased, setDeepPurchased] = useState<boolean>(false);
+  const [nightPurchased, setNightPurchased] = useState<boolean>(false);
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
         const ok = await supabaseRepo.hasPurchasedCover("Sunrise");
+  const okDeep = await supabaseRepo.hasPurchasedCover("DeepSpace");
+  const okNight = await supabaseRepo.hasPurchasedCover("NightMission");
         if (!mounted) return;
         setSunrisePurchased(!!ok);
+        setDeepPurchased(!!okDeep);
+  setNightPurchased(!!okNight);
       } catch {
         /* ignore */
       }
@@ -423,6 +429,8 @@ export default function EditDeckForm({ deckId }: Props) {
               <option value="">System default</option>
               {/* Sunrise will show but only be meaningful if purchased */}
               <option value="Sunrise" disabled={!sunrisePurchased}>Sunrise</option>
+              <option value="DeepSpace" disabled={!deepPurchased}>Deep Space</option>
+              <option value="NightMission" disabled={!nightPurchased}>Night Mission</option>
             </select>
             <p className="text-xs text-gray-500 mt-2">Choose a deck cover (applies as a visual only). Locked covers will appear but cannot be selected in production until purchased.</p>
           </div>

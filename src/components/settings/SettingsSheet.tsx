@@ -5,13 +5,15 @@ import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Settings as SettingsIcon } from "lucide-react";
-import { SunriseCover } from '@/components/DeckCovers';
+import { SunriseCover, DeckCoverDeepSpace, DeckCoverNightMission } from '@/components/DeckCovers';
 import { supabaseRepo } from '@/lib/repo/supabaseRepo';
 
 export default function SettingsSheet() {
   const [avatarFrame, setAvatarFrame] = React.useState<string>("unlock");
   const [value, setValue] = React.useState<string>("");
   const [sunrisePurchased, setSunrisePurchased] = React.useState<boolean>(false);
+  const [deepPurchased, setDeepPurchased] = React.useState<boolean>(false);
+  const [nightPurchased, setNightPurchased] = React.useState<boolean>(false);
   // loading state intentionally omitted for brevity
 
   React.useEffect(() => {
@@ -19,11 +21,15 @@ export default function SettingsSheet() {
     (async () => {
       try {
         const def = await supabaseRepo.getUserDefaultCover();
-        const purchased = await supabaseRepo.hasPurchasedCover("Sunrise");
+  const purchased = await supabaseRepo.hasPurchasedCover("Sunrise");
+  const purchasedDeep = await supabaseRepo.hasPurchasedCover("DeepSpace");
+  const purchasedNight = await supabaseRepo.hasPurchasedCover("NightMission");
         if (!mounted) return;
         // use sentinel for system default because SelectItem requires non-empty value
         setValue(def ?? '__system_default');
-        setSunrisePurchased(!!purchased);
+  setSunrisePurchased(!!purchased);
+  setDeepPurchased(!!purchasedDeep);
+  setNightPurchased(!!purchasedNight);
       } catch {
         /* ignore */
       }
@@ -107,12 +113,28 @@ export default function SettingsSheet() {
                             ) : (
                               <SelectItem value="Sunrise" disabled>Sunrise (locked)</SelectItem>
                             )}
+                            {/* Deep Space only enabled if purchased */}
+                            {deepPurchased ? (
+                              <SelectItem value="DeepSpace">Deep Space</SelectItem>
+                            ) : (
+                              <SelectItem value="DeepSpace" disabled>Deep Space (locked)</SelectItem>
+                            )}
+                            {/* Night Mission only enabled if purchased */}
+                            {nightPurchased ? (
+                              <SelectItem value="NightMission">Night Mission</SelectItem>
+                            ) : (
+                              <SelectItem value="NightMission" disabled>Night Mission (locked)</SelectItem>
+                            )}
                           </SelectContent>
                         </Select>
                         <div className="mt-2">
                           {value === 'Sunrise' ? (
                             <div className="w-72"><SunriseCover /></div>
-                          ) : null}
+              ) : value === 'DeepSpace' ? (
+                <div className="w-72"><DeckCoverDeepSpace /></div>
+              ) : value === 'NightMission' ? (
+                <div className="w-72"><DeckCoverNightMission /></div>
+              ) : null}
                         </div>
                     <p className="text-xs text-slate-500">Covers unlock with Commander Level and may be purchased in the Token Shop.</p>
                   </div>

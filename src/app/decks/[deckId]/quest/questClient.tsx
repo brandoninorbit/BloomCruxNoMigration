@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import * as cardsRepo from "@/lib/cardsRepo";
 import type { DeckBloomLevel, DeckCard } from "@/types/deck-cards";
-import { BLOOM_LEVELS } from "@/types/card-catalog";
+import { BLOOM_LEVELS, BLOOM_COLOR_HEX } from "@/types/card-catalog";
 import { startMission, recordAnswer, computePass, composeMission, computeMissionSet } from "@/lib/quest/engine";
 import type { MissionState, UserBloomProgress } from "@/lib/quest/types";
 import { QuestProgress } from "@/components/QuestProgress";
@@ -198,7 +198,12 @@ export default function QuestClient({ deckId }: { deckId: number }) {
           <div className="text-sm font-semibold text-slate-900">Quest Mode · {level}{mission ? ` · Mission ${mission.missionIndex + 1}` : ""}</div>
           {mission ? (
             <div className="mt-1">
-              <QuestProgress current={currentIndex} total={total} color="#3b82f6" label={`${Math.min(total, currentIndex + 1)}/${total}`} />
+              <QuestProgress
+                current={currentIndex}
+                total={total}
+                color={BLOOM_COLOR_HEX[level] || "#3b82f6"}
+                label={`${Math.min(total, currentIndex + 1)}/${total}`}
+              />
             </div>
           ) : null}
         </div>

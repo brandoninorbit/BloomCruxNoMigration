@@ -1,6 +1,7 @@
 "use client";
 import React from "react";
 import ShopCard, { ShopCardProps } from "../../components/shop/ShopCard";
+import { DeckCoverDeepSpace, DeckCoverNightMission } from "@/components/DeckCovers";
 import { fetchWithAuth } from "@/lib/supabase/fetchWithAuth";
 import { CATEGORY_UNLOCK_LEVELS } from "@/lib/unlocks";
 
@@ -16,11 +17,36 @@ const cosmeticCategories: Category[] = [
     unlockLevel: CATEGORY_UNLOCK_LEVELS.DeckCovers,
     items: [
       {
+        id: "Sunrise",
         title: "Sunrise Cover",
         description: "Brighten your deck with a warm sunrise gradient.",
         price: 80,
         icon: (
           <div className="h-24 w-full rounded-lg bg-gradient-to-br from-orange-300 via-pink-300 to-yellow-200" />
+        ),
+      },
+      {
+        id: "DeepSpace",
+        title: "Deep Space Cover",
+        description: "A tranquil starfield with subtle parallax and twinkle.",
+        price: 120,
+        unlockLevel: 3,
+        icon: (
+          <div className="h-24 w-full rounded-lg overflow-hidden">
+            <DeckCoverDeepSpace fill className="h-24 w-full rounded-lg" />
+          </div>
+        ),
+      },
+      {
+        id: "NightMission",
+        title: "Night Mission Cover",
+        description: "Moody night skyline with gentle parallax and blinking windows.",
+        price: 110,
+        unlockLevel: 5,
+        icon: (
+          <div className="h-24 w-full rounded-lg overflow-hidden">
+            <DeckCoverNightMission fill className="h-24 w-full rounded-lg" />
+          </div>
         ),
       },
     ],
@@ -56,17 +82,18 @@ export default function ShopPage() {
     return () => { cancelled = true; };
   }, []);
 
-  // Load purchased states for known items (currently Deck Covers: Sunrise)
+  // Load purchased states for known items (Sunrise + Deep Space + Night Mission)
   React.useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        // For now only Sunrise Cover has a real id
-        const id = "Sunrise";
-        const res = await fetchWithAuth(`/api/covers/purchased?coverId=${encodeURIComponent(id)}`, { cache: 'no-store' });
-        if (!res.ok) return;
-        const j = await res.json();
-        if (!cancelled) setPurchased((p) => ({ ...p, [id]: !!j?.purchased }));
+  const ids = ["Sunrise", "DeepSpace", "NightMission"] as const;
+        for (const id of ids) {
+          const res = await fetchWithAuth(`/api/covers/purchased?coverId=${encodeURIComponent(id)}`, { cache: 'no-store' });
+          if (!res.ok) continue;
+          const j = await res.json();
+          if (!cancelled) setPurchased((p) => ({ ...p, [id]: !!j?.purchased }));
+        }
       } catch {}
     })();
     return () => { cancelled = true; };
@@ -115,11 +142,11 @@ export default function ShopPage() {
                 <p className="text-slate-500">No items available yet.</p>
               ) : (
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                  {category.items.map((item) => {
+      {category.items.map((item) => {
                     // Item is locked if commanderLevel is below the category unlock level OR below an item-specific unlock level
                     const unlockLevel = Math.max(category.unlockLevel, item.unlockLevel ?? category.unlockLevel);
                     const locked = commanderLevel < unlockLevel;
-          const id = item.title.includes('Sunrise') ? 'Sunrise' : item.title;
+    const id = item.id ?? (item.title.includes('Sunrise') ? 'Sunrise' : item.title);
                     return (
                       <ShopCard
                         key={item.title}

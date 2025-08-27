@@ -2,6 +2,8 @@
 import React from "react";
 
 export type ShopCardProps = {
+  /** Stable ID for purchase and unlock checks (e.g., 'Sunrise', 'DeepSpace'). */
+  id?: string;
   title: string;
   description: string;
   price: number;

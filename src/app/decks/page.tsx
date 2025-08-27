@@ -15,7 +15,7 @@ import {
 
 import { getSupabaseClient } from "@/lib/supabase/browserClient";
 import GradientBackgroundWrapper from "@/components/GradientBackgroundWrapper";
-import { SunriseCover } from "@/components/DeckCovers";
+import { SunriseCover, DeckCoverDeepSpace, DeckCoverNightMission } from "@/components/DeckCovers";
 import { DeckCardShell } from "@/components/decks/DeckCardShell";
 import { fetchWithAuth } from "@/lib/supabase/fetchWithAuth";
 // MasteryPill types no longer used here
@@ -710,6 +710,14 @@ function DecksPage() {
             {(d.cover ?? defaultCover) === "Sunrise" ? (
               <div className="h-full w-full">
                 <SunriseCover fill className="h-full w-full" />
+              </div>
+            ) : (d.cover ?? defaultCover) === "DeepSpace" ? (
+              <div className="h-full w-full">
+                <DeckCoverDeepSpace fill className="h-full w-full" />
+              </div>
+            ) : (d.cover ?? defaultCover) === "NightMission" ? (
+              <div className="h-full w-full">
+                <DeckCoverNightMission fill className="h-full w-full" />
               </div>
             ) : (
               <div className="h-full w-full bg-gray-100" />

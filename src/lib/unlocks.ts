@@ -15,6 +15,8 @@ export const CATEGORY_UNLOCK_LEVELS = {
 // Authoritative unlock list (sorted by level asc)
 export const UNLOCKS: Unlock[] = [
   { id: 'Sunrise', name: 'Sunrise Deck Cover', level: CATEGORY_UNLOCK_LEVELS.DeckCovers, kind: 'item', category: 'DeckCovers' },
+  { id: 'DeepSpace', name: 'Deep Space Deck Cover', level: 3, kind: 'item', category: 'DeckCovers' },
+  { id: 'NightMission', name: 'Night Mission Deck Cover', level: 5, kind: 'item', category: 'DeckCovers' },
   { id: 'AvatarFrames', name: 'Avatar Frames', level: CATEGORY_UNLOCK_LEVELS.AvatarFrames, kind: 'category' },
   { id: 'PageBackgrounds', name: 'Page Backgrounds', level: CATEGORY_UNLOCK_LEVELS.PageBackgrounds, kind: 'category' },
 ];
