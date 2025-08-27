@@ -44,7 +44,7 @@ import {
 } from "recharts";
 import DashboardProgressChart from "@/components/DashboardProgressChart";
 import Image from "next/image";
-import { commanderLevel as commanderLevelCalc } from "@/lib/xp";
+import { XP_MODEL } from "@/lib/xp";
 import DeckProgressChart from "@/components/decks/DeckProgressChart";
 
 // Helper component for Progress Ring
@@ -328,8 +328,10 @@ export default function DashboardClient() {
   );
   const globalProgress = useMemo<GlobalProgress>(() => {
     if (showExample) return MOCK_GLOBAL_PROGRESS;
-    const lvl = commanderLevelCalc(commanderXpTotal);
-    return { level: lvl.level, xpIntoLevel: lvl.xpIntoLevel, xpForLevel: lvl.xpForLevel, xpToNext: lvl.xpToNext };
+    const p = XP_MODEL.progressFor(commanderXpTotal);
+    const currentThreshold = XP_MODEL.xpThresholdForLevel(p.level);
+    const nextThreshold = XP_MODEL.xpThresholdForLevel(p.nextLevel);
+    return { level: p.level, xpIntoLevel: p.current, xpForLevel: Math.max(1, nextThreshold - currentThreshold), xpToNext: p.toNext };
   }, [showExample, commanderXpTotal]);
   // Derive simple tokens from commander XP total (1:1) for now
   const userSettings = useMemo<UserSettings>(

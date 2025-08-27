@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { getSupabaseSession } from "@/app/supabase/session";
+import { XP_MODEL, tokensFromXp, type BloomLevel } from "@/lib/xp";
 
 // Finalize a mission completion by minting commander XP and tokens to the user's wallet.
 // Body: { deckId: number, mode?: string, correct?: number, total?: number, percent?: number }
 // Policy: idempotent per matching (deckId, mode, correct, total) within a short window.
-type FinalizeBody = { deckId?: unknown; mode?: unknown; correct?: unknown; total?: unknown; percent?: unknown };
+type FinalizeBody = { deckId?: unknown; mode?: unknown; correct?: unknown; total?: unknown; percent?: unknown; breakdown?: unknown };
 
 export async function POST(req: NextRequest) {
   const session = await getSupabaseSession();
@@ -17,14 +18,33 @@ export async function POST(req: NextRequest) {
   const correct = Number(body?.correct ?? NaN);
   const total = Number(body?.total ?? NaN);
   const percent = Number(body?.percent ?? (Number.isFinite(correct) && Number.isFinite(total) && total > 0 ? (correct / total) * 100 : NaN));
+  const breakdownRaw = body?.breakdown as Record<string, { correct?: unknown; total?: unknown }> | undefined;
+  // Normalize breakdown to BloomLevel keys if provided
+  let breakdown: Partial<Record<BloomLevel, { correct: number; total: number }>> | undefined = undefined;
+  if (breakdownRaw && typeof breakdownRaw === 'object') {
+    const map: Partial<Record<BloomLevel, { correct: number; total: number }>> = {};
+    for (const k of Object.keys(breakdownRaw)) {
+      const key = String(k) as BloomLevel;
+      const v = breakdownRaw[k] as { correct?: unknown; total?: unknown };
+      const c = Number(v?.correct ?? NaN);
+      const t = Number(v?.total ?? NaN);
+      if (Number.isFinite(c) || Number.isFinite(t)) {
+        map[key] = { correct: Math.max(0, Math.floor(Number.isFinite(c) ? c : 0)), total: Math.max(0, Math.floor(Number.isFinite(t) ? t : 0)) };
+      }
+    }
+    breakdown = map;
+  }
 
   if (!Number.isFinite(deckId) || deckId <= 0) return NextResponse.json({ error: "invalid deckId" }, { status: 400 });
   if (!Number.isFinite(correct) || correct < 0) return NextResponse.json({ error: "invalid correct" }, { status: 400 });
   if (!Number.isFinite(total) || total < 0) return NextResponse.json({ error: "invalid total" }, { status: 400 });
   const pct = Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : 0;
 
-  const commanderDelta = Math.round(Math.max(0, correct)); // simple: 1 commander XP per correct
-  const tokensDelta = Math.max(0, Math.round(commanderDelta * 0.25)); // 0.25 tokens per XP
+  // XP/tokens: prefer per-bloom breakdown if provided; else fall back to single-bloom Remember attribution
+  const commanderDelta = (breakdown && Object.keys(breakdown).length > 0)
+    ? XP_MODEL.awardForBreakdown(breakdown)
+    : XP_MODEL.awardForMission({ correct, total, bloom: "Remember" });
+  const tokensDelta = tokensFromXp(commanderDelta);
 
   const sb = supabaseAdmin();
 
@@ -52,7 +72,7 @@ export async function POST(req: NextRequest) {
 
   if (!already) {
     // Log mission_completed and commander XP event for audit
-    const payload = { mode, correct, total, percent: pct };
+  const payload = { mode, correct, total, percent: pct, breakdown };
     const { error: e1 } = await sb
       .from("user_xp_events")
       .insert({ user_id: userId, deck_id: deckId, bloom_level: "Remember", event_type: "mission_completed", payload });
@@ -61,7 +81,7 @@ export async function POST(req: NextRequest) {
     if (commanderDelta > 0) {
       const { error: e2 } = await sb
         .from("user_xp_events")
-        .insert({ user_id: userId, deck_id: deckId, bloom_level: "Remember", event_type: "xp_commander_added", payload: { amount: commanderDelta, mode } });
+  .insert({ user_id: userId, deck_id: deckId, bloom_level: "Remember", event_type: "xp_commander_added", payload: { amount: commanderDelta, mode } });
       if (e2) return NextResponse.json({ error: e2.message }, { status: 500 });
     }
 
@@ -73,20 +93,7 @@ export async function POST(req: NextRequest) {
     const { data: row1, error: e4 } = await sb.from("user_economy").select("commander_xp").eq("user_id", userId).maybeSingle();
     if (!e4) {
       const totalXp = Number(row1?.commander_xp ?? 0);
-      // Using the same thresholds as client: L2=200, L3=500, 1.5x thereafter
-      const calcLevel = (() => {
-        // inline thresholds
-        const thresholds: number[] = [0];
-        let cost = 200;
-        for (let lvl = 2; lvl <= 100; lvl++) {
-          const rounded = Math.round(cost / 50) * 50;
-          thresholds.push(thresholds[thresholds.length - 1] + rounded);
-          cost = cost * 1.5;
-        }
-        let idx = 0;
-        for (let i = 0; i < thresholds.length; i++) { if (totalXp >= thresholds[i]!) idx = i; else break; }
-        return idx + 1;
-      })();
+  const calcLevel = XP_MODEL.progressFor(totalXp).level;
       await sb.from("user_economy").update({ commander_level: calcLevel }).eq("user_id", userId);
     }
   }
@@ -94,5 +101,5 @@ export async function POST(req: NextRequest) {
   // Return wallet
   const { data: walletRow, error } = await sb.from("user_economy").select("tokens, commander_xp, commander_level").eq("user_id", userId).maybeSingle();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true, tokens: Number(walletRow?.tokens ?? 0), commander_xp: Number(walletRow?.commander_xp ?? 0), commander_level: Number(walletRow?.commander_level ?? 1) });
+  return NextResponse.json({ ok: true, tokens: Number(walletRow?.tokens ?? 0), commander_xp: Number(walletRow?.commander_xp ?? 0), commander_level: Number(walletRow?.commander_level ?? 1), xpDelta: commanderDelta, tokensDelta });
 }

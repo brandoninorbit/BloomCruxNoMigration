@@ -109,14 +109,19 @@ export default function LevelUpClient({ deckId }: { deckId: number }) {
     if (N > 0) q.set("n", String(N));
     if (weakOnly) q.set("weak", "1");
   if (typeof baselineMastery === "number") q.set("startMastery", String(Math.max(0, Math.min(100, Math.round(baselineMastery)))));
-    try {
-      void fetch(`/api/economy/finalize`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ deckId, mode: "levelup", correct: Math.round(correct), total, percent: Math.round(pct * 10) / 10 }),
-      }).catch(() => {});
-    } catch {}
     (async () => {
+      // Finalize with per-bloom breakdown first; capture deltas for display
+      try {
+        const breakdown = { [level]: { correct: Math.round(correct), total } } as Record<string, { correct: number; total: number }>;
+        await fetch(`/api/economy/finalize`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ deckId, mode: "levelup", correct: Math.round(correct), total, percent: Math.round(pct * 10) / 10, breakdown }),
+        })
+          .then((resp) => (resp && resp.ok ? resp.json() : null))
+          .then(() => null)
+          .catch(() => null);
+      } catch {}
       try {
         await fetch(`/api/quest/${deckId}/complete`, {
           method: "POST",

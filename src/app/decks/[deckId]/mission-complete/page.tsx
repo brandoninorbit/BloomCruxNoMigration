@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { formatPercent1 } from "@/lib/utils";
 import { useParams, useSearchParams } from "next/navigation";
 import AgentCard from "@/components/AgentCard";
-import { commanderLevel as commanderLevelCalc } from "@/lib/xp";
+import { XP_MODEL, tokensFromXp } from "@/lib/xp";
 import { getSupabaseClient } from "@/lib/supabase/browserClient";
 import { BLOOM_LEVELS } from "@/types/card-catalog";
 import { getUnlocksNewBetween } from "@/lib/unlocks";
@@ -125,8 +125,8 @@ function MissionPanel({ deckId, mode, unlockedParam, pctParam, levelParam }: { d
   const [summary, setSummary] = useState<MissionSummary | null>(null);
   useEffect(() => { if (deckId !== null) void loadSummary(deckId, mode, { unlockedParam, pctParam, levelParam }).then(setSummary); }, [deckId, mode, unlockedParam, pctParam, levelParam]);
   const stats = useMemo(() => ([
-    { k: "XP Earned", v: `+${Math.max(0, Math.round(summary?.xpEarned ?? 0))}`, c: "--hud-blue" },
-    { k: "Tokens", v: `+${Math.max(0, Math.round(summary?.tokensEarned ?? 0))}`, c: "--hud-yellow" },
+    { k: "XP Earned", v: `+${Math.max(0, Math.round(summary?.xpEarned ?? 0))}` , c: "--hud-blue" },
+    { k: "Tokens", v: `+${Math.max(0, Math.round(summary?.tokensEarned ?? 0))}` , c: "--hud-yellow" },
   { k: "Accuracy", v: `${formatPercent1(Number(summary?.accuracyPercent ?? 0))}`, c: "--hud-green" },
   { k: "Correct / Total", v: `${typeof summary?.correct === "number" ? Math.max(0, Math.round(summary.correct)) : "–"} / ${typeof summary?.total === "number" ? Math.max(0, Math.round(summary.total)) : (Number.isFinite(summary?.answered as number) ? Math.max(0, Math.round(summary!.answered)) : "–")}` , c: "--hud-purple" },
   ]), [summary]);
@@ -292,7 +292,7 @@ function MissionPanel({ deckId, mode, unlockedParam, pctParam, levelParam }: { d
 
 async function loadSummary(deckId: number, modeParam: string | null, hints?: { unlockedParam?: string | null; pctParam?: string | null; levelParam?: string | null }): Promise<MissionSummary> {
   const supabase = getSupabaseClient();
-  const [{ data: userData }, { data: eventsRes }, deckResp, progJson, apiSummary] = await Promise.all([
+  const [{ data: userData }, { data: eventsRes }, deckResp, progJson, apiSummary, lastFinalize] = await Promise.all([
     supabase.auth.getUser(),
     supabase
       .from("user_xp_events")
@@ -303,6 +303,7 @@ async function loadSummary(deckId: number, modeParam: string | null, hints?: { u
     supabase.from("decks").select("title").eq("id", deckId).maybeSingle(),
     fetch(`/api/quest/${deckId}/progress`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
     fetch(`/api/quest/${deckId}/xp-events`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+    fetch(`/api/economy/last-finalize?deckId=${deckId}`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
   ]);
 
   const user = userData?.user ?? null;
@@ -325,7 +326,9 @@ async function loadSummary(deckId: number, modeParam: string | null, hints?: { u
   const deckTitle: string = deckResp?.data?.title ? String(deckResp.data.title) : "";
 
   // Hints are consumed below; no additional placeholders needed
-  if (apiSummary?.found) {
+  if (lastFinalize?.found) {
+    xpEarned = Number(lastFinalize.xpDelta ?? 0);
+  } else if (apiSummary?.found) {
     xpEarned = Number(apiSummary.xp_earned ?? 0);
     const total = Number(apiSummary.total ?? 0);
     const correct = Number(apiSummary.correct ?? 0);
@@ -385,9 +388,9 @@ async function loadSummary(deckId: number, modeParam: string | null, hints?: { u
   const pctFromParam = hints?.pctParam ? Number(hints.pctParam) : NaN;
   if (!Number.isNaN(pctFromParam)) accuracyPercent = Math.max(0, Math.min(100, Math.round(pctFromParam * 10) / 10));
 
-  // If we didn't find xp events (new mode or race), fallback XP ~= correct answers for this mission
+  // If we didn't find xp events (new mode or race), fallback XP from correct answers for this mission
   if (!(apiSummary?.found) && xpEarned <= 0 && typeof correctOut === "number" && correctOut >= 0) {
-    xpEarned = Math.max(0, Math.round(correctOut));
+    xpEarned = XP_MODEL.awardForMission({ correct: correctOut, total: Number(totalOut ?? 0), bloom: "Remember" });
   }
 
   // Fetch wallet for commander XP + tokens; fall back to quest aggregates
@@ -404,10 +407,10 @@ async function loadSummary(deckId: number, modeParam: string | null, hints?: { u
     // Estimate previous level from XP before mission: subtract this mission's commander XP (approx) if present
     // We don't have per-mission commander XP split; infer from xpEarned (commander XP ~= xpEarned for simplicity)
     const prevXpTotal = Math.max(0, commanderXpTotal - Math.max(0, Math.round(xpEarned)));
-    const commanderLevelPrev = commanderLevelCalc(prevXpTotal).level;
-    const commanderLevel = commanderLevelCalc(commanderXpTotal).level;
-  // tokensEarned shows this-mission tokens; minted at 0.25 per XP
-  const tokensEarned = Math.max(0, Math.round(xpEarned * 0.25));
+  const commanderLevelPrev = XP_MODEL.progressFor(prevXpTotal).level;
+  const commanderLevel = XP_MODEL.progressFor(commanderXpTotal).level;
+  // tokensEarned shows this-mission tokens; minted at 0.25 per XP (ceil to whole tokens)
+  const tokensEarned = tokensFromXp(xpEarned);
 
   const displayName = (user?.user_metadata?.full_name as string | undefined) || user?.email?.split("@")[0] || "Agent";
   const avatarUrl = (user?.user_metadata?.avatar_url as string | undefined) || (user?.user_metadata?.picture as string | undefined) || null;

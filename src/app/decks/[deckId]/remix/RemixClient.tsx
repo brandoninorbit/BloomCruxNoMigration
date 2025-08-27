@@ -138,15 +138,24 @@ export default function RemixClient({ deckId }: { deckId: number }) {
     q.set("correct", String(Math.round(correct)));
     q.set("level", bloomLevelForComplete);
     // Fire-and-forget finalize to mint XP/tokens; do not block UX
-    try {
-      void fetch(`/api/economy/finalize`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ deckId, mode: "remix", correct: Math.round(correct), total, percent: Math.round(pct * 10) / 10 }),
-      }).catch(() => {});
-    } catch {}
     // Also record a mission attempt to update progress/attempts history
     (async () => {
+      // Finalize with per-bloom breakdown and capture deltas
+      try {
+        const map = perBloomRef.current;
+        const breakdown: Record<string, { correct: number; total: number }> = {};
+        (Object.keys(map) as DeckBloomLevel[]).forEach((lvl) => {
+          const seen = Math.max(0, Number(map[lvl]?.seen ?? 0));
+          const correctFloat = Math.max(0, Number(map[lvl]?.correctFloat ?? 0));
+          if (seen > 0) breakdown[lvl] = { correct: Math.round(correctFloat), total: seen };
+        });
+        const resp = await fetch(`/api/economy/finalize`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ deckId, mode: "remix", correct: Math.round(correct), total, percent: Math.round(pct * 10) / 10, breakdown }),
+        }).catch(() => null);
+  if (resp && resp.ok) { await resp.json().catch(() => null); }
+      } catch {}
       try {
         // Build per-bloom breakdown
         const map = perBloomRef.current;
@@ -180,7 +189,7 @@ export default function RemixClient({ deckId }: { deckId: number }) {
           }
         }
       } catch {}
-      router.replace(`/decks/${deckId}/mission-complete?${q.toString()}`);
+  router.replace(`/decks/${deckId}/mission-complete?${q.toString()}`);
     })();
   }, [done, order.length, correctSum, deckId, router, selectedLevels]);
   // Renderers per type (minimal, reuse existing components)

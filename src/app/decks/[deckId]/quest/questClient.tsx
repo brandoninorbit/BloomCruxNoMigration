@@ -138,13 +138,18 @@ export default function QuestClient({ deckId }: { deckId: number }) {
       q.set("pct", String(percent));
       q.set("total", String(total));
       q.set("correct", String(Math.round(correct)));
-      // Fire-and-forget economy finalize
+      // Finalize with per-bloom breakdown and capture deltas if available
       try {
-        void fetch(`/api/economy/finalize`, {
+        const breakdown = { [next.bloomLevel]: { correct: Math.round(correct), total } } as Record<string, { correct: number; total: number }>;
+        const resp = await fetch(`/api/economy/finalize`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ deckId, mode: "quest", correct: Math.round(correct), total, percent }),
-        }).catch(() => {});
+          body: JSON.stringify({ deckId, mode: "quest", correct: Math.round(correct), total, percent, breakdown }),
+        }).catch(() => null);
+        if (resp && resp.ok) {
+          // response contains xpDelta/tokensDelta, but mission-complete now fetches last finalize itself
+          await resp.json().catch(() => null);
+        }
       } catch {}
       // Record attempt row for history/progression
       try {

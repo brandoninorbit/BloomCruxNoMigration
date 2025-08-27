@@ -86,15 +86,24 @@ export default function StarredClient({ deckId }: { deckId: number }) {
     q.set("pct", String(Math.round(pct * 10) / 10));
     q.set("total", String(total));
     q.set("correct", String(Math.round(correct)));
-    try {
-      void fetch(`/api/economy/finalize`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ deckId, mode: "starred", correct: Math.round(correct), total, percent: Math.round(pct * 10) / 10 }),
-      }).catch(() => {});
-    } catch {}
     // Record mission attempt to update history and mastery per-bloom
     (async () => {
+      // Finalize with breakdown and capture deltas
+      try {
+        const map = perBloomRef.current;
+        const breakdown: Record<string, { correct: number; total: number }> = {};
+        (Object.keys(map) as DeckBloomLevel[]).forEach((lvl) => {
+          const seen = Math.max(0, Number(map[lvl]?.seen ?? 0));
+          const correctFloat = Math.max(0, Number(map[lvl]?.correctFloat ?? 0));
+          if (seen > 0) breakdown[lvl] = { correct: Math.round(correctFloat), total: seen };
+        });
+        const resp = await fetch(`/api/economy/finalize`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ deckId, mode: "starred", correct: Math.round(correct), total, percent: Math.round(pct * 10) / 10, breakdown }),
+        }).catch(() => null);
+  if (resp && resp.ok) { await resp.json().catch(() => null); }
+      } catch {}
       try {
         const map = perBloomRef.current;
         const breakdown: Record<string, { scorePct: number; cardsSeen: number; cardsCorrect: number }> = {};
