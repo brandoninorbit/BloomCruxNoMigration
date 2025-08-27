@@ -8,6 +8,48 @@ export default function AboutPage() {
   const [openFaqs, setOpenFaqs] = useState<Set<number>>(new Set());
   const contentRefs = useRef<Array<HTMLDivElement | null>>([]);
 
+  // Lightweight reveal-on-scroll component
+  function Reveal({
+    children,
+    className = "",
+    delay = 0,
+    as,
+  }: {
+    children: React.ReactNode;
+    className?: string;
+    delay?: number; // ms
+    as?: React.ElementType;
+  }) {
+    const wrapperRef = useRef<HTMLDivElement | null>(null);
+    const [shown, setShown] = useState(false);
+    useEffect(() => {
+      const node = wrapperRef.current;
+      if (!node) return;
+      const io = new IntersectionObserver(
+        (entries) => {
+          const [entry] = entries;
+          if (entry && entry.isIntersecting) {
+            setShown(true);
+            io.unobserve(entry.target);
+          }
+        },
+        { threshold: 0.15 }
+      );
+      io.observe(node);
+      return () => io.disconnect();
+    }, []);
+    const Tag = (as || "div") as React.ElementType;
+    return (
+      <div
+        ref={wrapperRef}
+        className={`transition-all duration-700 ease-out will-change-transform ${shown ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"} ${className}`}
+        style={{ transitionDelay: `${delay}ms` }}
+      >
+        <Tag>{children}</Tag>
+      </div>
+    );
+  }
+
   const faqItems = useMemo(
     () => [
       {
@@ -98,20 +140,20 @@ export default function AboutPage() {
           <div className="wave-overlay" />
           <div className="relative z-10 py-20 md:py-32">
             <div className="container mx-auto px-6 text-center">
-              <h1 className="text-5xl font-bold leading-tight md:text-7xl">
+              <Reveal as="h1" className="text-5xl font-bold leading-tight md:text-7xl"> 
                 Master Any Subject, Faster.
-              </h1>
-              <p className="mx-auto mt-6 max-w-3xl text-lg text-blue-200 md:text-xl">
+              </Reveal>
+              <Reveal as="p" delay={100} className="mx-auto mt-6 max-w-3xl text-lg text-blue-200 md:text-xl">
                 BloomCrux is an intelligent learning platform that adapts to you using cognitive science principles and gamified logic. We use cognitive science principles to create study tools that help you learn more effectively and retain information longer, with gamified logic to make learning more interactive and fun.
-              </p>
-              <div className="mt-12">
+              </Reveal>
+              <Reveal delay={200} className="mt-12">
                 <a
                   href="#"
                   className="inline-block transform rounded-full bg-white px-10 py-4 text-lg font-bold text-[#2481f9] transition-transform hover:scale-105 hover:bg-blue-50"
                 >
                   Get started for free
                 </a>
-              </div>
+              </Reveal>
             </div>
           </div>
         </div>
@@ -174,7 +216,7 @@ export default function AboutPage() {
                   strokeDasharray="10 10"
                 />
               </svg>
-              <div className="order-2 relative z-10 md:order-1">
+              <Reveal className="order-2 relative z-10 md:order-1">
                 <h3 className="mb-4 text-3xl font-bold text-[#2481f9]">Import With Ease</h3>
                 <p className="text-lg leading-relaxed text-gray-600">
                   With CSV formatting, you can import many cards in a set at once, our system chomps through csv&apos;s like there&apos;s no tomorrow with ready to study flashcards with{' '}
@@ -187,8 +229,8 @@ export default function AboutPage() {
                   </button>
                   .
                 </p>
-              </div>
-              <div className="order-1 relative z-10 md:order-2">
+              </Reveal>
+              <Reveal delay={100} className="order-1 relative z-10 md:order-2">
                 {/* TODO: Replace with optimized <Image /> when feature is ready */}
                 <Image
                   alt="Stylized image of flashcards on a board, representing AI-powered content creation."
@@ -199,7 +241,7 @@ export default function AboutPage() {
                   unoptimized
                   priority
                 />
-              </div>
+              </Reveal>
             </div>
 
             {/* Row 2 (reversed) */}
@@ -219,7 +261,7 @@ export default function AboutPage() {
                   strokeDasharray="10 10"
                 />
               </svg>
-              <div className="relative z-10 md:order-1">
+              <Reveal className="relative z-10 md:order-1">
                 {/* TODO: Replace with optimized <Image /> when feature is ready */}
                 <Image
                   alt="A chalk drawing on a blackboard that reads 'Adaptive Study Missions Sale', illustrating personalized learning paths."
@@ -230,13 +272,13 @@ export default function AboutPage() {
                   unoptimized
                   priority
                 />
-              </div>
-              <div className="relative z-10 md:order-2">
+              </Reveal>
+              <Reveal delay={100} className="relative z-10 md:order-2">
                 <h3 className="mb-4 text-3xl font-bold text-[#2481f9]">Adaptive Study Missions</h3>
                 <p className="text-lg leading-relaxed text-gray-600">
                   Engage in various mission types like Boost, Timed Drills, and Target Practice that adapt to your performance and keep you motivated, ensuring you&apos;re always learning efficiently.
                 </p>
-              </div>
+              </Reveal>
             </div>
 
             {/* Row 3 */}
@@ -256,7 +298,7 @@ export default function AboutPage() {
                   strokeDasharray="10 10"
                 />
               </svg>
-              <div className="order-2 relative z-10 md:order-1">
+              <Reveal className="order-2 relative z-10 md:order-1">
                 <h3 className="mb-4 text-3xl font-bold text-[#2481f9]">Actionable Progress</h3>
                 <p className="text-lg leading-relaxed text-gray-600">
                   Track your mastery across different levels with our{' '}
@@ -265,8 +307,8 @@ export default function AboutPage() {
                   </a>
                   . Know exactly where to focus your efforts and watch your knowledge grow.
                 </p>
-              </div>
-              <div className="order-1 relative z-10 md:order-2">
+              </Reveal>
+              <Reveal delay={100} className="order-1 relative z-10 md:order-2">
                 {/* TODO: Replace with optimized <Image /> when feature is ready */}
                 <Image
                   alt="A whiteboard with a bar chart showing upward progress, symbolizing actionable progress tracking."
@@ -277,7 +319,7 @@ export default function AboutPage() {
                   unoptimized
                   priority
                 />
-              </div>
+              </Reveal>
             </div>
           </div>
         </section>
@@ -291,11 +333,11 @@ export default function AboutPage() {
               </h2>
             </div>
 
-            <div className="space-y-6">
+    <div className="space-y-6">
               {faqItems.map((item, idx) => {
                 const isOpen = openFaqs.has(idx);
                 return (
-                  <div
+      <Reveal as="div"
                     key={idx}
                     className={`accordion-item rounded-2xl bg-white p-6 shadow-lg transition-all duration-300 ${isOpen ? "open bg-sky-50/70 shadow-lg" : "border border-slate-200"}`}
                   >
@@ -340,7 +382,7 @@ export default function AboutPage() {
                     >
                       <p className="mt-4 text-gray-600">{item.a}</p>
                     </div>
-                  </div>
+                  </Reveal>
                 );
               })}
             </div>
