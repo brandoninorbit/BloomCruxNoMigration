@@ -62,12 +62,7 @@ export default function SunriseCover({ className, fill }: { className?: string; 
         <div className="mx-auto max-w-4xl h-20 -mb-4 rounded-t-full bg-white/6 backdrop-blur-sm" style={{ filter: 'blur(8px)' }} />
       </div>
 
-      {/* Title overlay sample (for preview) */}
-      <div className="absolute inset-0 flex items-center justify-center">
-        <div className="px-6 py-3 rounded-md bg-white/20 backdrop-blur-sm border border-white/10 text-white text-lg font-semibold">
-          Sunrise
-        </div>
-      </div>
+  {/* Removed title overlay to keep cover purely visual */}
     </div>
   );
 }

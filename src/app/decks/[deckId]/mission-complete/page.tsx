@@ -7,6 +7,7 @@ import AgentCard from "@/components/AgentCard";
 import { commanderLevel as commanderLevelCalc } from "@/lib/xp";
 import { getSupabaseClient } from "@/lib/supabase/browserClient";
 import { BLOOM_LEVELS } from "@/types/card-catalog";
+import { getUnlocksNewBetween } from "@/lib/unlocks";
 import { DEFAULT_QUEST_SETTINGS } from "@/lib/quest/types";
 import type { DeckBloomLevel } from "@/types/deck-cards";
 
@@ -22,6 +23,7 @@ type MissionSummary = {
   tokensEarned: number;
   tokensBalance?: number;
   commanderLevel: number;
+  commanderLevelPrev?: number;
   user: { name: string; avatarUrl?: string | null } | null;
   nextHref?: string | null;
   unlocked?: boolean;
@@ -129,6 +131,48 @@ function MissionPanel({ deckId, mode, unlockedParam, pctParam, levelParam }: { d
   { k: "Correct / Total", v: `${typeof summary?.correct === "number" ? Math.max(0, Math.round(summary.correct)) : "–"} / ${typeof summary?.total === "number" ? Math.max(0, Math.round(summary.total)) : (Number.isFinite(summary?.answered as number) ? Math.max(0, Math.round(summary!.answered)) : "–")}` , c: "--hud-purple" },
   ]), [summary]);
 
+  const leveledUp = (summary?.commanderLevelPrev ?? summary?.commanderLevel ?? 0) < (summary?.commanderLevel ?? 0);
+  // Compute unlocks newly gained this level-up using central catalog
+  const unlocks: string[] = useMemo(() => {
+    const prev = Number(summary?.commanderLevelPrev ?? (Number(summary?.commanderLevel ?? 0) - 1));
+    const cur = Number(summary?.commanderLevel ?? 0);
+    return getUnlocksNewBetween(prev, cur).map((u) => u.name);
+  }, [summary?.commanderLevelPrev, summary?.commanderLevel]);
+
+  // Fire confetti effect on level-up (lightweight CSS confetti)
+  useEffect(() => {
+    if (!leveledUp) return;
+    try {
+      // simple confetti using DOM particles to avoid new deps
+      const n = 80;
+      const root = document.createElement('div');
+      root.style.position = 'fixed';
+      root.style.inset = '0';
+      root.style.pointerEvents = 'none';
+      root.style.zIndex = '9999';
+      for (let i = 0; i < n; i++) {
+        const p = document.createElement('div');
+        const size = 6 + Math.random() * 6;
+        p.style.position = 'absolute';
+        p.style.left = Math.round(Math.random() * 100) + '%';
+        p.style.top = '-10px';
+        p.style.width = `${size}px`;
+        p.style.height = `${size}px`;
+        p.style.background = ['#4DA6FF','#34C759','#FF9F0A','#FF375F','#9D4EDD'][Math.floor(Math.random()*5)];
+        p.style.opacity = '0.9';
+        p.style.transform = `rotate(${Math.random()*360}deg)`;
+        p.style.borderRadius = '1px';
+        p.animate([
+          { transform: `translateY(0) rotate(0deg)`, opacity: 1 },
+          { transform: `translate(${(Math.random()-0.5)*200}px, ${window.innerHeight+50}px) rotate(${Math.random()*720}deg)`, opacity: 0.8 }
+        ], { duration: 1800 + Math.random()*1000, easing: 'cubic-bezier(.2,.7,.2,1)', fill: 'forwards' });
+        root.appendChild(p);
+      }
+      document.body.appendChild(root);
+      setTimeout(() => { try { document.body.removeChild(root); } catch {} }, 2400);
+    } catch {}
+  }, [leveledUp]);
+
   return (
     <section className="lg:col-span-2 bg-[var(--secondary-color)]/90 backdrop-blur-sm rounded-xl p-6 md:p-8 shadow-sm border border-slate-200 relative h-full">
     <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
@@ -155,6 +199,14 @@ function MissionPanel({ deckId, mode, unlockedParam, pctParam, levelParam }: { d
         </div>
         <h1 className="text-4xl font-bold">Agent, mission accomplished.</h1>
         <p className="text-lg text-[var(--text-secondary)] mt-2">You have successfully completed your objective.</p>
+        {leveledUp && (
+          <div className="mt-4 max-w-xl w-full rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-900 px-4 py-3 text-sm">
+            <div className="font-semibold">Commander level up {Math.max(1, Number(summary?.commanderLevelPrev ?? (summary?.commanderLevel ?? 1) - 1))} → {Number(summary?.commanderLevel ?? 1)}</div>
+            {unlocks.length > 0 && (
+              <div className="mt-1">Unlocked — {unlocks.join(', ')}</div>
+            )}
+          </div>
+        )}
       </div>
       {(() => {
         // Level Up customization: show mastery increase banner and bar when mode is levelup
@@ -348,8 +400,12 @@ async function loadSummary(deckId: number, modeParam: string | null, hints?: { u
       walletTokens = Number(wallet.tokens ?? 0);
     }
   } catch {}
-  const commanderXpTotal = walletCommanderXp || (progJson && typeof progJson.xp?.commanderXpTotal === "number" ? progJson.xp.commanderXpTotal : 0);
-  const commanderLevel = commanderLevelCalc(commanderXpTotal).level;
+    const commanderXpTotal = walletCommanderXp || (progJson && typeof progJson.xp?.commanderXpTotal === "number" ? progJson.xp.commanderXpTotal : 0);
+    // Estimate previous level from XP before mission: subtract this mission's commander XP (approx) if present
+    // We don't have per-mission commander XP split; infer from xpEarned (commander XP ~= xpEarned for simplicity)
+    const prevXpTotal = Math.max(0, commanderXpTotal - Math.max(0, Math.round(xpEarned)));
+    const commanderLevelPrev = commanderLevelCalc(prevXpTotal).level;
+    const commanderLevel = commanderLevelCalc(commanderXpTotal).level;
   // tokensEarned shows this-mission tokens; minted at 0.25 per XP
   const tokensEarned = Math.max(0, Math.round(xpEarned * 0.25));
 
@@ -426,9 +482,10 @@ async function loadSummary(deckId: number, modeParam: string | null, hints?: { u
   tokensEarned,
   tokensBalance: walletTokens,
     commanderLevel,
+  commanderLevelPrev,
   user: user ? { name: displayName, avatarUrl } : null,
   nextHref,
   unlocked,
-  perBloomRaw: progJson?.per_bloom ?? {},
+  perBloomRaw: progJson?.per_bloom ?? null,
   };
 }

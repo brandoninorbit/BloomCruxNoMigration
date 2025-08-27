@@ -1,6 +1,7 @@
 'use client';
 
 import Image from 'next/image';
+import { getNextUnlockForLevel } from '@/lib/unlocks';
 
 // Lightweight Card primitives and utils
 function cn(...p: Array<string | false | null | undefined>) {
@@ -48,7 +49,6 @@ const TokenIcon = () => (
 );
 const Trophy = () => <span role="img" aria-label="trophy">🏆</span>;
 const Star = () => <span role="img" aria-label="star">⭐</span>;
-const Shield = () => <span role="img" aria-label="shield">🛡️</span>;
 
 const AVATAR_PLACEHOLDER =
   'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" rx="50" fill="%23e5e7eb"/></svg>';
@@ -68,31 +68,8 @@ export default function AgentCard({
   avatarUrl,
   className,
 }: AgentCardProps) {
-  // Minimal unlock table (extendable)
-  const unlocks: Array<{ name: string; level: number; id: string }> = [
-    { id: 'sunrise', name: 'Sunrise Deck Cover', level: 3 },
-    { id: 'avatarFrames', name: 'Animated Avatar Frames', level: 10 },
-  ];
-
-  // Find the next unlock the user hasn't reached yet
-  const next = unlocks.find((u) => level < u.level) ?? unlocks[unlocks.length - 1];
-  const nextUnlockLabel = `Lvl ${next.level}`;
-  const nextUnlockName = next.name;
-  // Determine if the next unlock is already available (level met)
-  const hasUnlocked = level >= (next.level ?? 999);
-  // For covers, also reflect purchase state in dev (localStorage)
-  let nextStatus = '';
-  try {
-    if (next.id === 'sunrise') {
-      const unlocked = localStorage.getItem('dc:Sunrise:unlocked') === '1' || level >= 3;
-      const purchased = localStorage.getItem('dc:Sunrise:purchased') === '1';
-      nextStatus = unlocked ? (purchased ? 'Purchased' : 'Unlocked — buy in shop') : `Unlocks at L3`;
-    } else {
-      nextStatus = hasUnlocked ? 'Unlocked' : `Unlocks at ${next.level}`;
-    }
-  } catch {
-    nextStatus = hasUnlocked ? 'Unlocked' : `Unlocks at ${next.level}`;
-  }
+  // Centralized next unlock
+  const next = getNextUnlockForLevel(level);
 
   return (
     <Card
@@ -148,20 +125,18 @@ export default function AgentCard({
           </div>
         </div>
 
-        {/* Next Unlock Section */}
-        <div className="space-y-2">
-          <div className="text-xs">
-            <span className="text-muted-foreground">Next Unlock - </span>
-            <span className="font-semibold text-primary">{nextUnlockLabel}</span>
-          </div>
-          <div
-            title={nextUnlockName}
-            className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-md transition-transform hover:scale-105"
-          >
-            <span className="h-6 w-6"><Shield /></span>
-          </div>
-          <div className="text-xs text-muted-foreground">{nextUnlockName}</div>
-          <div className="text-xs text-muted-foreground">{nextStatus}</div>
+        {/* Next Unlock Section (text-only, no icon) */}
+        <div className="space-y-1">
+          <div className="text-xs text-muted-foreground">Next unlock</div>
+      {next ? (
+            <div className="text-sm">
+        <span className="font-semibold">Lvl {next.level}</span>
+              <span className="mx-1">—</span>
+        <span className="text-muted-foreground">{next.name}</span>
+            </div>
+          ) : (
+            <div className="text-sm text-muted-foreground">No upcoming unlocks</div>
+          )}
         </div>
       </div>
     </Card>

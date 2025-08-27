@@ -12,6 +12,7 @@ const links = [
   { href: '/about', label: 'About' },
   { href: '/decks', label: 'Decks' },
   { href: '/dashboard', label: 'Dashboard' },
+  { href: '/shop', label: 'Cosmetics' },
 ];
 
 export default function Nav() {

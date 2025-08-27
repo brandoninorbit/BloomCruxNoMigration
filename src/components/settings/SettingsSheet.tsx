@@ -36,6 +36,10 @@ export default function SettingsSheet() {
     try {
       const coverId = v === '__system_default' ? null : v;
       await supabaseRepo.setUserDefaultCover(coverId);
+      // Notify other views (e.g., Decks page) to reload cover visuals immediately
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('deck-covers:default-updated', { detail: { coverId } }));
+      }
     } catch {
       // swallow for now
     }

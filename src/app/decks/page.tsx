@@ -17,6 +17,7 @@ import { getSupabaseClient } from "@/lib/supabase/browserClient";
 import GradientBackgroundWrapper from "@/components/GradientBackgroundWrapper";
 import { SunriseCover } from "@/components/DeckCovers";
 import { DeckCardShell } from "@/components/decks/DeckCardShell";
+import { fetchWithAuth } from "@/lib/supabase/fetchWithAuth";
 // MasteryPill types no longer used here
 
 // BLOOM_CHOICES removed (unused)
@@ -239,6 +240,7 @@ function DecksPage() {
   const [editColorName, setEditColorName] = useState<ColorName>("blue");
   // Delete confirmation toast state
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const [defaultCover, setDefaultCover] = useState<string | null>(null);
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Mastery map by deck: { [deck_id]: { [bloom]: percent } }
@@ -276,6 +278,7 @@ function DecksPage() {
             locked: Boolean(d.locked),
             mastery: typeof d.mastery === 'number' ? d.mastery : 0,
             bloomLevel: typeof d.bloomLevel === 'string' ? d.bloomLevel : "",
+            cover: typeof d.cover === 'string' ? d.cover : null,
             created_at: typeof d.created_at === 'string' ? d.created_at : undefined
           }))
         );
@@ -306,6 +309,34 @@ function DecksPage() {
       // setDataLoading(false);
     }
   }, [user]);
+
+  // Load user's default deck cover and keep it in state
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetchWithAuth('/api/covers/default', { cache: 'no-store' });
+        if (!res.ok) return;
+        const j = await res.json();
+        if (!cancelled) setDefaultCover((j && typeof j === 'object' && 'defaultCover' in j) ? (j.defaultCover as string | null) : null);
+      } catch {}
+    })();
+    const handler = async () => {
+      try {
+        const res = await fetchWithAuth('/api/covers/default', { cache: 'no-store' });
+        if (res.ok) {
+          const j = await res.json();
+          setDefaultCover((j && typeof j === 'object' && 'defaultCover' in j) ? (j.defaultCover as string | null) : null);
+        }
+      } catch {}
+      try { await fetchUserData(); } catch {}
+    };
+    if (typeof window !== 'undefined') window.addEventListener('deck-covers:default-updated', handler as EventListener);
+    return () => {
+      cancelled = true;
+      if (typeof window !== 'undefined') window.removeEventListener('deck-covers:default-updated', handler as EventListener);
+    };
+  }, [fetchUserData]);
 
   // Fetch on mount and when user changes
   useEffect(() => {
@@ -674,9 +705,9 @@ function DecksPage() {
       })()}
       onClick={() => (window.location.href = `/decks/${d.id}/edit`)}
       cover={
-        d.cover ? (
+        (d.cover ?? defaultCover) ? (
           <div className="absolute inset-0 z-0 pointer-events-none">
-            {d.cover === "Sunrise" ? (
+            {(d.cover ?? defaultCover) === "Sunrise" ? (
               <div className="h-full w-full">
                 <SunriseCover fill className="h-full w-full" />
               </div>
