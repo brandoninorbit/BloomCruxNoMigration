@@ -2,82 +2,42 @@
 import React, { useState } from "react";
 import ShopCard from "../../components/shop/ShopCard";
 
-const powerUps = [
+const cosmeticCategories = [
   {
-    title: "Retry",
-    description: "Get a second chance on a wrong answer during a study session.",
-    price: 20,
-    soon: false,
-    icon: (
-      <svg fill="currentColor" height="20" width="20" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
-        <path d="M228,100a12,12,0,0,0-10.33,6l-47,81.42a12,12,0,0,0,20.66,12l47-81.42A12,12,0,0,0,228,100Zm-78.33,18,23-39.84a12,12,0,1,0-20.66-12L129,106,72.33,8.16a12,12,0,0,0-20.66,12L74.67,60H36a12,12,0,0,0,0,24H86.38l-47,81.42a12,12,0,1,0,20.66,12L116,114l56.67,98.16a12,12,0,0,0,20.66-12L167,158h41a12,12,0,0,0,0-24H157.38Z" />
-      </svg>
-    ),
+    name: "Deck Covers",
+    unlockLevel: 3,
+    items: [
+      {
+        title: "Sunrise Cover",
+        description: "Start your study session with the warm glow of dawn.",
+        price: 80,
+        unlockLevel: 3,
+        image: (
+          <div className="h-24 w-full bg-gradient-to-br from-orange-400 via-pink-400 to-purple-500" />
+        ),
+      },
+    ],
   },
   {
-    title: "Hint",
-    description: "Reveal a helpful clue or memory aid for the current flashcard.",
-    price: 50,
-    soon: true,
-    icon: (
-      <svg fill="currentColor" height="20" width="20" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
-        <path d="M228,100a12,12,0,0,0-10.33,6l-47,81.42a12,12,0,0,0,20.66,12l47-81.42A12,12,0,0,0,228,100Zm-78.33,18,23-39.84a12,12,0,1,0-20.66-12L129,106,72.33,8.16a12,12,0,0,0-20.66,12L74.67,60H36a12,12,0,0,0,0,24H86.38l-47,81.42a12,12,0,1,0,20.66,12L116,114l56.67,98.16a12,12,0,0,0,20.66-12L167,158h41a12,12,0,0,0,0-24H157.38Z" />
-      </svg>
-    ),
+    name: "Avatar Frames",
+    unlockLevel: 4,
+    items: [],
   },
   {
-    title: "50/50",
-    description: "Eliminate two incorrect options from a multiple-choice question.",
-    price: 100,
-    soon: false,
-    icon: (
-      <svg fill="currentColor" height="20" width="20" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
-        <path d="M228,100a12,12,0,0,0-10.33,6l-47,81.42a12,12,0,0,0,20.66,12l47-81.42A12,12,0,0,0,228,100Zm-78.33,18,23-39.84a12,12,0,1,0-20.66-12L129,106,72.33,8.16a12,12,0,0,0-20.66,12L74.67,60H36a12,12,0,0,0,0,24H86.38l-47,81.42a12,12,0,1,0,20.66,12L116,114l56.67,98.16a12,12,0,0,0,20.66-12L167,158h41a12,12,0,0,0,0-24H157.38Z" />
-      </svg>
-    ),
-  },
-  {
-    title: "Time Warp",
-    description: "Instantly add 15 seconds to the clock in a Timed Drill mission.",
-    price: 15,
-    soon: false,
-    icon: (
-      <svg fill="currentColor" height="20" width="20" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
-        <path d="M228,100a12,12,0,0,0-10.33,6l-47,81.42a12,12,0,0,0,20.66,12l47-81.42A12,12,0,0,0,228,100Zm-78.33,18,23-39.84a12,12,0,1,0-20.66-12L129,106,72.33,8.16a12,12,0,0,0-20.66,12L74.67,60H36a12,12,0,0,0,0,24H86.38l-47,81.42a12,12,0,1,0,20.66,12L116,114l56.67,98.16a12,12,0,0,0,20.66-12L167,158h41a12,12,0,0,0,0-24H157.38Z" />
-      </svg>
-    ),
-  },
-  {
-    title: "Focus Lens",
-    description: "Highlight important keywords or phrases on the flashcard.",
-    price: 20,
-    soon: true,
-    icon: (
-      <svg fill="currentColor" height="20" width="20" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
-        <path d="M228,100a12,12,0,0,0-10.33,6l-47,81.42a12,12,0,0,0,20.66,12l47-81.42A12,12,0,0,0,228,100Zm-78.33,18,23-39.84a12,12,0,1,0-20.66-12L129,106,72.33,8.16a12,12,0,0,0-20.66,12L74.67,60H36a12,12,0,0,0,0,24H86.38l-47,81.42a12,12,0,1,0,20.66,12L116,114l56.67,98.16a12,12,0,0,0,20.66-12L167,158h41a12,12,0,0,0,0-24H157.38Z" />
-      </svg>
-    ),
-  },
-  {
-    title: "Bloom Unlock",
-    description: "Bypass the 80% mastery requirement to unlock the next Bloom level.",
-    price: 200,
-    soon: false,
-    icon: (
-      <svg fill="currentColor" height="20" width="20" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
-        <path d="M228,100a12,12,0,0,0-10.33,6l-47,81.42a12,12,0,0,0,20.66,12l47-81.42A12,12,0,0,0,228,100Zm-78.33,18,23-39.84a12,12,0,1,0-20.66-12L129,106,72.33,8.16a12,12,0,0,0-20.66,12L74.67,60H36a12,12,0,0,0,0,24H86.38l-47,81.42a12,12,0,1,0,20.66,12L116,114l56.67,98.16a12,12,0,0,0,20.66-12L167,158h41a12,12,0,0,0,0-24H157.38Z" />
-      </svg>
-    ),
+    name: "Page Backgrounds",
+    unlockLevel: 6,
+    items: [],
   },
 ];
 
 export default function ShopPage() {
   const [preview, setPreview] = useState(true);
+  const commanderLevel = 3;
   return (
-    <div style={{ background: '#f3f6fb' }}>
+    <div style={{ background: "#f3f6fb" }}>
       <main className="max-w-5xl mx-auto px-6 pt-10 pb-20">
-        <h1 className="text-center text-5xl font-extrabold tracking-tight text-slate-900">Commander’s Emporium</h1>
-        <p className="mt-2 text-center text-lg text-slate-600">Spend your hard-earned tokens on powerful upgrades and boosts.</p>
+        <h1 className="text-center text-5xl font-extrabold tracking-tight text-slate-900">Commander’s Boutique</h1>
+        <p className="mt-2 text-center text-lg text-slate-600">Spend your tokens on stylish cosmetic upgrades.</p>
         <div className="mt-8 rounded-xl border border-blue-100 bg-blue-50 p-4 flex items-center">
           <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-blue-100 text-blue-500 mr-3">
             <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24">
@@ -87,22 +47,39 @@ export default function ShopPage() {
           <span className="text-blue-700 font-medium">Viewing Mock Data</span>
           <span className="ml-2 text-blue-600">This is a preview of the shop. Please <a href="#" className="underline">log in</a> to make purchases.</span>
         </div>
-        <div className="mt-8 flex flex-col items-center">
-          <button className="rounded-full bg-blue-100 text-blue-700 px-6 py-2 font-semibold text-base mb-2 shadow-sm">Power‑Up Inventory</button>
-          <div className="flex items-center gap-2">
-            <span className="text-slate-700 text-base">Preview mode</span>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input type="checkbox" checked={preview} onChange={() => setPreview(!preview)} className="sr-only peer" />
-              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:bg-blue-600 transition-all"></div>
-              <div className="absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-all peer-checked:translate-x-5"></div>
-            </label>
-          </div>
+        <div className="mt-8 flex items-center justify-center gap-2">
+          <span className="text-slate-700 text-base">Preview mode</span>
+          <label className="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" checked={preview} onChange={() => setPreview(!preview)} className="sr-only peer" />
+            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:bg-blue-600 transition-all"></div>
+            <div className="absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-all peer-checked:translate-x-5"></div>
+          </label>
         </div>
-        <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {powerUps.map((item) => (
-            <ShopCard key={item.title} {...item} preview={preview} />
-          ))}
-        </div>
+        {cosmeticCategories.map((cat) => (
+          <section key={cat.name} className="mt-10">
+            <h2 className="text-2xl font-bold text-slate-800 mb-4">{cat.name}</h2>
+            {commanderLevel < cat.unlockLevel ? (
+              <p className="text-slate-500">Unlocks at Commander Level {cat.unlockLevel}</p>
+            ) : cat.items.length > 0 ? (
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                {cat.items.map((item) => (
+                  <ShopCard
+                    key={item.title}
+                    title={item.title}
+                    description={item.description}
+                    price={item.price}
+                    image={item.image}
+                    preview={preview}
+                    locked={commanderLevel < item.unlockLevel}
+                    unlockLevel={item.unlockLevel}
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="text-slate-500">More cosmetics coming soon...</p>
+            )}
+          </section>
+        ))}
       </main>
     </div>
   );
