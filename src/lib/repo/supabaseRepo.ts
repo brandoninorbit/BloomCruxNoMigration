@@ -218,4 +218,36 @@ export const supabaseRepo = {
 
     if (error) throw error;
   },
+
+  // Get or null the user's default avatar frame from user_settings
+  async getUserDefaultAvatarFrame(): Promise<string | null> {
+    const supabase = getSupabaseClient();
+    const { data: userData } = await supabase.auth.getUser();
+    const uid = userData?.user?.id;
+    if (!uid) return null;
+
+    const { data, error } = await supabase
+      .from('user_settings')
+      .select('default_avatar_frame')
+      .eq('user_id', uid)
+      .maybeSingle();
+
+    if (error) return null;
+    return (data?.default_avatar_frame as string | null) ?? null;
+  },
+
+  // Set the user's default avatar frame in user_settings (insert or update)
+  async setUserDefaultAvatarFrame(frameId: string | null): Promise<void> {
+    const supabase = getSupabaseClient();
+    const { data: userData, error: uerr } = await supabase.auth.getUser();
+    if (uerr || !userData?.user) throw new Error('Not signed in');
+    const uid = userData.user.id;
+
+    const payload = { user_id: uid, default_avatar_frame: frameId };
+    const { error } = await supabase
+      .from('user_settings')
+      .upsert([payload], { onConflict: 'user_id' });
+
+    if (error) throw error;
+  },
 };

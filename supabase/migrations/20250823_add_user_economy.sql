@@ -21,7 +21,7 @@ do $$ begin
   create policy ue_insert on public.user_economy for insert with check (auth.uid() = user_id);
 exception when duplicate_object then null; end $$;
 
--- helper function for atomic increments
+-- helper function for atomic increments (XP only - tokens handled separately)
 create or replace function public.increment_user_economy(p_user_id uuid, p_tokens_delta integer, p_xp_delta integer)
 returns void language plpgsql as $$
 begin

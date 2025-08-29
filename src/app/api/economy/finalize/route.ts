@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { getSupabaseSession } from "@/app/supabase/session";
-import { XP_MODEL, tokensFromXp, type BloomLevel } from "@/lib/xp";
+import { XP_MODEL, type BloomLevel } from "@/lib/xp";
 
 // Finalize a mission completion by minting commander XP and tokens to the user's wallet.
 // Body: { deckId: number, mode?: string, correct?: number, total?: number, percent?: number }
@@ -40,13 +40,58 @@ export async function POST(req: NextRequest) {
   if (!Number.isFinite(total) || total < 0) return NextResponse.json({ error: "invalid total" }, { status: 400 });
   const pct = Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : 0;
 
-  // XP/tokens: prefer per-bloom breakdown if provided; else fall back to single-bloom Remember attribution
+  // XP calculation (unchanged)
   const commanderDelta = (breakdown && Object.keys(breakdown).length > 0)
     ? XP_MODEL.awardForBreakdown(breakdown)
     : XP_MODEL.awardForMission({ correct, total, bloom: "Remember" });
-  const tokensDelta = tokensFromXp(commanderDelta);
 
   const sb = supabaseAdmin();
+
+  // New token calculation based on mission completion
+  let tokensDelta = 0;
+  let primaryBloomLevel: BloomLevel = 'Remember';
+
+  if (pct >= 65) {
+    // Determine the primary bloom level for token calculation
+    if (breakdown && Object.keys(breakdown).length > 0) {
+      // Use the bloom level with the most correct answers
+      const bloomEntries = Object.entries(breakdown) as [BloomLevel, { correct: number; total: number }][];
+      const primaryBloom = bloomEntries.reduce((max, [bloom, stats]) =>
+        stats.correct > max.stats.correct ? { bloom, stats } : max,
+        { bloom: 'Remember' as BloomLevel, stats: { correct: 0, total: 0 } }
+      );
+      primaryBloomLevel = primaryBloom.bloom;
+    }
+
+    // Calculate base tokens
+    const baseTokens = (() => {
+      switch (primaryBloomLevel) {
+        case 'Remember': return 12;
+        case 'Understand': return 18;
+        case 'Apply': return 24;
+        case 'Analyze': return 30;
+        case 'Evaluate': return 36;
+        case 'Create': return 45;
+        default: return 12;
+      }
+    })();
+
+    // Quality bonus for >=85%
+    const qualityBonus = pct >= 85 ? Math.floor(baseTokens * 0.33) : 0;
+
+    tokensDelta = baseTokens + qualityBonus;
+
+    // Check for diminishing returns
+    const diminishingMultiplier = await sb.rpc('get_diminishing_returns_multiplier', {
+      p_user_id: userId,
+      p_date: new Date().toISOString().split('T')[0]
+    });
+
+    tokensDelta = Math.floor(tokensDelta * Number(diminishingMultiplier || 1.0));
+
+    // Increment daily payout count
+    await sb.rpc('increment_daily_payout_count', { p_user_id: userId });
+  }
 
   // Idempotency: if a matching mission_completed for this payload exists recently, do not double-apply
   const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
@@ -85,9 +130,91 @@ export async function POST(req: NextRequest) {
       if (e2) return NextResponse.json({ error: e2.message }, { status: 500 });
     }
 
-    // Upsert wallet totals via RPC to increment
-    const { error: e3 } = await sb.rpc("increment_user_economy", { p_user_id: userId, p_tokens_delta: tokensDelta, p_xp_delta: commanderDelta });
+    // Upsert wallet totals via RPC to increment (only XP now)
+    const { error: e3 } = await sb.rpc("increment_user_economy", { p_user_id: userId, p_tokens_delta: 0, p_xp_delta: commanderDelta });
     if (e3) return NextResponse.json({ error: e3.message }, { status: 500 });
+
+    // Check for first-clear bonus
+    if (pct >= 65) {
+      const existingFirstClear = await sb
+        .from('user_deck_first_clears')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('deck_id', deckId)
+        .eq('bloom_level', primaryBloomLevel)
+        .maybeSingle();
+
+      if (!existingFirstClear.data) {
+        const firstClearTokens = primaryBloomLevel === 'Create' ? 50 : 25;
+        await sb.rpc('award_tokens', {
+          p_user_id: userId,
+          p_tokens: firstClearTokens,
+          p_event_type: 'first_clear',
+          p_bloom_level: primaryBloomLevel,
+          p_deck_id: deckId
+        });
+
+        await sb
+          .from('user_deck_first_clears')
+          .insert({
+            user_id: userId,
+            deck_id: deckId,
+            bloom_level: primaryBloomLevel,
+            tokens_awarded: firstClearTokens
+          });
+      }
+    }
+
+    // Check for mastery milestone (80% mastery at this bloom level)
+    const masteryData = await sb
+      .from('user_deck_bloom_mastery')
+      .select('mastery_pct')
+      .eq('user_id', userId)
+      .eq('deck_id', deckId)
+      .eq('bloom_level', primaryBloomLevel)
+      .maybeSingle();
+
+    if (masteryData.data && masteryData.data.mastery_pct >= 80) {
+      const existingMilestone = await sb
+        .from('user_mastery_milestones')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('deck_id', deckId)
+        .eq('bloom_level', primaryBloomLevel)
+        .maybeSingle();
+
+      if (!existingMilestone.data) {
+        const milestoneTokens = primaryBloomLevel === 'Create' ? 150 : 75;
+        await sb.rpc('award_tokens', {
+          p_user_id: userId,
+          p_tokens: milestoneTokens,
+          p_event_type: 'mastery_milestone',
+          p_bloom_level: primaryBloomLevel,
+          p_deck_id: deckId
+        });
+
+        await sb
+          .from('user_mastery_milestones')
+          .insert({
+            user_id: userId,
+            deck_id: deckId,
+            bloom_level: primaryBloomLevel,
+            mastery_pct: masteryData.data.mastery_pct,
+            tokens_awarded: milestoneTokens
+          });
+      }
+    }
+
+    // Award mission completion tokens if mission passed
+    if (tokensDelta > 0) {
+      await sb.rpc('award_tokens', {
+        p_user_id: userId,
+        p_tokens: tokensDelta,
+        p_event_type: 'mission_completion',
+        p_bloom_level: primaryBloomLevel,
+        p_deck_id: deckId
+      });
+    }
 
     // After increment, compute commander_level and persist
     const { data: row1, error: e4 } = await sb.from("user_economy").select("commander_xp").eq("user_id", userId).maybeSingle();
@@ -98,8 +225,8 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Return wallet
+  // Return wallet (tokens are awarded separately now)
   const { data: walletRow, error } = await sb.from("user_economy").select("tokens, commander_xp, commander_level").eq("user_id", userId).maybeSingle();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true, tokens: Number(walletRow?.tokens ?? 0), commander_xp: Number(walletRow?.commander_xp ?? 0), commander_level: Number(walletRow?.commander_level ?? 1), xpDelta: commanderDelta, tokensDelta });
+  return NextResponse.json({ ok: true, tokens: Number(walletRow?.tokens ?? 0), commander_xp: Number(walletRow?.commander_xp ?? 0), commander_level: Number(walletRow?.commander_level ?? 1), xpDelta: commanderDelta });
 }

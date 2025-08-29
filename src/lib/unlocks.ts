@@ -1,3 +1,4 @@
+// Single source of truth for unlock levels and helpers.
 export type Unlock = {
   id: string; // stable identifier (e.g., 'Sunrise')
   name: string; // display name
@@ -17,6 +18,9 @@ export const UNLOCKS: Unlock[] = [
   { id: 'Sunrise', name: 'Sunrise Deck Cover', level: CATEGORY_UNLOCK_LEVELS.DeckCovers, kind: 'item', category: 'DeckCovers' },
   { id: 'DeepSpace', name: 'Deep Space Deck Cover', level: 3, kind: 'item', category: 'DeckCovers' },
   { id: 'NightMission', name: 'Night Mission Deck Cover', level: 5, kind: 'item', category: 'DeckCovers' },
+  { id: 'AgentStealth', name: 'Agent Stealth Deck Cover', level: 8, kind: 'item', category: 'DeckCovers' },
+  { id: 'Rainforest', name: 'Rainforest Deck Cover', level: 11, kind: 'item', category: 'DeckCovers' },
+  { id: 'DesertStorm', name: 'Desert Storm Deck Cover', level: 13, kind: 'item', category: 'DeckCovers' },
   { id: 'AvatarFrames', name: 'Avatar Frames', level: CATEGORY_UNLOCK_LEVELS.AvatarFrames, kind: 'category' },
   { id: 'PageBackgrounds', name: 'Page Backgrounds', level: CATEGORY_UNLOCK_LEVELS.PageBackgrounds, kind: 'category' },
 ];

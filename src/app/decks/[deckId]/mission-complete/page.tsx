@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { formatPercent1 } from "@/lib/utils";
 import { useParams, useSearchParams } from "next/navigation";
 import AgentCard from "@/components/AgentCard";
-import { XP_MODEL, tokensFromXp } from "@/lib/xp";
+import { XP_MODEL } from "@/lib/xp";
 import { getSupabaseClient } from "@/lib/supabase/browserClient";
 import { BLOOM_LEVELS } from "@/types/card-catalog";
 import { getUnlocksNewBetween } from "@/lib/unlocks";
@@ -319,6 +319,7 @@ async function loadSummary(deckId: number, modeParam: string | null, hints?: { u
   const prevCompleted = prevCompletedAfterIdx >= 0 ? tail[prevCompletedAfterIdx] : null;
 
   let xpEarned = 0;
+  let tokensEarned = 0;
   let accuracyPercent = 0;
   let answered = 0;
   let correctOut: number | undefined = undefined;
@@ -328,8 +329,10 @@ async function loadSummary(deckId: number, modeParam: string | null, hints?: { u
   // Hints are consumed below; no additional placeholders needed
   if (lastFinalize?.found) {
     xpEarned = Number(lastFinalize.xpDelta ?? 0);
+    tokensEarned = Number(lastFinalize.tokensDelta ?? 0);
   } else if (apiSummary?.found) {
     xpEarned = Number(apiSummary.xp_earned ?? 0);
+    tokensEarned = 0; // No token data from apiSummary
     const total = Number(apiSummary.total ?? 0);
     const correct = Number(apiSummary.correct ?? 0);
     answered = Number.isFinite(total) ? total : 0;
@@ -338,6 +341,7 @@ async function loadSummary(deckId: number, modeParam: string | null, hints?: { u
   const pctFloat = total > 0 ? (correct / total) * 100 : 0;
   accuracyPercent = Math.round(pctFloat * 10) / 10;
   } else if (latestCompleted) {
+    tokensEarned = 0; // No token telemetry for legacy events
     const endTime = new Date(latestCompleted.created_at).getTime();
     const postWindowMs = 30 * 1000; // include XP events up to 30s after completion
     const startTime = started
@@ -409,8 +413,8 @@ async function loadSummary(deckId: number, modeParam: string | null, hints?: { u
     const prevXpTotal = Math.max(0, commanderXpTotal - Math.max(0, Math.round(xpEarned)));
   const commanderLevelPrev = XP_MODEL.progressFor(prevXpTotal).level;
   const commanderLevel = XP_MODEL.progressFor(commanderXpTotal).level;
-  // tokensEarned shows this-mission tokens; minted at 0.25 per XP (ceil to whole tokens)
-  const tokensEarned = tokensFromXp(xpEarned);
+  // tokensEarned shows this-mission tokens; now calculated from new token system
+  // tokensEarned is already set above from lastFinalize.tokensDelta
 
   const displayName = (user?.user_metadata?.full_name as string | undefined) || user?.email?.split("@")[0] || "Agent";
   const avatarUrl = (user?.user_metadata?.avatar_url as string | undefined) || (user?.user_metadata?.picture as string | undefined) || null;

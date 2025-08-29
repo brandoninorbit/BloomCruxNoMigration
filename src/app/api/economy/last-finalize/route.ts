@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { getSupabaseSession } from "@/app/supabase/session";
-import { tokensFromXp } from "@/lib/xp";
 
 export async function GET(req: NextRequest) {
   const session = await getSupabaseSession();
@@ -39,6 +38,20 @@ export async function GET(req: NextRequest) {
       if (Number.isFinite(amt)) xpDelta += amt;
     }
   }
-  const tokensDelta = tokensFromXp(xpDelta);
+  // Get tokens awarded for this mission from telemetry
+  const { data: tokenEvents, error: tokenError } = await sb
+    .from('token_telemetry')
+    .select('tokens_earned')
+    .eq('user_id', userId)
+    .eq('event_type', 'mission_completion')
+    .eq('deck_id', deckId)
+    .gte('created_at', new Date(endTime).toISOString())
+    .lte('created_at', new Date(endTime + postWindowMs).toISOString());
+
+  let tokensDelta = 0;
+  if (!tokenError && tokenEvents) {
+    tokensDelta = tokenEvents.reduce((sum, event) => sum + Number(event.tokens_earned || 0), 0);
+  }
+
   return NextResponse.json({ found: true, xpDelta, tokensDelta, completedAt: completed.created_at });
 }

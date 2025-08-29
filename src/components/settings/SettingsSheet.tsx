@@ -5,49 +5,107 @@ import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Settings as SettingsIcon } from "lucide-react";
-import { SunriseCover, DeckCoverDeepSpace, DeckCoverNightMission } from '@/components/DeckCovers';
+import { SunriseCover, DeckCoverDeepSpace, DeckCoverNightMission, DeckCoverAgentStealth, DeckCoverRainforest, DeckCoverDesertStorm } from '@/components/DeckCovers';
+import { AvatarFrameNeonGlow } from '@/components/AvatarFrames';
 import { supabaseRepo } from '@/lib/repo/supabaseRepo';
+import { fetchWithAuth } from '@/lib/supabase/fetchWithAuth';
 
 export default function SettingsSheet() {
   const [avatarFrame, setAvatarFrame] = React.useState<string>("unlock");
+  const [neonPurchased, setNeonPurchased] = React.useState<boolean>(false);
   const [value, setValue] = React.useState<string>("");
   const [sunrisePurchased, setSunrisePurchased] = React.useState<boolean>(false);
   const [deepPurchased, setDeepPurchased] = React.useState<boolean>(false);
   const [nightPurchased, setNightPurchased] = React.useState<boolean>(false);
+  const [stealthPurchased, setStealthPurchased] = React.useState<boolean>(false);
+  const [rainPurchased, setRainPurchased] = React.useState<boolean>(false);
+  const [desertPurchased, setDesertPurchased] = React.useState<boolean>(false);
   // loading state intentionally omitted for brevity
 
   React.useEffect(() => {
     let mounted = true;
+
+    const checkNeonPurchased = async () => {
+      try {
+        const neonApi = await fetchWithAuth('/api/covers/purchased?coverId=NeonGlow', { cache: 'no-store' });
+        if (neonApi.ok) {
+          const j = await neonApi.json();
+          setNeonPurchased(!!j?.purchased);
+          return;
+        }
+      } catch {
+        // ignore
+      }
+      // fallback to client repo check
+      try {
+        const neon = await supabaseRepo.hasPurchasedCover('NeonGlow');
+        setNeonPurchased(!!neon);
+      } catch {}
+    };
+
     (async () => {
       try {
         const def = await supabaseRepo.getUserDefaultCover();
-  const purchased = await supabaseRepo.hasPurchasedCover("Sunrise");
-  const purchasedDeep = await supabaseRepo.hasPurchasedCover("DeepSpace");
-  const purchasedNight = await supabaseRepo.hasPurchasedCover("NightMission");
+        const avatarDef = await supabaseRepo.getUserDefaultAvatarFrame();
+        const purchased = await supabaseRepo.hasPurchasedCover('Sunrise');
+        const purchasedDeep = await supabaseRepo.hasPurchasedCover('DeepSpace');
+        const purchasedNight = await supabaseRepo.hasPurchasedCover('NightMission');
+        const purchasedStealth = await supabaseRepo.hasPurchasedCover('AgentStealth');
+        const purchasedRain = await supabaseRepo.hasPurchasedCover('Rainforest');
+        const purchasedDesert = await supabaseRepo.hasPurchasedCover('DesertStorm');
+
         if (!mounted) return;
-        // use sentinel for system default because SelectItem requires non-empty value
         setValue(def ?? '__system_default');
-  setSunrisePurchased(!!purchased);
-  setDeepPurchased(!!purchasedDeep);
-  setNightPurchased(!!purchasedNight);
+        setAvatarFrame(avatarDef ?? '__system_default');
+        setSunrisePurchased(!!purchased);
+        setDeepPurchased(!!purchasedDeep);
+        setNightPurchased(!!purchasedNight);
+        setStealthPurchased(!!purchasedStealth);
+        setRainPurchased(!!purchasedRain);
+        setDesertPurchased(!!purchasedDesert);
       } catch {
         /* ignore */
       }
+      // Always re-check neon purchased via API
+      await checkNeonPurchased();
     })();
-    return () => { mounted = false; };
+
+    const onFocus = () => { checkNeonPurchased().catch(() => {}); };
+    const onPurchasedEvent = (ev: Event) => {
+      const detail = (ev as CustomEvent).detail;
+      if (detail?.coverId === 'NeonGlow') setNeonPurchased(true);
+    };
+
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('cover:purchased', onPurchasedEvent as EventListener);
+
+    return () => { mounted = false; window.removeEventListener('focus', onFocus); window.removeEventListener('cover:purchased', onPurchasedEvent as EventListener); };
   }, []);
 
-  const onChangeDefault = async (v: string) => {
-    setValue(v);
+    const onChangeDefault = async (v: string) => {
+      setValue(v);
+      try {
+        const coverId = v === '__system_default' ? null : v;
+        await supabaseRepo.setUserDefaultCover(coverId);
+        // Notify other views (e.g., Decks page) to reload cover visuals immediately
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('deck-covers:default-updated', { detail: { coverId } }));
+        }
+      } catch {
+        // swallow for now
+      }
+    };
+
+  const onChangeAvatarDefault = async (v: string) => {
+    setAvatarFrame(v);
     try {
-      const coverId = v === '__system_default' ? null : v;
-      await supabaseRepo.setUserDefaultCover(coverId);
-      // Notify other views (e.g., Decks page) to reload cover visuals immediately
+      const frameId = v === '__system_default' ? null : v;
+      await supabaseRepo.setUserDefaultAvatarFrame(frameId);
       if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('deck-covers:default-updated', { detail: { coverId } }));
+        window.dispatchEvent(new CustomEvent('avatar-frames:default-updated', { detail: { frameId } }));
       }
     } catch {
-      // swallow for now
+      // ignore
     }
   };
 
@@ -79,19 +137,28 @@ export default function SettingsSheet() {
 
               <div className="grid gap-2 max-w-md">
                 <Label htmlFor="avatar-frame">Animated avatar frames</Label>
-                <Select value={avatarFrame} onValueChange={setAvatarFrame}>
+                <Select value={avatarFrame} onValueChange={onChangeAvatarDefault}>
                   <SelectTrigger id="avatar-frame" className="w-full">
                     <SelectValue placeholder="Choose a frame" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="unlock" disabled>
-                      Unlock more avatar frames
-                    </SelectItem>
+                    <SelectItem value="__system_default">System default</SelectItem>
+                    {neonPurchased ? (
+                      <SelectItem value="NeonGlow">Neon Glow</SelectItem>
+                    ) : (
+                      <SelectItem value="NeonGlow" disabled>Neon Glow (locked)</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
+                <div className="mt-2">
+                  {avatarFrame === 'NeonGlow' ? (
+                    <div className="w-24"><AvatarFrameNeonGlow sizeClass="w-24 h-24" /></div>
+                  ) : null}
+                  <div className="text-xs text-slate-400 mt-2">Debug: neonPurchased = {String(neonPurchased)}</div>
                 <p className="text-xs text-slate-500">
                   Frames unlock with Commander Level and can be purchased in the Token Shop later.
                 </p>
+                </div>
               </div>
             </section>
 
@@ -125,6 +192,24 @@ export default function SettingsSheet() {
                             ) : (
                               <SelectItem value="NightMission" disabled>Night Mission (locked)</SelectItem>
                             )}
+                            {/* Agent Stealth only enabled if purchased */}
+                            {stealthPurchased ? (
+                              <SelectItem value="AgentStealth">Agent Stealth</SelectItem>
+                            ) : (
+                              <SelectItem value="AgentStealth" disabled>Agent Stealth (locked)</SelectItem>
+                            )}
+                            {/* Rainforest only enabled if purchased */}
+                            {rainPurchased ? (
+                              <SelectItem value="Rainforest">Rainforest</SelectItem>
+                            ) : (
+                              <SelectItem value="Rainforest" disabled>Rainforest (locked)</SelectItem>
+                            )}
+                            {/* Desert Storm only enabled if purchased */}
+                            {desertPurchased ? (
+                              <SelectItem value="DesertStorm">Desert Storm</SelectItem>
+                            ) : (
+                              <SelectItem value="DesertStorm" disabled>Desert Storm (locked)</SelectItem>
+                            )}
                           </SelectContent>
                         </Select>
                         <div className="mt-2">
@@ -134,6 +219,12 @@ export default function SettingsSheet() {
                 <div className="w-72"><DeckCoverDeepSpace /></div>
               ) : value === 'NightMission' ? (
                 <div className="w-72"><DeckCoverNightMission /></div>
+              ) : value === 'AgentStealth' ? (
+                <div className="w-72"><DeckCoverAgentStealth /></div>
+              ) : value === 'Rainforest' ? (
+                <div className="w-72"><DeckCoverRainforest /></div>
+              ) : value === 'DesertStorm' ? (
+                <div className="w-72"><DeckCoverDesertStorm /></div>
               ) : null}
                         </div>
                     <p className="text-xs text-slate-500">Covers unlock with Commander Level and may be purchased in the Token Shop.</p>

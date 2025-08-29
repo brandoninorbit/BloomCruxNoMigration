@@ -1,6 +1,6 @@
 "use client";
 import React from "react";
-import { SunriseCover, DeckCoverDeepSpace, DeckCoverNightMission } from '@/components/DeckCovers';
+import { SunriseCover, DeckCoverDeepSpace, DeckCoverNightMission, DeckCoverAgentStealth, DeckCoverRainforest, DeckCoverDesertStorm } from '@/components/DeckCovers';
 import { fetchWithAuth } from '@/lib/supabase/fetchWithAuth';
 import { getUnlockLevelById } from '@/lib/unlocks';
 
@@ -10,20 +10,32 @@ const DEEP_ID = "DeepSpace";
 const DEEP_UNLOCK_LEVEL = getUnlockLevelById(DEEP_ID) ?? 3;
 const NIGHT_ID = "NightMission";
 const NIGHT_UNLOCK_LEVEL = getUnlockLevelById(NIGHT_ID) ?? 5;
+const STEALTH_ID = "AgentStealth";
+const STEALTH_UNLOCK_LEVEL = getUnlockLevelById(STEALTH_ID) ?? 8;
+const RAINFOREST_ID = "Rainforest";
+const RAINFOREST_UNLOCK_LEVEL = getUnlockLevelById(RAINFOREST_ID) ?? 11;
+const DESERT_STORM_ID = "DesertStorm";
+const DESERT_STORM_UNLOCK_LEVEL = getUnlockLevelById(DESERT_STORM_ID) ?? 13;
 
 export default function DevDeckCoversPage() {
   const [commanderLevel, setCommanderLevel] = React.useState<number | null>(null);
   const [purchased, setPurchased] = React.useState<boolean | null>(null);
   const [purchasedDeep, setPurchasedDeep] = React.useState<boolean | null>(null);
   const [purchasedNight, setPurchasedNight] = React.useState<boolean | null>(null);
+  const [purchasedStealth, setPurchasedStealth] = React.useState<boolean | null>(null);
+  const [purchasedRainforest, setPurchasedRainforest] = React.useState<boolean | null>(null);
+  const [purchasedDesertStorm, setPurchasedDesertStorm] = React.useState<boolean | null>(null);
   const [defaultCover, setDefaultCover] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [devUnlockPreview, setDevUnlockPreview] = React.useState<boolean>(false);
 
-  const unlocked = (commanderLevel ?? 0) >= SUNRISE_UNLOCK_LEVEL;
-  const unlockedDeep = (commanderLevel ?? 0) >= DEEP_UNLOCK_LEVEL;
-  const unlockedNight = (commanderLevel ?? 0) >= NIGHT_UNLOCK_LEVEL;
+  const unlocked = devUnlockPreview || (commanderLevel ?? 0) >= SUNRISE_UNLOCK_LEVEL;
+  const unlockedDeep = devUnlockPreview || (commanderLevel ?? 0) >= DEEP_UNLOCK_LEVEL;
+  const unlockedNight = devUnlockPreview || (commanderLevel ?? 0) >= NIGHT_UNLOCK_LEVEL;
+  const unlockedStealth = devUnlockPreview || (commanderLevel ?? 0) >= STEALTH_UNLOCK_LEVEL;
+  const unlockedRainforest = devUnlockPreview || (commanderLevel ?? 0) >= RAINFOREST_UNLOCK_LEVEL;
+  const unlockedDesertStorm = devUnlockPreview || (commanderLevel ?? 0) >= DESERT_STORM_UNLOCK_LEVEL;
 
   React.useEffect(() => {
     let cancelled = false;
@@ -66,7 +78,32 @@ export default function DevDeckCoversPage() {
           if (!cancelled) setPurchasedNight(false);
         }
 
-        // Load default cover
+        // Load purchased state (Agent Stealth)
+  const p4 = await fetchWithAuth(`/api/covers/purchased?coverId=${encodeURIComponent(STEALTH_ID)}`, { cache: 'no-store' });
+        if (p4.ok) {
+          const j = await p4.json();
+          if (!cancelled) setPurchasedStealth(!!j?.purchased);
+        } else if (p4.status === 401) {
+          if (!cancelled) setPurchasedStealth(false);
+        }
+
+        // Load purchased state (Rainforest)
+  const p5 = await fetchWithAuth(`/api/covers/purchased?coverId=${encodeURIComponent(RAINFOREST_ID)}`, { cache: 'no-store' });
+        if (p5.ok) {
+          const j = await p5.json();
+          if (!cancelled) setPurchasedRainforest(!!j?.purchased);
+        } else if (p5.status === 401) {
+          if (!cancelled) setPurchasedRainforest(false);
+        }
+
+        // Load purchased state (Desert Storm)
+  const p6 = await fetchWithAuth(`/api/covers/purchased?coverId=${encodeURIComponent(DESERT_STORM_ID)}`, { cache: 'no-store' });
+        if (p6.ok) {
+          const j = await p6.json();
+          if (!cancelled) setPurchasedDesertStorm(!!j?.purchased);
+        } else if (p6.status === 401) {
+          if (!cancelled) setPurchasedDesertStorm(false);
+        }
   const d = await fetchWithAuth('/api/covers/default', { cache: 'no-store' });
         if (d.ok) {
           const j = await d.json();
@@ -87,6 +124,10 @@ export default function DevDeckCoversPage() {
   // Persist dev override
   React.useEffect(() => {
     try { localStorage.setItem('dc:dev:unlockPreviews', devUnlockPreview ? '1' : '0'); } catch {}
+  }, [devUnlockPreview]);
+
+  React.useEffect(() => {
+    localStorage.setItem('devUnlockDeckCovers', devUnlockPreview ? 'true' : 'false');
   }, [devUnlockPreview]);
 
   const doPurchase = async () => {
@@ -251,11 +292,221 @@ export default function DevDeckCoversPage() {
     }
   };
 
-  const resetDev = async () => {
+  const doPurchaseStealth = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+  const res = await fetchWithAuth('/api/covers/purchase', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ coverId: STEALTH_ID }),
+      });
+      if (!res.ok) {
+        const j: unknown = await res.json().catch(() => ({}));
+        const msg = (j && typeof j === 'object' && 'error' in j) ? String((j as { error?: string }).error) : '';
+        throw new Error(msg || `Purchase failed (${res.status})`);
+      }
+      setPurchasedStealth(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Purchase failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const setDefaultStealth = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      if (!purchasedStealth) throw new Error('You must purchase first');
+  const res = await fetchWithAuth('/api/covers/default', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ coverId: STEALTH_ID }),
+      });
+      if (!res.ok) {
+        const j: unknown = await res.json().catch(() => ({}));
+        const msg = (j && typeof j === 'object' && 'error' in j) ? String((j as { error?: string }).error) : '';
+        throw new Error(msg || `Set default failed (${res.status})`);
+      }
+      setDefaultCover(STEALTH_ID);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Set default failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resetDevStealth = async () => {
     setError(null);
     setLoading(true);
     try {
   const res = await fetchWithAuth('/api/covers/dev/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ coverId: STEALTH_ID }),
+      });
+      if (!res.ok) {
+        const j: unknown = await res.json().catch(() => ({}));
+        const msg = (j && typeof j === 'object' && 'error' in j) ? String((j as { error?: string }).error) : '';
+        throw new Error(msg || `Reset failed (${res.status})`);
+      }
+      setPurchasedStealth(false);
+      setDefaultCover((cur) => (cur === STEALTH_ID ? null : cur));
+  setDevUnlockPreview(false);
+  try { localStorage.removeItem('dc:dev:unlockPreviews'); } catch {}
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Reset failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const doPurchaseRainforest = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+  const res = await fetchWithAuth('/api/covers/purchase', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ coverId: RAINFOREST_ID }),
+      });
+      if (!res.ok) {
+        const j: unknown = await res.json().catch(() => ({}));
+        const msg = (j && typeof j === 'object' && 'error' in j) ? String((j as { error?: string }).error) : '';
+        throw new Error(msg || `Purchase failed (${res.status})`);
+      }
+      setPurchasedRainforest(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Purchase failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const setDefaultRainforest = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      if (!purchasedRainforest) throw new Error('You must purchase first');
+  const res = await fetchWithAuth('/api/covers/default', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ coverId: RAINFOREST_ID }),
+      });
+      if (!res.ok) {
+        const j: unknown = await res.json().catch(() => ({}));
+        const msg = (j && typeof j === 'object' && 'error' in j) ? String((j as { error?: string }).error) : '';
+        throw new Error(msg || `Set default failed (${res.status})`);
+      }
+      setDefaultCover(RAINFOREST_ID);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Set default failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resetDevRainforest = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+  const res = await fetchWithAuth('/api/covers/dev/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ coverId: RAINFOREST_ID }),
+      });
+      if (!res.ok) {
+        const j: unknown = await res.json().catch(() => ({}));
+        const msg = (j && typeof j === 'object' && 'error' in j) ? String((j as { error?: string }).error) : '';
+        throw new Error(msg || `Reset failed (${res.status})`);
+      }
+      setPurchasedRainforest(false);
+      setDefaultCover((cur) => (cur === RAINFOREST_ID ? null : cur));
+      setDevUnlockPreview(false);
+      try { localStorage.removeItem('dc:dev:unlockPreviews'); } catch {}
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Reset failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const doPurchaseDesertStorm = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      const res = await fetchWithAuth('/api/covers/purchase', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ coverId: DESERT_STORM_ID }),
+      });
+      if (!res.ok) {
+        const j: unknown = await res.json().catch(() => ({}));
+        const msg = (j && typeof j === 'object' && 'error' in j) ? String((j as { error?: string }).error) : '';
+        throw new Error(msg || `Purchase failed (${res.status})`);
+      }
+      setPurchasedDesertStorm(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Purchase failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const setDefaultDesertStorm = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      if (!purchasedDesertStorm) throw new Error('You must purchase first');
+      const res = await fetchWithAuth('/api/covers/default', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ coverId: DESERT_STORM_ID }),
+      });
+      if (!res.ok) {
+        const j: unknown = await res.json().catch(() => ({}));
+        const msg = (j && typeof j === 'object' && 'error' in j) ? String((j as { error?: string }).error) : '';
+        throw new Error(msg || `Set default failed (${res.status})`);
+      }
+      setDefaultCover(DESERT_STORM_ID);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Set default failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resetDevDesertStorm = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      const res = await fetchWithAuth('/api/covers/dev/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ coverId: DESERT_STORM_ID }),
+      });
+      if (!res.ok) {
+        const j: unknown = await res.json().catch(() => ({}));
+        const msg = (j && typeof j === 'object' && 'error' in j) ? String((j as { error?: string }).error) : '';
+        throw new Error(msg || `Reset failed (${res.status})`);
+      }
+      setPurchasedDesertStorm(false);
+      setDefaultCover((cur) => (cur === DESERT_STORM_ID ? null : cur));
+      setDevUnlockPreview(false);
+      try { localStorage.removeItem('dc:dev:unlockPreviews'); } catch {}
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Reset failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resetDev = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      const res = await fetchWithAuth('/api/covers/dev/reset', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ coverId: SUNRISE_ID }),
@@ -267,8 +518,8 @@ export default function DevDeckCoversPage() {
       }
       setPurchased(false);
       setDefaultCover((cur) => (cur === SUNRISE_ID ? null : cur));
-  setDevUnlockPreview(false);
-  try { localStorage.removeItem('dc:dev:unlockPreviews'); } catch {}
+      setDevUnlockPreview(false);
+      try { localStorage.removeItem('dc:dev:unlockPreviews'); } catch {}
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Reset failed');
     } finally {
@@ -316,6 +567,71 @@ export default function DevDeckCoversPage() {
             <div>Default cover: {defaultCover ?? '(none)'}</div>
           </div>
 
+            {/* Agent Stealth controls */}
+            <div className="p-6 bg-white rounded-lg shadow">
+              <h2 className="font-medium mb-2">Agent Stealth (unlock at Commander L{STEALTH_UNLOCK_LEVEL})</h2>
+              <p className="text-sm text-gray-500 mb-4">Use real endpoints to purchase and set default. Requires login.</p>
+
+              <div className="space-y-2 text-sm">
+                <div>Commander level: {commanderLevel ?? '…'}</div>
+                <div>Unlocked: {unlockedStealth ? 'yes' : 'no'}</div>
+                <div>Purchased: {purchasedStealth == null ? '…' : purchasedStealth ? 'yes' : 'no'}</div>
+                <div>Default cover: {defaultCover ?? '(none)'}</div>
+              </div>
+
+              {error && (
+                <div className="mt-3 text-sm text-red-600">{error}</div>
+              )}
+
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={doPurchaseStealth}
+                  disabled={loading || !!purchasedStealth}
+                  className="rounded-md bg-blue-600 text-white px-4 py-2 text-sm font-medium disabled:opacity-50"
+                >
+                  {purchasedStealth ? 'Purchased' : 'Force Purchase (dev)'}
+                </button>
+                <button
+                  type="button"
+                  onClick={setDefaultStealth}
+                  disabled={loading || !purchasedStealth || defaultCover === STEALTH_ID}
+                  className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium disabled:opacity-50"
+                >
+                  {defaultCover === STEALTH_ID ? 'Default set' : 'Set as default'}
+                </button>
+                <label className="inline-flex items-center gap-2 text-sm ml-2">
+                  <input
+                    type="checkbox"
+                    checked={devUnlockPreview}
+                    onChange={(e) => setDevUnlockPreview(e.target.checked)}
+                  />
+                  <span>Dev unlock previews (override level)</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={resetDevStealth}
+                  disabled={loading}
+                  className="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+                >
+                  Reset (dev)
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 bg-white rounded-lg shadow">
+              <h2 className="font-medium mb-2">Preview</h2>
+              <div className="mt-4">
+                {(unlockedStealth || devUnlockPreview) ? (
+                  <DeckCoverAgentStealth className="w-full" />
+                ) : (
+                  <div className="w-full h-28 rounded-md bg-slate-100" aria-hidden />
+                )}
+                {!unlockedStealth && !devUnlockPreview && (
+                  <div className="mt-3 text-sm text-amber-600">Locked — reach Commander Level {STEALTH_UNLOCK_LEVEL} to preview, or enable Dev unlock previews.</div>
+                )}
+              </div>
+            </div>
           {error && (
             <div className="mt-3 text-sm text-red-600">{error}</div>
           )}
@@ -498,6 +814,138 @@ export default function DevDeckCoversPage() {
             )}
             {!unlockedNight && !devUnlockPreview && (
               <div className="mt-3 text-sm text-amber-600">Locked — reach Commander Level {NIGHT_UNLOCK_LEVEL} to preview, or enable Dev unlock previews.</div>
+            )}
+          </div>
+        </div>
+
+        {/* Rainforest controls */}
+        <div className="p-6 bg-white rounded-lg shadow">
+          <h2 className="font-medium mb-2">Rainforest (unlock at Commander L{RAINFOREST_UNLOCK_LEVEL})</h2>
+          <p className="text-sm text-gray-500 mb-4">Use real endpoints to purchase and set default. Requires login.</p>
+
+          <div className="space-y-2 text-sm">
+            <div>Commander level: {commanderLevel ?? '…'}</div>
+            <div>Unlocked: {unlockedRainforest ? 'yes' : 'no'}</div>
+            <div>Purchased: {purchasedRainforest == null ? '…' : purchasedRainforest ? 'yes' : 'no'}</div>
+            <div>Default cover: {defaultCover ?? '(none)'} </div>
+          </div>
+
+          {error && (
+            <div className="mt-3 text-sm text-red-600">{error}</div>
+          )}
+
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={doPurchaseRainforest}
+              disabled={loading || !!purchasedRainforest}
+              className="rounded-md bg-blue-600 text-white px-4 py-2 text-sm font-medium disabled:opacity-50"
+            >
+              {purchasedRainforest ? 'Purchased' : 'Force Purchase (dev)'}
+            </button>
+            <button
+              type="button"
+              onClick={setDefaultRainforest}
+              disabled={loading || !purchasedRainforest || defaultCover === RAINFOREST_ID}
+              className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium disabled:opacity-50"
+            >
+              {defaultCover === RAINFOREST_ID ? 'Default set' : 'Set as default'}
+            </button>
+            <label className="inline-flex items-center gap-2 text-sm ml-2">
+              <input
+                type="checkbox"
+                checked={devUnlockPreview}
+                onChange={(e) => setDevUnlockPreview(e.target.checked)}
+              />
+              <span>Dev unlock previews (override level)</span>
+            </label>
+            <button
+              type="button"
+              onClick={resetDevRainforest}
+              disabled={loading}
+              className="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+            >
+              Reset (dev)
+            </button>
+          </div>
+        </div>
+
+        <div className="p-6 bg-white rounded-lg shadow">
+          <h2 className="font-medium mb-2">Preview</h2>
+          <div className="mt-4">
+            {(unlockedRainforest || devUnlockPreview) ? (
+              <DeckCoverRainforest className="w-full" />
+            ) : (
+              <div className="w-full h-28 rounded-md bg-slate-100" aria-hidden />
+            )}
+            {!unlockedRainforest && !devUnlockPreview && (
+              <div className="mt-3 text-sm text-amber-600">Locked — reach Commander Level {RAINFOREST_UNLOCK_LEVEL} to preview, or enable Dev unlock previews.</div>
+            )}
+          </div>
+        </div>
+
+        {/* Desert Storm controls */}
+        <div className="p-6 bg-white rounded-lg shadow">
+          <h2 className="font-medium mb-2">Desert Storm (unlock at Commander L{DESERT_STORM_UNLOCK_LEVEL})</h2>
+          <p className="text-sm text-gray-500 mb-4">Use real endpoints to purchase and set default. Requires login.</p>
+
+          <div className="space-y-2 text-sm">
+            <div>Commander level: {commanderLevel ?? '…'}</div>
+            <div>Unlocked: {unlockedDesertStorm ? 'yes' : 'no'}</div>
+            <div>Purchased: {purchasedDesertStorm == null ? '…' : purchasedDesertStorm ? 'yes' : 'no'}</div>
+            <div>Default cover: {defaultCover ?? '(none)'} </div>
+          </div>
+
+          {error && (
+            <div className="mt-3 text-sm text-red-600">{error}</div>
+          )}
+
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={doPurchaseDesertStorm}
+              disabled={loading || !!purchasedDesertStorm}
+              className="rounded-md bg-blue-600 text-white px-4 py-2 text-sm font-medium disabled:opacity-50"
+            >
+              {purchasedDesertStorm ? 'Purchased' : 'Force Purchase (dev)'}
+            </button>
+            <button
+              type="button"
+              onClick={setDefaultDesertStorm}
+              disabled={loading || !purchasedDesertStorm || defaultCover === DESERT_STORM_ID}
+              className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium disabled:opacity-50"
+            >
+              {defaultCover === DESERT_STORM_ID ? 'Default set' : 'Set as default'}
+            </button>
+            <label className="inline-flex items-center gap-2 text-sm ml-2">
+              <input
+                type="checkbox"
+                checked={devUnlockPreview}
+                onChange={(e) => setDevUnlockPreview(e.target.checked)}
+              />
+              <span>Dev unlock previews (override level)</span>
+            </label>
+            <button
+              type="button"
+              onClick={resetDevDesertStorm}
+              disabled={loading}
+              className="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+            >
+              Reset (dev)
+            </button>
+          </div>
+        </div>
+
+        <div className="p-6 bg-white rounded-lg shadow">
+          <h2 className="font-medium mb-2">Preview</h2>
+          <div className="mt-4">
+            {(unlockedDesertStorm || devUnlockPreview) ? (
+              <DeckCoverDesertStorm className="w-full" />
+            ) : (
+              <div className="w-full h-28 rounded-md bg-slate-100" aria-hidden />
+            )}
+            {!unlockedDesertStorm && !devUnlockPreview && (
+              <div className="mt-3 text-sm text-amber-600">Locked — reach Commander Level {DESERT_STORM_UNLOCK_LEVEL} to preview, or enable Dev unlock previews.</div>
             )}
           </div>
         </div>

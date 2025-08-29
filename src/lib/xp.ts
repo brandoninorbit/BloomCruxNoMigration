@@ -108,7 +108,8 @@ export const XP_MODEL = {
 } as const;
 
 // Keep tokens helper exported for consistency with previous callers.
-/** Tokens are 0.25 * XP, always rounded up to a whole number. */
-export function tokensFromXp(xp: number): number {
-  return Math.max(0, Math.ceil(Number(xp) * 0.25));
+/** Tokens are now awarded through various game systems, not XP conversion. */
+export function tokensFromXp(): number {
+  // Deprecated: tokens are no longer tied to XP
+  return 0;
 }

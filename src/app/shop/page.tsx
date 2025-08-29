@@ -1,9 +1,11 @@
 "use client";
-import React from "react";
+import React, { useEffect, useState } from "react";
 import ShopCard, { ShopCardProps } from "../../components/shop/ShopCard";
-import { DeckCoverDeepSpace, DeckCoverNightMission } from "@/components/DeckCovers";
+import { DeckCoverDeepSpace, DeckCoverNightMission, DeckCoverAgentStealth, DeckCoverRainforest, DeckCoverDesertStorm } from "@/components/DeckCovers";
+import { AvatarFrameNeonGlow } from '@/components/AvatarFrames';
 import { fetchWithAuth } from "@/lib/supabase/fetchWithAuth";
-import { CATEGORY_UNLOCK_LEVELS } from "@/lib/unlocks";
+import { CATEGORY_UNLOCK_LEVELS, UNLOCKS } from "@/lib/unlocks";
+import { COSMETIC_PRICES } from '@/lib/cosmeticPrices';
 
 type Category = {
   title: string;
@@ -20,7 +22,7 @@ const cosmeticCategories: Category[] = [
         id: "Sunrise",
         title: "Sunrise Cover",
         description: "Brighten your deck with a warm sunrise gradient.",
-        price: 80,
+        price: COSMETIC_PRICES.Sunrise,
         icon: (
           <div className="h-24 w-full rounded-lg bg-gradient-to-br from-orange-300 via-pink-300 to-yellow-200" />
         ),
@@ -29,8 +31,7 @@ const cosmeticCategories: Category[] = [
         id: "DeepSpace",
         title: "Deep Space Cover",
         description: "A tranquil starfield with subtle parallax and twinkle.",
-        price: 120,
-        unlockLevel: 3,
+        price: COSMETIC_PRICES.DeepSpace,
         icon: (
           <div className="h-24 w-full rounded-lg overflow-hidden">
             <DeckCoverDeepSpace fill className="h-24 w-full rounded-lg" />
@@ -41,11 +42,43 @@ const cosmeticCategories: Category[] = [
         id: "NightMission",
         title: "Night Mission Cover",
         description: "Moody night skyline with gentle parallax and blinking windows.",
-        price: 110,
-        unlockLevel: 5,
+        price: COSMETIC_PRICES.NightMission,
         icon: (
           <div className="h-24 w-full rounded-lg overflow-hidden">
             <DeckCoverNightMission fill className="h-24 w-full rounded-lg" />
+          </div>
+        ),
+      },
+      {
+        id: "AgentStealth",
+        title: "Agent Stealth Cover",
+        description: "Tactical radar sweep over a dark grid with pulsing blips.",
+        price: COSMETIC_PRICES.AgentStealth,
+        icon: (
+          <div className="h-24 w-full rounded-lg overflow-hidden">
+            <DeckCoverAgentStealth fill className="h-24 w-full rounded-lg" />
+          </div>
+        ),
+      },
+      {
+        id: "Rainforest",
+        title: "Rainforest Cover",
+        description: "Lush layered foliage with sway, fog, and insect glints.",
+        price: COSMETIC_PRICES.Rainforest,
+        icon: (
+          <div className="h-24 w-full rounded-lg overflow-hidden">
+            <DeckCoverRainforest fill={true} className="h-24 w-full rounded-lg" />
+          </div>
+        ),
+      },
+      {
+        id: "DesertStorm",
+        title: "Desert Storm Cover",
+        description: "Desert storm with drifting sand and heat haze. Costs 150 tokens.",
+        price: COSMETIC_PRICES.DesertStorm, // Price in tokens
+        icon: (
+          <div className="h-24 w-full rounded-lg overflow-hidden">
+            <DeckCoverDesertStorm fill className="h-24 w-full rounded-lg" />
           </div>
         ),
       },
@@ -54,7 +87,19 @@ const cosmeticCategories: Category[] = [
   {
     title: "Avatar Frames",
   unlockLevel: CATEGORY_UNLOCK_LEVELS.AvatarFrames,
-    items: [],
+    items: [
+      {
+        id: "NeonGlow",
+        title: "Neon Glow Frame",
+        description: "Vibrant neon rim with animated glow and pulse.",
+        price: COSMETIC_PRICES.NeonGlow,
+        icon: (
+          <div className="h-24 w-full rounded-lg overflow-hidden flex items-center justify-center">
+            <AvatarFrameNeonGlow sizeClass="w-20 h-20" />
+          </div>
+        ),
+      },
+    ],
   },
   {
     title: "Page Backgrounds",
@@ -67,6 +112,8 @@ export default function ShopPage() {
   const [commanderLevel, setCommanderLevel] = React.useState<number>(0);
   const [purchased, setPurchased] = React.useState<Record<string, boolean>>({});
   const [loading, setLoading] = React.useState<Record<string, boolean>>({});
+  const [devUnlock, setDevUnlock] = useState(false);
+
   // Try to load real commander level if logged in; otherwise stays 0
   React.useEffect(() => {
     let cancelled = false;
@@ -87,7 +134,7 @@ export default function ShopPage() {
     let cancelled = false;
     (async () => {
       try {
-  const ids = ["Sunrise", "DeepSpace", "NightMission"] as const;
+  const ids = ["Sunrise", "DeepSpace", "NightMission", "AgentStealth", "Rainforest", "DesertStorm", "NeonGlow"] as const;
         for (const id of ids) {
           const res = await fetchWithAuth(`/api/covers/purchased?coverId=${encodeURIComponent(id)}`, { cache: 'no-store' });
           if (!res.ok) continue;
@@ -97,6 +144,34 @@ export default function ShopPage() {
       } catch {}
     })();
     return () => { cancelled = true; };
+  }, []);
+
+  // Check local storage for dev unlock
+  useEffect(() => {
+    const checkDevUnlock = () => {
+      // support both keys set by the dev page: legacy 'devUnlockDeckCovers' and namespaced 'dc:dev:unlockPreviews'
+      const deckDev = localStorage.getItem('devUnlockDeckCovers') === 'true' || localStorage.getItem('dc:dev:unlockPreviews') === '1';
+      // avatar frames dev keys
+      const avatarDev = localStorage.getItem('dc:dev:avatarFrames:unlockPreviews') === '1';
+      const avatarForce = localStorage.getItem('dc:dev:avatarFrames:forcePurchase') === '1';
+      setDevUnlock(deckDev || avatarDev);
+      // apply force purchase for avatars if present
+      if (avatarForce) setPurchased((p) => ({ ...p, NeonGlow: true }));
+    };
+
+    // Check on mount
+    checkDevUnlock();
+
+    // Listen for storage changes (cross-tab)
+    window.addEventListener('storage', checkDevUnlock);
+
+    // Also check on window focus (for same-tab changes)
+    window.addEventListener('focus', checkDevUnlock);
+
+    return () => {
+      window.removeEventListener('storage', checkDevUnlock);
+      window.removeEventListener('focus', checkDevUnlock);
+    };
   }, []);
 
   const handlePurchase = async (id: string) => {
@@ -117,6 +192,8 @@ export default function ShopPage() {
     }
   };
 
+  // Update the unlock check logic is handled inline when rendering
+
   return (
     <div style={{ background: '#f3f6fb' }}>
       <main className="max-w-5xl mx-auto px-6 pt-10 pb-20">
@@ -131,8 +208,8 @@ export default function ShopPage() {
           </button>
         </div>
 
-        {cosmeticCategories.map((category) => {
-          const categoryUnlocked = commanderLevel >= category.unlockLevel;
+  {cosmeticCategories.map((category) => {
+          const categoryUnlocked = devUnlock ? true : commanderLevel >= category.unlockLevel;
           return (
             <section key={category.title} className="mt-12">
               <h2 className="text-2xl font-bold text-slate-800 mb-4">{category.title}</h2>
@@ -143,9 +220,12 @@ export default function ShopPage() {
               ) : (
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
       {category.items.map((item) => {
-                    // Item is locked if commanderLevel is below the category unlock level OR below an item-specific unlock level
-                    const unlockLevel = Math.max(category.unlockLevel, item.unlockLevel ?? category.unlockLevel);
-                    const locked = commanderLevel < unlockLevel;
+                    // Resolve the item's own unlock level from central UNLOCKS by id
+                    const central = UNLOCKS.find(u => u.id === (item.id ?? item.title));
+                    const itemUnlockLevel = typeof central?.level === 'number' ? central.level : category.unlockLevel;
+                    // Item is locked if commanderLevel is below the category unlock level OR below item-specific unlock level
+                    const unlockLevel = Math.max(category.unlockLevel, itemUnlockLevel);
+                    const locked = devUnlock ? false : commanderLevel < unlockLevel;
     const id = item.id ?? (item.title.includes('Sunrise') ? 'Sunrise' : item.title);
                     return (
                       <ShopCard
