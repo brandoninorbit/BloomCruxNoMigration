@@ -29,7 +29,7 @@ export async function fetchMission(deckId: number, level: DeckBloomLevel, missio
   const data: { found?: boolean; mission?: { sequence_seed: string; card_order: unknown[]; answered?: { cardId: number; correct: boolean | number }[]; started_at: string; resumed_at?: string | null } } = await res.json();
   if (!data?.found || !data.mission) return null;
   const m = data.mission;
-  return {
+  const state: MissionState = {
     deckId,
     bloomLevel: level,
     missionIndex,
@@ -40,6 +40,11 @@ export async function fetchMission(deckId: number, level: DeckBloomLevel, missio
     startedAt: m.started_at,
     resumedAt: m.resumed_at ?? undefined,
   };
+  // If mission is fully answered, consider it completed and don't resume
+  if (state.answered.length >= state.cardOrder.length && state.cardOrder.length > 0) {
+    return null;
+  }
+  return state;
 }
 
 export async function upsertMission(deckId: number, state: MissionState & { completedAt?: string | null }) {

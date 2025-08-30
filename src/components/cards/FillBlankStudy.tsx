@@ -105,12 +105,19 @@ function BlankSlot({
       {...commonA11y}
     >
       {mode !== "bank" ? (
-        <input
-          value={value}
-          onChange={(e) => onInput?.(e.target.value)}
-          className={inputCls}
-          placeholder={placeholder}
-        />
+        checked ? (
+          <>
+            <span className={inputCls}>{value}</span>
+            {correctAnswer ? <span className="text-green-700 ml-1">(correct: {correctAnswer})</span> : null}
+          </>
+        ) : (
+          <input
+            value={value}
+            onChange={(e) => onInput?.(e.target.value)}
+            className={inputCls}
+            placeholder={placeholder}
+          />
+        )
       ) : (
         <span className={valueCls}>{value || placeholder}</span>
       )}
@@ -137,7 +144,7 @@ function BlankSlot({
           </button>
         </div>
       ) : null}
-      {checked && correctAnswer && (override === "wrong" || showCorrect) ? (
+      {checked && correctAnswer && (override === "wrong" || showCorrect) && mode !== "free" ? (
         <div className="mt-1 text-xs text-green-700">
           <span className="font-semibold">Correct:</span> {correctAnswer}
         </div>
@@ -158,6 +165,9 @@ export default function FillBlankStudy({ stem, blanks, wordBank, explanation, su
   const [guessed, setGuessed] = useState(false);
   const startRef = React.useRef<number>(Date.now());
 
+  // Check if there are any free text blanks
+  const hasFreeText = blanks.some(b => b.mode === "free");
+
   // Keys to detect content changes from props
   const propBankKey = useMemo(() => (wordBank ?? []).join(","), [wordBank]);
   const blanksKey = useMemo(() => JSON.stringify(blanks), [blanks]);
@@ -176,15 +186,17 @@ export default function FillBlankStudy({ stem, blanks, wordBank, explanation, su
 
   useEffect(() => {
     if (!checked) return;
-    const updatedPer: Record<string | number, boolean> = {};
-    for (const b of blanks) {
-      const ov = perBlankOverride[b.id];
-      if (ov === "right") updatedPer[b.id] = true;
-      else if (ov === "wrong") updatedPer[b.id] = false;
-      else updatedPer[b.id] = perBlank[b.id] ?? true; // for auto-graded
-    }
-    setPerBlank(updatedPer);
-  }, [perBlankOverride, checked, blanks, perBlank]);
+    setPerBlank(prevPerBlank => {
+      const updatedPer: Record<string | number, boolean> = {};
+      for (const b of blanks) {
+        const ov = perBlankOverride[b.id];
+        if (ov === "right") updatedPer[b.id] = true;
+        else if (ov === "wrong") updatedPer[b.id] = false;
+        else updatedPer[b.id] = prevPerBlank[b.id] ?? true; // for auto-graded
+      }
+      return updatedPer;
+    });
+  }, [perBlankOverride, checked, blanks]);
   // Support legacy __n__ markers by normalizing them to [[n]]
   const normalizedStem = useMemo(() => stem.replace(/__(\d+)__/g, "[[$1]]"), [stem]);
   const parts = useMemo(() => normalizedStem.split(/\[\[(\d+)\]\]/g), [normalizedStem]);
@@ -266,7 +278,7 @@ export default function FillBlankStudy({ stem, blanks, wordBank, explanation, su
     <div className="w-full max-w-3xl">
       <div className="prose prose-slate">
         <DndContext sensors={sensors} onDragStart={onDragStart} onDragCancel={onDragCancel} onDragEnd={onDragEnd} collisionDetection={rectIntersection}>
-          <p>
+          <div>
             {parts.map((p, i) => {
               if (i % 2 === 1) {
                 const id = parts[i];
@@ -305,7 +317,7 @@ export default function FillBlankStudy({ stem, blanks, wordBank, explanation, su
               }
               return <span key={i}>{p}</span>;
             })}
-          </p>
+          </div>
           {bank.length > 0 && !showCorrect && (
             <div className="mt-4">
               <p className="font-valid text-sm text-slate-500 mb-2">Word bank</p>
@@ -329,7 +341,7 @@ export default function FillBlankStudy({ stem, blanks, wordBank, explanation, su
         {!checked ? (
           <button className="font-valid px-4 py-2 rounded-xl bg-blue-600 text-white" onClick={checkNow}>{submitLabel}</button>
         ) : null}
-        {checked ? (
+        {checked && !hasFreeText ? (
           <button
             type="button"
             className="font-valid px-3 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50"

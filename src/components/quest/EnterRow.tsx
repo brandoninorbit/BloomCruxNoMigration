@@ -45,7 +45,7 @@ export default function EnterRow({ deckId, li }: { deckId: number; li: LevelInfo
                   href={`/decks/${deckId}/quest?level=${encodeURIComponent(li.level)}&restart=1`}
                   className="text-sm font-medium px-3 py-1.5 rounded bg-slate-900 text-white hover:bg-slate-800"
                 >
-                  Restart
+                  Restart Mission
                 </a>
               ) : isStarted ? (
                 <>
@@ -53,7 +53,7 @@ export default function EnterRow({ deckId, li }: { deckId: number; li: LevelInfo
                     href={`/decks/${deckId}/quest?level=${encodeURIComponent(li.level)}`}
                     className="text-sm font-medium px-3 py-1.5 rounded bg-blue-600 text-white hover:bg-blue-700"
                   >
-                    Resume
+                    Resume {li.level}
                   </a>
                   <a
                     href={`/decks/${deckId}/quest?level=${encodeURIComponent(li.level)}&restart=1`}
@@ -67,7 +67,7 @@ export default function EnterRow({ deckId, li }: { deckId: number; li: LevelInfo
                   href={`/decks/${deckId}/quest?level=${encodeURIComponent(li.level)}&restart=1`}
                   className="text-sm font-medium px-3 py-1.5 rounded bg-slate-900 text-white hover:bg-slate-800"
                 >
-                  Restart
+                  Restart Mission
                 </a>
               ) : (
                 <a

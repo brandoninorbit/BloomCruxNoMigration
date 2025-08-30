@@ -134,6 +134,9 @@ type MasteryRow = {
   deck_id: number;
   bloom_level: BloomLevel | string;
   mastery_pct: number | null;
+  correctness_ewma?: number | null;
+  retention_strength?: number | null; // 0..1
+  coverage?: number | null; // 0..1
   updated_at?: string;
 };
 
@@ -186,7 +189,12 @@ export default function DashboardClient() {
   const [commanderXpTotal, setCommanderXpTotal] = useState<number>(0);
   const [attemptsHistory, setAttemptsHistory] = useState<Array<{ at: string; acc: number }>>([]);
   const [explainerOpen, setExplainerOpen] = useState<{ deckId: number; level: BloomLevel } | null>(null);
-  const [explainerData, setExplainerData] = useState<{ rows: Array<{ at: string; mode?: string | null; acc: number; seen: number; correct: number }>; note?: string } | null>(null);
+  const [explainerData, setExplainerData] = useState<{
+    rows: Array<{ at: string; mode?: string | null; acc: number; seen: number; correct: number }>;
+  factors?: { retentionPct: number; correctnessEwma: number; coveragePct: number; masteryPct: number; coverageSeen?: number; coverageTotal?: number };
+    note?: string;
+  } | null>(null);
+  const [masteryRows, setMasteryRows] = useState<MasteryRow[]>([]);
 
   // Load real mastery when logged in and not showing example
   useEffect(() => {
@@ -205,7 +213,7 @@ export default function DashboardClient() {
     // Keep mastery in case we need a fallback for decks with zero attempts in window
     supabase
       .from("user_deck_bloom_mastery")
-      .select("deck_id, bloom_level, mastery_pct")
+      .select("deck_id, bloom_level, mastery_pct, correctness_ewma, retention_strength, coverage, updated_at")
       .order("updated_at", { ascending: false }),
           supabase
             .from("user_deck_quest_progress")
@@ -237,7 +245,8 @@ export default function DashboardClient() {
           } as DeckProgress;
         });
 
-  const masteryRows = (mastery ?? []) as MasteryRow[];
+  const masteryRowsLocal = (mastery ?? []) as MasteryRow[];
+  setMasteryRows(masteryRowsLocal);
 
         // Aggregate attempts for the window: sum of cards_correct and cards_seen per deck/bloom
         type AttemptRow = { deck_id: number; bloom_level: BloomLevel | string | null; score_pct: number | null; cards_seen: number | null; cards_correct: number | null; ended_at?: string | null; mode?: string | null; breakdown?: Record<string, { scorePct: number; cardsSeen: number; cardsCorrect: number }> | null };
@@ -278,7 +287,7 @@ export default function DashboardClient() {
         setAttemptsHistory(hist);
 
         // Display mastery from persisted mastery table; attempts remain as history for the explainer.
-        const masteryRowsForDecks = (mastery ?? []) as MasteryRow[];
+  const masteryRowsForDecks = masteryRowsLocal as MasteryRow[];
         Object.values(byDeck).forEach((deck) => {
           const stored = masteryRowsForDecks.filter((row) => String(row.deck_id) === deck.deckId);
           const m: NonNullable<DeckProgress["bloomMastery"]> = {};
@@ -606,7 +615,7 @@ export default function DashboardClient() {
                             type="button"
                             className="text-sm font-medium text-blue-600 ml-3 hover:underline"
                             title="How is this mastery calculated?"
-                            onClick={async () => {
+              onClick={async () => {
                               try {
                                 setExplainerOpen({ deckId: Number(deck.deckId), level });
                                 const sb = getSupabaseClient();
@@ -631,7 +640,35 @@ export default function DashboardClient() {
                                     rows.push({ at: ended, mode: r.mode ?? null, acc, seen: Number(r.cards_seen ?? 0), correct: Number(r.cards_correct ?? 0) });
                                   }
                                 }
-                                setExplainerData({ rows });
+                // Pull current mastery factors for this deck/bloom from the cached mastery list
+                                const match = masteryRows.find((r) => String(r.deck_id) === deck.deckId && String(r.bloom_level) === level);
+                                const retentionPct = Math.round(Math.max(0, Math.min(1, Number(match?.retention_strength ?? 0))) * 1000) / 10;
+                                const correctnessEwma = Math.round(Math.max(0, Math.min(100, Number(match?.correctness_ewma ?? 0))) * 10) / 10;
+                                const coveragePct = Math.round(Math.max(0, Math.min(1, Number(match?.coverage ?? 0))) * 1000) / 10;
+                                const masteryPct = Math.round(Math.max(0, Math.min(100, Number(match?.mastery_pct ?? 0))) * 10) / 10;
+                                // Compute coverage counts as Seen/Total via cards and user_deck_srs
+                                let coverageSeen: number | undefined;
+                                let coverageTotal: number | undefined;
+                                try {
+                                  const cardsRes = await sb
+                                    .from("cards")
+                                    .select("id")
+                                    .eq("deck_id", Number(deck.deckId))
+                                    .eq("bloom_level", level);
+                                  const cardIds = (cardsRes.data ?? []).map((c: any) => Number(c.id));
+                                  coverageTotal = cardIds.length;
+                                  if (user && cardIds.length > 0) {
+                                    const srsRes = await sb
+                                      .from("user_deck_srs")
+                                      .select("card_id, attempts")
+                                      .eq("user_id", user.id)
+                                      .eq("deck_id", Number(deck.deckId))
+                                      .in("card_id", cardIds);
+                                    const rowsSrs = (srsRes.data ?? []) as Array<{ card_id: number; attempts: number }>;
+                                    coverageSeen = rowsSrs.filter((r) => Number(r.attempts ?? 0) > 0).length;
+                                  }
+                                } catch {}
+                                setExplainerData({ rows, factors: { retentionPct, correctnessEwma, coveragePct, masteryPct, coverageSeen, coverageTotal } });
                               } catch {
                                 setExplainerData({ rows: [], note: 'Could not load attempts. Ensure you are logged in and have recent activity.' });
                               }
@@ -643,17 +680,20 @@ export default function DashboardClient() {
                       );
                     })}
                   </div>
-                  {/* Secondary line: show Correct / Total attempts aggregate for this dashboard window */}
+                  {/* Secondary lines: show Correctness counts and Coverage percent (from mastery) */}
                   <div className="mt-2 space-y-1">
                     {(BLOOM_LEVELS as BloomLevel[]).map((level) => {
                       const agg = deck.bloomAttempts?.[level];
-                      if (!agg) return null;
-                      const c = Math.max(0, Math.round(agg.correct));
-                      const t = Math.max(0, Math.round(agg.total));
+                      const match = masteryRows.find((r) => String(r.deck_id) === deck.deckId && String(r.bloom_level) === level);
+                      const coverage = Math.max(0, Math.min(1, Number(match?.coverage ?? 0)));
+                      const coveragePct = coverage * 100;
                       return (
-                        <div key={`ct-${level}`} className="flex items-center text-xs text-gray-500">
+                        <div key={`ct-${level}`} className="flex items-center text-xs text-gray-600">
                           <span className="w-24" />
-                          <span className="ml-0.5">{c} / {t}</span>
+                          {agg && (
+                            <span className="ml-0.5 mr-3">Correct: {Math.max(0, Math.round(agg.correct))} / Seen: {Math.max(0, Math.round(agg.total))}</span>
+                          )}
+                          <span className="ml-0.5">Coverage: {formatPercent1(coveragePct)}</span>
                         </div>
                       );
                     })}
@@ -758,6 +798,19 @@ export default function DashboardClient() {
           </DialogDescription>
         </DialogHeader>
         <div className="text-sm text-gray-700 space-y-3">
+          {explainerData?.factors ? (
+            <div className="grid grid-cols-2 gap-2 p-2 rounded border border-gray-200 bg-gray-50">
+              <div><span className="font-medium">Retention:</span> {explainerData.factors.retentionPct.toFixed(1)}%</div>
+              <div><span className="font-medium">Correctness EWMA:</span> {explainerData.factors.correctnessEwma.toFixed(1)}%</div>
+              <div>
+                <span className="font-medium">Coverage:</span> {explainerData.factors.coveragePct.toFixed(1)}%
+                {typeof explainerData.factors.coverageSeen === 'number' && typeof explainerData.factors.coverageTotal === 'number' ? (
+                  <span className="ml-2 text-gray-600">({explainerData.factors.coverageSeen} / {explainerData.factors.coverageTotal})</span>
+                ) : null}
+              </div>
+              <div><span className="font-medium">Current Mastery:</span> {explainerData.factors.masteryPct.toFixed(1)}%</div>
+            </div>
+          ) : null}
           <div>
             <div className="font-medium">Recent attempts for this Bloom</div>
             <div className="mt-1 rounded border border-gray-200 bg-gray-50 max-h-56 overflow-auto">
@@ -769,7 +822,7 @@ export default function DashboardClient() {
                     <li key={i} className="px-3 py-2 flex items-center justify-between">
                       <div>
                         <div className="text-xs text-gray-500">{new Date(r.at).toLocaleString()} · {r.mode ?? 'quest'}</div>
-                        <div className="text-sm">Accuracy {r.acc.toFixed(1)}% · {r.correct} / {r.seen}</div>
+                        <div className="text-sm">Accuracy {r.acc.toFixed(1)}% · Correct {r.correct} / Seen {r.seen}</div>
                       </div>
                     </li>
                   ))}
@@ -783,6 +836,7 @@ export default function DashboardClient() {
             <ul className="list-disc list-inside space-y-1">
               <li>Correctness EWMA updates with your most recent mission(s) for this Bloom.</li>
               <li>Retention and Coverage come from per-card SRS stats in this deck/Bloom.</li>
+              <li>Coverage reflects how many unique cards for this Bloom you&apos;ve seen recently.</li>
               <li>If you expect an attempt to appear but don’t see it, verify it in user_deck_mission_attempts.</li>
             </ul>
           </div>

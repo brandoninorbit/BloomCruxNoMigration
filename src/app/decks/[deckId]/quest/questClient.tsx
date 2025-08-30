@@ -71,18 +71,27 @@ export default function QuestClient({ deckId }: { deckId: number }) {
     let alive = true;
     (async () => {
       if (!cards || !level) return;
-      // Try resume existing mission from server
-      const mi = Math.max(0, (progress?.[level]?.missionsCompleted ?? 0));
-      const existing = await fetchMission(deckId, level, mi).catch(() => null);
-      if (!alive) return;
-      if (existing && existing.cardOrder.length > 0) {
-        setMission(existing);
-        startedIsoRef.current = existing.startedAt;
-        return;
+      
+      // Check if this is a restart request
+      const isRestart = sp?.get("restart") === "1";
+      
+      // Try resume existing mission from server (unless restarting)
+      if (!isRestart) {
+        const mi = Math.max(0, (progress?.[level]?.missionsCompleted ?? 0));
+        const existing = await fetchMission(deckId, level, mi).catch(() => null);
+        if (!alive) return;
+        if (existing && existing.cardOrder.length > 0) {
+          setMission(existing);
+          startedIsoRef.current = existing.startedAt;
+          return;
+        }
       }
-      // Compose a new mission
+      
+      // Compose a new mission (either no existing mission or restart requested)
       const srs = await fetchSrs(deckId).catch(() => ({}));
-  const comp = composeMission({ deckId, level, allCards: cards, missionIndex: mi, srs });
+      const mi = isRestart ? Math.max(0, (progress?.[level]?.missionsCompleted ?? 0)) : Math.max(0, (progress?.[level]?.missionsCompleted ?? 0));
+      const comp = composeMission({ deckId, level, allCards: cards, missionIndex: mi, srs });
+      
       // Fallback: if this level has no cards for a mission, try another level that has cards
       if (!comp.missionIds || comp.missionIds.length === 0) {
         const levels = BLOOM_LEVELS as DeckBloomLevel[];
@@ -94,7 +103,16 @@ export default function QuestClient({ deckId }: { deckId: number }) {
           setLevel(alt);
           return;
         }
+        // No more missions available for this level and no alternative level found
+        // Check if this level is completed
+        const levelProgress = progress?.[level];
+        if (levelProgress && levelProgress.totalMissions && levelProgress.missionsCompleted >= levelProgress.totalMissions) {
+          // Level is completed, show completion message
+          setMission(null); // This will trigger the "No cards available" message, but we should make it more specific
+          return;
+        }
       }
+      
       const state = startMission({ deckId, level, missionIndex: mi, poolIds: comp.missionIds, seed: comp.seedUsed });
       setMission(state);
       startedIsoRef.current = state.startedAt;
@@ -102,7 +120,7 @@ export default function QuestClient({ deckId }: { deckId: number }) {
       await logXpEvent(deckId, level, "mission_started", { missionIndex: mi, total: state.cardOrder.length });
     })();
     return () => { alive = false; };
-  }, [cards, level, progress, deckId]);
+  }, [cards, level, progress, deckId, sp]);
 
   const currentCard: DeckCard | null = useMemo(() => {
     if (!mission || !cards) return null;
@@ -131,6 +149,9 @@ export default function QuestClient({ deckId }: { deckId: number }) {
 
     // If finished, finalize and redirect
     if (next.answered.length >= next.cardOrder.length && next.cardOrder.length > 0) {
+      // Mark mission as completed
+      const completedMission = { ...next, completedAt: new Date().toISOString() };
+      await upsertMission(deckId, completedMission);
   setFinishing(true);
       const { total, correct, percent } = computePass(next);
       const q = new URLSearchParams();
@@ -140,7 +161,27 @@ export default function QuestClient({ deckId }: { deckId: number }) {
       q.set("correct", String(Math.round(correct)));
       // Finalize with per-bloom breakdown and capture deltas if available
       try {
-        const breakdown = { [next.bloomLevel]: { correct: Math.round(correct), total } } as Record<string, { correct: number; total: number }>;
+        // Compute per-bloom breakdown for finalize
+        const breakdown: Record<string, { correct: number; total: number }> = {};
+        if (cards) {
+          const perBloom: Record<string, { seen: number; correct: number }> = {};
+          next.answered.forEach((ans) => {
+            const card = cards.find((c) => c.id === ans.cardId);
+            if (card) {
+              const bloom = card.bloomLevel || "Remember";
+              const prev = perBloom[bloom] || { seen: 0, correct: 0 };
+              prev.seen += 1;
+              prev.correct += (typeof ans.correct === "number" ? ans.correct : (ans.correct ? 1 : 0));
+              perBloom[bloom] = prev;
+            }
+          });
+          Object.keys(perBloom).forEach((bloom) => {
+            const { seen, correct } = perBloom[bloom]!;
+            if (seen > 0) {
+              breakdown[bloom] = { correct: Math.round(correct), total: seen };
+            }
+          });
+        }
         const resp = await fetch(`/api/economy/finalize`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -153,6 +194,28 @@ export default function QuestClient({ deckId }: { deckId: number }) {
       } catch {}
       // Record attempt row for history/progression
       try {
+        // Compute per-bloom breakdown
+        const breakdown: Record<string, { scorePct: number; cardsSeen: number; cardsCorrect: number }> = {};
+        if (cards) {
+          const perBloom: Record<string, { seen: number; correct: number }> = {};
+          next.answered.forEach((ans) => {
+            const card = cards.find((c) => c.id === ans.cardId);
+            if (card) {
+              const bloom = card.bloomLevel || "Remember";
+              const prev = perBloom[bloom] || { seen: 0, correct: 0 };
+              prev.seen += 1;
+              prev.correct += (typeof ans.correct === "number" ? ans.correct : (ans.correct ? 1 : 0));
+              perBloom[bloom] = prev;
+            }
+          });
+          Object.keys(perBloom).forEach((bloom) => {
+            const { seen, correct } = perBloom[bloom]!;
+            if (seen > 0) {
+              const pct = (correct / seen) * 100;
+              breakdown[bloom] = { scorePct: Math.round(pct * 10) / 10, cardsSeen: seen, cardsCorrect: correct };
+            }
+          });
+        }
         const resp = await fetch(`/api/quest/${deckId}/complete`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -164,6 +227,7 @@ export default function QuestClient({ deckId }: { deckId: number }) {
             cards_correct: Math.round(correct),
             started_at: startedIsoRef.current ?? next.startedAt,
             ended_at: new Date().toISOString(),
+            breakdown,
           }),
         });
         if (resp.ok) {
@@ -220,8 +284,32 @@ export default function QuestClient({ deckId }: { deckId: number }) {
                 <QuestStudyCard card={currentCard} onAnswer={onAnswer} onContinue={applyPendingAndAdvance} />
               ) : (
                 <div className="rounded-xl border bg-slate-50 p-6 text-slate-700">
-                  <div className="text-lg font-semibold mb-1">No cards available</div>
-                  <p className="text-sm">This Bloom level has no cards for a mission yet. Try another level or add cards.</p>
+                  {(() => {
+                    const levelProgress = progress?.[level];
+                    const isLevelCompleted = levelProgress && levelProgress.totalMissions && levelProgress.missionsCompleted >= levelProgress.totalMissions;
+                    
+                    if (isLevelCompleted) {
+                      return (
+                        <>
+                          <div className="text-lg font-semibold mb-1">🎉 All missions completed!</div>
+                          <p className="text-sm mb-4">You&apos;ve completed all missions for the {level} level.</p>
+                          <a
+                            href={`/decks/${deckId}/quest?level=${encodeURIComponent(level)}&restart=1`}
+                            className="inline-block px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+                          >
+                            Restart {level} Missions
+                          </a>
+                        </>
+                      );
+                    } else {
+                      return (
+                        <>
+                          <div className="text-lg font-semibold mb-1">No cards available</div>
+                          <p className="text-sm">This Bloom level has no cards for a mission yet. Try another level or add cards.</p>
+                        </>
+                      );
+                    }
+                  })()}
                 </div>
               )
             ) : (

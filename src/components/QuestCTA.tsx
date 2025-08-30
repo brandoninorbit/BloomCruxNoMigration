@@ -75,6 +75,14 @@ export default function QuestCTA({ deckId }: Props) {
       if (!alive) return;
       const inProgress = !!mission && mission.answered.length < mission.cardOrder.length;
 
+      // Check if the target level is completed
+      const levelProgress = progress[targetLevel];
+      const totalCards = levelProgress?.totalCards ?? 0;
+      const cap = DEFAULT_QUEST_SETTINGS.missionCap;
+      const totalMissions = Math.ceil(totalCards / cap) || 0;
+      const missionsCompleted = levelProgress?.missionsCompleted ?? 0;
+      const isLevelCompleted = totalMissions > 0 && missionsCompleted >= totalMissions;
+
       // Decide label: Try again if last mission failed
       let failedLast = false;
       try {
@@ -97,10 +105,22 @@ export default function QuestCTA({ deckId }: Props) {
         // ignore
       }
 
-      if (inProgress) setLabel(`Resume ${targetLevel} Quest`);
-      else if (failedLast) setLabel(`Try ${targetLevel} again`);
-      else setLabel(`Continue quest: ${targetLevel}`);
-      setHref(`/decks/${deckId}/quest?level=${encodeURIComponent(targetLevel)}`);
+      if (inProgress) {
+        setLabel(`Resume ${targetLevel} Quest`);
+        setHref(`/decks/${deckId}/quest?level=${encodeURIComponent(targetLevel)}`);
+      }
+      else if (isLevelCompleted) {
+        setLabel(`Restart ${targetLevel} Mission`);
+        setHref(`/decks/${deckId}/quest?level=${encodeURIComponent(targetLevel)}&restart=1`);
+      }
+      else if (failedLast) {
+        setLabel(`Try ${targetLevel} again`);
+        setHref(`/decks/${deckId}/quest?level=${encodeURIComponent(targetLevel)}`);
+      }
+      else {
+        setLabel(`Continue quest: ${targetLevel}`);
+        setHref(`/decks/${deckId}/quest?level=${encodeURIComponent(targetLevel)}`);
+      }
     })();
     return () => { alive = false; };
   }, [deckId]);
