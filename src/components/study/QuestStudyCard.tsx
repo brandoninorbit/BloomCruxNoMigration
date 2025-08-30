@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import type {
   DeckCard,
   DeckStandardMCQ,
@@ -38,6 +38,7 @@ export default function QuestStudyCard({ card, onAnswer, onContinue }: { card: D
     const mcq = card as DeckStandardMCQ;
     return (
       <MCQStudy
+        key={card.id}
         prompt={mcq.question}
         options={[
           { key: "A", text: mcq.meta.options.A },
@@ -95,6 +96,7 @@ export default function QuestStudyCard({ card, onAnswer, onContinue }: { card: D
     }
     return (
       <FillBlankStudy
+        key={card.id}
         stem={stem}
         blanks={blanks}
         wordBank={wordBank}
@@ -114,6 +116,7 @@ export default function QuestStudyCard({ card, onAnswer, onContinue }: { card: D
     const seq = card as { question: string; meta: DeckSequencingMeta };
     return (
       <SequencingStudy
+        key={card.id}
         prompt={seq.question}
         steps={seq.meta.steps}
         onAnswer={({ wrongIndexes, allCorrect, responseMs, confidence, guessed }) => {
@@ -128,23 +131,23 @@ export default function QuestStudyCard({ card, onAnswer, onContinue }: { card: D
   }
 
   if (card.type === "Short Answer") {
-    return <ShortAnswerQuest card={card as DeckShortAnswer} onAnswer={onAnswer} onContinue={onContinue} />;
+    return <ShortAnswerQuest key={card.id} card={card as DeckShortAnswer} onAnswer={onAnswer} onContinue={onContinue} />;
   }
 
   if (card.type === "Sorting") {
-    return <SortingQuest card={card as DeckCard & { type: "Sorting"; meta: DeckSortingMeta }} onAnswer={onAnswer} onContinue={onContinue} />;
+    return <SortingQuest key={card.id} card={card as DeckCard & { type: "Sorting"; meta: DeckSortingMeta }} onAnswer={onAnswer} onContinue={onContinue} />;
   }
 
   if (card.type === "Two-Tier MCQ") {
-    return <TwoTierQuest card={card as DeckTwoTierMCQ} onAnswer={onAnswer} onContinue={onContinue} />;
+    return <TwoTierQuest key={card.id} card={card as DeckTwoTierMCQ} onAnswer={onAnswer} onContinue={onContinue} />;
   }
 
   if (card.type === "CER") {
-    return <CERQuest card={card as DeckCER} onAnswer={onAnswer} onContinue={onContinue} />;
+    return <CERQuest key={card.id} card={card as DeckCER} onAnswer={onAnswer} onContinue={onContinue} />;
   }
 
   if (card.type === "Compare/Contrast") {
-    return <CompareContrastQuest card={card as DeckCard & { type: "Compare/Contrast"; meta: DeckCompareContrastMeta }} onAnswer={onAnswer} onContinue={onContinue} />;
+    return <CompareContrastQuest key={card.id} card={card as DeckCard & { type: "Compare/Contrast"; meta: DeckCompareContrastMeta }} onAnswer={onAnswer} onContinue={onContinue} />;
   }
 
   return null;
@@ -158,6 +161,16 @@ function ShortAnswerQuest({ card, onAnswer, onContinue }: { card: DeckShortAnswe
   const [guessed, setGuessed] = useState(false);
   const startRef = useRef<number>(Date.now());
   const responseMs = () => Date.now() - startRef.current;
+
+  useEffect(() => {
+    setText("");
+    setChecked(false);
+    setJudged(null);
+    setConfidence(undefined);
+    setGuessed(false);
+    startRef.current = Date.now();
+  }, [card.id]);
+
   function reveal() {
     if (!checked) setChecked(true);
   }
@@ -231,6 +244,12 @@ function SortingQuest({ card, onAnswer, onContinue }: { card: DeckCard & { type:
   const [assignments, setAssignments] = useState<Record<string, string>>({}); // term -> category
   const [checked, setChecked] = useState(false);
   const [showCorrect, setShowCorrect] = useState(false);
+
+  useEffect(() => {
+    setAssignments({});
+    setChecked(false);
+    setShowCorrect(false);
+  }, [card.id]);
 
   const categories = card.meta.categories;
   const items = card.meta.items.map((it) => it.term);
@@ -330,6 +349,15 @@ function TwoTierQuest({ card, onAnswer, onContinue }: { card: DeckTwoTierMCQ; on
   const startRef = useRef<number>(Date.now());
   const meta = card.meta;
 
+  useEffect(() => {
+    setTier1(null);
+    setTier2(null);
+    setChecked(false);
+    setConfidence(undefined);
+    setGuessed(false);
+    startRef.current = Date.now();
+  }, [card.id]);
+
   const onPick = (tier: 1 | 2, k: "A" | "B" | "C" | "D") => {
     if (checked) return;
     if (tier === 1) { if (tier1 != null) return; setTier1(k); } else { if (tier2 != null) return; setTier2(k); setChecked(true); }
@@ -428,6 +456,21 @@ function CERQuest({ card, onAnswer, onContinue }: { card: DeckCER; onAnswer: (ev
   const [ftConfidence, setFtConfidence] = useState<0|1|2|3|undefined>(undefined);
   const [ftGuessed, setFtGuessed] = useState(false);
   const ftStartRef = useRef<number>(Date.now());
+
+  useEffect(() => {
+    setMcqSel({ claim: null, evidence: null, reasoning: null });
+    setMcqChecked(false);
+    setMcqConfidence(undefined);
+    setMcqGuessed(false);
+    mcqStartRef.current = Date.now();
+
+    setFtText({ claim: "", evidence: "", reasoning: "" });
+    setFtChecked(false);
+    setFtOverride({});
+    setFtConfidence(undefined);
+    setFtGuessed(false);
+    ftStartRef.current = Date.now();
+  }, [card.id]);
 
   const partKeys = ["claim", "evidence", "reasoning"] as const;
   type CERMCQ = Extract<DeckCERPart, { options: string[]; correct: number }>;
@@ -624,6 +667,17 @@ function CompareContrastQuest({ card, onAnswer, onContinue }: { card: DeckCard &
   const startRef = useRef<number>(Date.now());
   const aRefs = useRef<Record<number, HTMLTextAreaElement | null>>({});
   const bRefs = useRef<Record<number, HTMLTextAreaElement | null>>({});
+
+  useEffect(() => {
+    setCcA({});
+    setCcB({});
+    setCcChecked(false);
+    setCcOverride({});
+    setCcAllCorrect(null);
+    setCcConfidence(undefined);
+    setCcGuessed(false);
+    startRef.current = Date.now();
+  }, [card.id]);
 
   const normalize = (s: string) => s.trim().toLowerCase().replace(/[\p{P}\p{S}]/gu, "").replace(/\s+/g, " ");
   const tokenize = (s: string) => normalize(s).split(" ").filter(Boolean);
