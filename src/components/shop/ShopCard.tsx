@@ -29,6 +29,7 @@ export default function ShopCard({ title, description, price, icon, disabled, lo
   
   // For non-next unlocks, show encrypted text
   const displayTitle = isNotNextUnlock ? "Encrypted cosmetic // Decrypt at higher Commander level" : title;
+  const displayDescription = isNotNextUnlock ? "Encrypted description data // Decrypt at higher Commander level" : description;
   const displayUnlockText = isNotNextUnlock ? "Unlocks at: Encrypted unlock data // Decrypt at higher Commander level" : `Unlocks at Level ${unlockLevel}`;
 
   return (
@@ -40,10 +41,10 @@ export default function ShopCard({ title, description, price, icon, disabled, lo
           icon
         )}
       </div>
-      <h3 className="text-xl font-semibold text-slate-800 mb-1">{displayTitle}</h3>
-      <p className="text-sm leading-6 text-slate-600 mb-4">{description}</p>
+      <h3 className={`${isNotNextUnlock ? 'text-base' : 'text-lg'} font-semibold text-slate-800 mb-1`}>{displayTitle}</h3>
+      <p className="text-xs leading-5 text-slate-600 mb-4">{displayDescription}</p>
       <button
-        className="w-full rounded-xl bg-[#2481f9] px-4 py-3 text-white text-sm font-semibold disabled:opacity-50"
+        className={`w-full rounded-xl bg-[#2481f9] px-4 py-3 text-white ${isNotNextUnlock ? 'text-xs' : 'text-sm'} font-semibold disabled:opacity-50`}
         disabled={disabled || locked || purchased || loading}
         onClick={() => {
           if (disabled || locked || purchased || loading) return;
