@@ -9,6 +9,7 @@ import { SunriseCover, DeckCoverDeepSpace, DeckCoverNightMission, DeckCoverAgent
 import { AvatarFrameNeonGlow } from '@/components/AvatarFrames';
 import { supabaseRepo } from '@/lib/repo/supabaseRepo';
 import { fetchWithAuth } from '@/lib/supabase/fetchWithAuth';
+import { UNLOCKS, getNextUnlockForLevel } from '@/lib/unlocks';
 
 export default function SettingsSheet() {
   const [avatarFrame, setAvatarFrame] = React.useState<string>("unlock");
@@ -20,6 +21,7 @@ export default function SettingsSheet() {
   const [stealthPurchased, setStealthPurchased] = React.useState<boolean>(false);
   const [rainPurchased, setRainPurchased] = React.useState<boolean>(false);
   const [desertPurchased, setDesertPurchased] = React.useState<boolean>(false);
+  const [commanderLevel, setCommanderLevel] = React.useState<number>(0);
   // loading state intentionally omitted for brevity
 
   React.useEffect(() => {
@@ -54,6 +56,14 @@ export default function SettingsSheet() {
         const purchasedRain = await supabaseRepo.hasPurchasedCover('Rainforest');
         const purchasedDesert = await supabaseRepo.hasPurchasedCover('DesertStorm');
 
+        // Fetch commander level
+        const walletRes = await fetchWithAuth('/api/economy/wallet', { cache: 'no-store' });
+        let level = 0;
+        if (walletRes.ok) {
+          const walletData = await walletRes.json();
+          level = Number(walletData?.commander_level ?? 0);
+        }
+
         if (!mounted) return;
         setValue(def ?? '__system_default');
         setAvatarFrame(avatarDef ?? '__system_default');
@@ -63,6 +73,7 @@ export default function SettingsSheet() {
         setStealthPurchased(!!purchasedStealth);
         setRainPurchased(!!purchasedRain);
         setDesertPurchased(!!purchasedDesert);
+        setCommanderLevel(Number.isFinite(level) ? level : 0);
       } catch {
         /* ignore */
       }
@@ -109,6 +120,17 @@ export default function SettingsSheet() {
     }
   };
 
+  // Helper function to determine if a cosmetic should be shown in dropdown
+  const shouldShowCosmetic = (cosmeticId: string, isPurchased: boolean): boolean => {
+    if (isPurchased) return true; // Always show if purchased
+    
+    // Check if it's the next unlock
+    const unlock = UNLOCKS.find(u => u.id === cosmeticId);
+    if (!unlock) return false;
+    
+    return unlock.level === (commanderLevel + 1);
+  };
+
   return (
     <Sheet>
       <SheetTrigger asChild>
@@ -143,10 +165,12 @@ export default function SettingsSheet() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__system_default">System default</SelectItem>
-                    {neonPurchased ? (
-                      <SelectItem value="NeonGlow">Neon Glow</SelectItem>
-                    ) : (
-                      <SelectItem value="NeonGlow" disabled>Neon Glow (locked)</SelectItem>
+                    {shouldShowCosmetic('NeonGlow', neonPurchased) && (
+                      neonPurchased ? (
+                        <SelectItem value="NeonGlow">Neon Glow</SelectItem>
+                      ) : (
+                        <SelectItem value="NeonGlow" disabled>Neon Glow (locked)</SelectItem>
+                      )
                     )}
                   </SelectContent>
                 </Select>
@@ -174,41 +198,53 @@ export default function SettingsSheet() {
                           </SelectTrigger>
               <SelectContent>
                 <SelectItem value="__system_default">System default</SelectItem>
-                            {/* Sunrise only enabled if purchased */}
-                            {sunrisePurchased ? (
-                              <SelectItem value="Sunrise">Sunrise</SelectItem>
-                            ) : (
-                              <SelectItem value="Sunrise" disabled>Sunrise (locked)</SelectItem>
+                            {/* Sunrise only enabled if purchased or next unlock */}
+                            {shouldShowCosmetic('Sunrise', sunrisePurchased) && (
+                              sunrisePurchased ? (
+                                <SelectItem value="Sunrise">Sunrise</SelectItem>
+                              ) : (
+                                <SelectItem value="Sunrise" disabled>Sunrise (locked)</SelectItem>
+                              )
                             )}
-                            {/* Deep Space only enabled if purchased */}
-                            {deepPurchased ? (
-                              <SelectItem value="DeepSpace">Deep Space</SelectItem>
-                            ) : (
-                              <SelectItem value="DeepSpace" disabled>Deep Space (locked)</SelectItem>
+                            {/* Deep Space only enabled if purchased or next unlock */}
+                            {shouldShowCosmetic('DeepSpace', deepPurchased) && (
+                              deepPurchased ? (
+                                <SelectItem value="DeepSpace">Deep Space</SelectItem>
+                              ) : (
+                                <SelectItem value="DeepSpace" disabled>Deep Space (locked)</SelectItem>
+                              )
                             )}
-                            {/* Night Mission only enabled if purchased */}
-                            {nightPurchased ? (
-                              <SelectItem value="NightMission">Night Mission</SelectItem>
-                            ) : (
-                              <SelectItem value="NightMission" disabled>Night Mission (locked)</SelectItem>
+                            {/* Night Mission only enabled if purchased or next unlock */}
+                            {shouldShowCosmetic('NightMission', nightPurchased) && (
+                              nightPurchased ? (
+                                <SelectItem value="NightMission">Night Mission</SelectItem>
+                              ) : (
+                                <SelectItem value="NightMission" disabled>Night Mission (locked)</SelectItem>
+                              )
                             )}
-                            {/* Agent Stealth only enabled if purchased */}
-                            {stealthPurchased ? (
-                              <SelectItem value="AgentStealth">Agent Stealth</SelectItem>
-                            ) : (
-                              <SelectItem value="AgentStealth" disabled>Agent Stealth (locked)</SelectItem>
+                            {/* Agent Stealth only enabled if purchased or next unlock */}
+                            {shouldShowCosmetic('AgentStealth', stealthPurchased) && (
+                              stealthPurchased ? (
+                                <SelectItem value="AgentStealth">Agent Stealth</SelectItem>
+                              ) : (
+                                <SelectItem value="AgentStealth" disabled>Agent Stealth (locked)</SelectItem>
+                              )
                             )}
-                            {/* Rainforest only enabled if purchased */}
-                            {rainPurchased ? (
-                              <SelectItem value="Rainforest">Rainforest</SelectItem>
-                            ) : (
-                              <SelectItem value="Rainforest" disabled>Rainforest (locked)</SelectItem>
+                            {/* Rainforest only enabled if purchased or next unlock */}
+                            {shouldShowCosmetic('Rainforest', rainPurchased) && (
+                              rainPurchased ? (
+                                <SelectItem value="Rainforest">Rainforest</SelectItem>
+                              ) : (
+                                <SelectItem value="Rainforest" disabled>Rainforest (locked)</SelectItem>
+                              )
                             )}
-                            {/* Desert Storm only enabled if purchased */}
-                            {desertPurchased ? (
-                              <SelectItem value="DesertStorm">Desert Storm</SelectItem>
-                            ) : (
-                              <SelectItem value="DesertStorm" disabled>Desert Storm (locked)</SelectItem>
+                            {/* Desert Storm only enabled if purchased or next unlock */}
+                            {shouldShowCosmetic('DesertStorm', desertPurchased) && (
+                              desertPurchased ? (
+                                <SelectItem value="DesertStorm">Desert Storm</SelectItem>
+                              ) : (
+                                <SelectItem value="DesertStorm" disabled>Desert Storm (locked)</SelectItem>
+                              )
                             )}
                           </SelectContent>
                         </Select>

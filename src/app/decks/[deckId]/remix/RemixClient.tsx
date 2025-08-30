@@ -211,9 +211,9 @@ export default function RemixClient({ deckId }: { deckId: number }) {
   // total not shown in the centered view
 
   return (
-    <main className="study-page relative min-h-screen overflow-hidden">
+    <main className="study-page min-h-screen flex flex-col">
       {/* Header area: mode title + progress */}
-      <div className="absolute top-0 left-0 right-0 p-4">
+      <div className="p-4 flex-shrink-0">
         <div className="max-w-4xl mx-auto">
           <div className="text-sm font-semibold text-slate-900">Random Remix</div>
           <div className="mt-1">
@@ -221,7 +221,7 @@ export default function RemixClient({ deckId }: { deckId: number }) {
           </div>
         </div>
       </div>
-  <div className="absolute left-0 right-0 bottom-0 top-20 md:top-24 flex items-center justify-center p-4">
+      <div className="flex-1 flex items-start justify-center p-4">
         <div className="w-full max-w-xl">
           <div className="bg-white rounded-lg shadow p-6 max-h-[78vh] overflow-y-auto">
             {finishing ? (

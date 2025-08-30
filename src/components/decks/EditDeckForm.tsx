@@ -10,6 +10,7 @@ import AddCardModal from "@/components/decks/AddCardModal";
 import * as cardsRepo from "@/lib/cardsRepo";
 import { parseCsv, type ImportPayload } from "@/lib/csvImport";
 import { hasImportHash, recordImportHash } from "@/lib/cardsRepo";
+import { UNLOCKS } from "@/lib/unlocks";
 
 type Props = {
   deckId: string;
@@ -26,6 +27,15 @@ export default function EditDeckForm({ deckId }: Props) {
   const [nightPurchased, setNightPurchased] = useState<boolean>(false);
   const [stealthPurchased, setStealthPurchased] = useState<boolean>(false);
   const [rainPurchased, setRainPurchased] = useState<boolean>(false);
+  const [commanderLevel, setCommanderLevel] = useState<number>(0);
+
+  // Helper function to determine if a cosmetic should be shown
+  const shouldShowCosmetic = (cosmeticId: string, isPurchased: boolean): boolean => {
+    if (isPurchased) return true;
+    const unlock = UNLOCKS.find(u => u.id === cosmeticId);
+    if (!unlock) return false;
+    return commanderLevel >= unlock.level;
+  };
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -41,6 +51,20 @@ export default function EditDeckForm({ deckId }: Props) {
   setNightPurchased(!!okNight);
   setStealthPurchased(!!okStealth);
   setRainPurchased(!!okRain);
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const level = await supabaseRepo.getCommanderLevel();
+        if (!mounted) return;
+        setCommanderLevel(level);
       } catch {
         /* ignore */
       }
@@ -433,12 +457,26 @@ export default function EditDeckForm({ deckId }: Props) {
               onChange={(e) => setDeck((prev) => (prev ? { ...prev, cover: e.target.value || null } : prev))}
             >
               <option value="">System default</option>
-              {/* Sunrise will show but only be meaningful if purchased */}
-              <option value="Sunrise" disabled={!sunrisePurchased}>Sunrise</option>
-              <option value="DeepSpace" disabled={!deepPurchased}>Deep Space</option>
-              <option value="NightMission" disabled={!nightPurchased}>Night Mission</option>
-              <option value="AgentStealth" disabled={!stealthPurchased}>Agent Stealth</option>
-              <option value="Rainforest" disabled={!rainPurchased}>Rainforest</option>
+              {/* Sunrise only enabled if purchased or next unlock */}
+              {shouldShowCosmetic('Sunrise', sunrisePurchased) && (
+                <option value="Sunrise" disabled={!sunrisePurchased}>Sunrise</option>
+              )}
+              {/* Deep Space only enabled if purchased or next unlock */}
+              {shouldShowCosmetic('DeepSpace', deepPurchased) && (
+                <option value="DeepSpace" disabled={!deepPurchased}>Deep Space</option>
+              )}
+              {/* Night Mission only enabled if purchased or next unlock */}
+              {shouldShowCosmetic('NightMission', nightPurchased) && (
+                <option value="NightMission" disabled={!nightPurchased}>Night Mission</option>
+              )}
+              {/* Agent Stealth only enabled if purchased or next unlock */}
+              {shouldShowCosmetic('AgentStealth', stealthPurchased) && (
+                <option value="AgentStealth" disabled={!stealthPurchased}>Agent Stealth</option>
+              )}
+              {/* Rainforest only enabled if purchased or next unlock */}
+              {shouldShowCosmetic('Rainforest', rainPurchased) && (
+                <option value="Rainforest" disabled={!rainPurchased}>Rainforest</option>
+              )}
             </select>
             <p className="text-xs text-gray-500 mt-2">Choose a deck cover (applies as a visual only). Locked covers will appear but cannot be selected in production until purchased.</p>
           </div>

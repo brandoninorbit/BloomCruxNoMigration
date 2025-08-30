@@ -250,4 +250,21 @@ export const supabaseRepo = {
 
     if (error) throw error;
   },
+
+  // Get the user's commander level from user_economy
+  async getCommanderLevel(): Promise<number> {
+    const supabase = getSupabaseClient();
+    const { data: userData } = await supabase.auth.getUser();
+    const uid = userData?.user?.id;
+    if (!uid) return 1;
+
+    const { data, error } = await supabase
+      .from('user_economy')
+      .select('commander_level')
+      .eq('user_id', uid)
+      .maybeSingle();
+
+    if (error) return 1;
+    return Number(data?.commander_level ?? 1);
+  },
 };
