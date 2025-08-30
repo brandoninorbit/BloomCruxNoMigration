@@ -1,5 +1,4 @@
 import { describe, it, expect } from 'vitest';
-import { computeSMA as deckSMA } from '@/components/decks/DeckProgressChart';
 import { computeSMA as dashSMA } from '@/components/DashboardProgressChart';
 
 function computeSMA(values: number[], k = 5) {
@@ -35,7 +34,6 @@ describe('computeSMA', () => {
 
 describe('acceptance: overlapping decks', () => {
   it('can build two series with overlapping timestamps and preserve values', () => {
-    const times = [1, 2, 3, 4, 5];
     const deckA = [10, 20, 30, 40, 50];
     const deckB = [50, 40, 30, 20, 10];
     const smaA = computeSMA(deckA, 5);

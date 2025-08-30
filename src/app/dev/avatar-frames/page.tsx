@@ -32,7 +32,7 @@ export default function DevAvatarFramesPage() {
         } else if (p.status === 401) {
           if (!cancelled) setPurchased(false);
         }
-      } catch (e) {
+      } catch {
         if (!cancelled) setPurchased(false);
       }
     })();

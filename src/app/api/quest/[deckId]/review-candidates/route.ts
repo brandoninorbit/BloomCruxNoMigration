@@ -4,7 +4,7 @@ import { getSupabaseSession } from "@/app/supabase/session";
 import type { CardMastery } from "@/types/mastery";
 import { struggleQueue } from "@/lib/reviewQueues";
 
-export async function GET(_req: NextRequest, _ctx: { params: Promise<{ deckId: string }> }) {
+export async function GET() {
   // Prefer POST with explicit cardIds; GET not supported to avoid large query strings or schema coupling
   return NextResponse.json({ error: "Method not allowed" }, { status: 405 });
 }

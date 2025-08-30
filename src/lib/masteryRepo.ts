@@ -1,9 +1,8 @@
 import type { CardMastery } from "@/types/mastery";
-import { Bloom } from "@/lib/bloom";
 import { getSupabaseClient } from "@/lib/supabase/browserClient";
 
 /** Load user's card mastery JSON state (returns null if none). */
-export async function loadUserCardState(userId: string, cardId: number, _bloom?: Bloom): Promise<CardMastery | null> {
+export async function loadUserCardState(userId: string, cardId: number): Promise<CardMastery | null> {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from("user_card_state")

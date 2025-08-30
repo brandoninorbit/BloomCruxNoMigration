@@ -68,6 +68,7 @@ function BlankSlot({
   override,
   onOverride,
   correctAnswer,
+  showCorrect,
 }: {
   id: string;
   value: string;

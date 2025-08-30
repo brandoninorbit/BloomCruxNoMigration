@@ -140,7 +140,7 @@ export function aggregateBloomLevel(bloom: Bloom, cards: CardMastery[]): BloomLe
 const isApplyPlus = (b: Bloom) => [Bloom.Apply, Bloom.Analyze, Bloom.Evaluate, Bloom.Create].includes(b);
 
 /** Stub diversity check: wire actual concept/cardType grouping later. */
-function hasCardTypeDiversity(_cards: CardMastery[]): boolean {
+function hasCardTypeDiversity(): boolean {
   // TODO: inject cardType grouping by concept/topic; for now return true to avoid blocking.
   return true;
 }
@@ -154,7 +154,7 @@ export function graduationCheck(level: BloomLevelMastery, cards: CardMastery[]):
   const okSpacing = cards.filter(c => c.spacing.spacedShortOk && c.spacing.spacedLongOk).length / (cards.length || 1);
   if (okSpacing < 0.80) reasons.push(`Distributed spacing evidence ${(okSpacing*100).toFixed(0)}% < 80%`);
 
-  if (isApplyPlus(level.bloom) && !hasCardTypeDiversity(cards)) {
+  if (isApplyPlus(level.bloom) && !hasCardTypeDiversity()) {
     reasons.push("Insufficient card-type diversity for transfer");
   }
 

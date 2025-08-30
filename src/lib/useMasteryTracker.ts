@@ -40,7 +40,7 @@ export function useMasteryTracker() {
     const userId = payload.userId || (await supabase.auth.getUser()).data.user?.id;
     if (!userId) return; // not signed in; skip
 
-    const prev = (await loadUserCardState(userId, Number(payload.cardId), payload.bloom))
+    const prev = (await loadUserCardState(userId, Number(payload.cardId)))
       || defaultCardMastery(payload.cardId, payload.bloom);
 
     // Map incoming payload to the ReviewOutcome shape understood by the mastery pipeline.

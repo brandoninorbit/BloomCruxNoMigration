@@ -257,7 +257,6 @@ export function computePass(state: MissionState, settings?: Partial<QuestSetting
 // Utilities for consistency-based progression
 export function computeWeightedAvg(attempts: Array<{ percent: number }>): number {
   if (!attempts || attempts.length === 0) return 0;
-  const n = attempts.length;
   const weights = attempts.map((_, i) => i + 1);
   const sumW = weights.reduce((a, b) => a + b, 0);
   const vals = attempts.map((a) => a.percent);

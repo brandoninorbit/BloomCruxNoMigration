@@ -9,7 +9,7 @@ import { SunriseCover, DeckCoverDeepSpace, DeckCoverNightMission, DeckCoverAgent
 import { AvatarFrameNeonGlow } from '@/components/AvatarFrames';
 import { supabaseRepo } from '@/lib/repo/supabaseRepo';
 import { fetchWithAuth } from '@/lib/supabase/fetchWithAuth';
-import { UNLOCKS, getNextUnlockForLevel } from '@/lib/unlocks';
+import { UNLOCKS } from '@/lib/unlocks';
 
 export default function SettingsSheet() {
   const [avatarFrame, setAvatarFrame] = React.useState<string>("unlock");

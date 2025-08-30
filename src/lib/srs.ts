@@ -79,12 +79,6 @@ function addDays(iso: ISODateString, days: number): ISODateString {
   return d.toISOString();
 }
 
-function daysBetween(aIso: ISODateString, bIso: ISODateString): number {
-  const a = new Date(aIso).getTime();
-  const b = new Date(bIso).getTime();
-  return (b - a) / (1000 * 60 * 60 * 24);
-}
-
 // random in [lo, hi]
 function randRange(lo: number, hi: number): number {
   return lo + Math.random() * (hi - lo);

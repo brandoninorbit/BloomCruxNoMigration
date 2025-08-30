@@ -11,7 +11,7 @@ export default async function CsvImportGuidePage() {
   try {
     const filePath = path.join(process.cwd(), 'docs', 'csv-import.md');
     content = await fs.readFile(filePath, 'utf8');
-  } catch (_err) {
+  } catch {
     content = '# CSV Import Guide\n\nUnable to load docs/csv-import.md. Please ensure the file exists.';
   }
   return (
