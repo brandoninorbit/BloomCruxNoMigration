@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { DndContext, DragEndEvent, PointerSensor, useDroppable, useDraggable, useSensor, useSensors, rectIntersection } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 
@@ -64,6 +64,10 @@ function BlankSlot({
   label,
   hasError,
   mode,
+  checked,
+  override,
+  onOverride,
+  correctAnswer,
 }: {
   id: string;
   value: string;
@@ -75,6 +79,11 @@ function BlankSlot({
   label: string;
   hasError?: boolean;
   mode: "bank" | "free" | "either";
+  checked?: boolean;
+  override?: "right" | "wrong";
+  onOverride?: (ov: "right" | "wrong") => void;
+  correctAnswer?: string;
+  showCorrect?: boolean;
 }) {
   const { isOver, setNodeRef } = useDroppable({ id });
   const cls = `inline-flex items-center gap-1 min-w-[64px] px-2 py-1 rounded border align-middle mx-1 ${
@@ -104,11 +113,34 @@ function BlankSlot({
       ) : (
         <span className={valueCls}>{value || placeholder}</span>
       )}
-  {showClear && (
+      {showClear && (
         <button aria-label={`Clear ${label}`} className="font-valid text-slate-500 hover:text-slate-700" onClick={onClear} type="button">
           ×
         </button>
       )}
+      {checked && override === undefined && onOverride ? (
+        <div className="mt-1 flex gap-1">
+          <button
+            type="button"
+            className="px-1 py-0.5 rounded text-xs border border-green-500 text-green-600 hover:bg-green-50"
+            onClick={() => onOverride("right")}
+          >
+            I was right
+          </button>
+          <button
+            type="button"
+            className="px-1 py-0.5 rounded text-xs border border-red-500 text-red-600 hover:bg-red-50"
+            onClick={() => onOverride("wrong")}
+          >
+            I was wrong
+          </button>
+        </div>
+      ) : null}
+      {checked && correctAnswer && (override === "wrong" || showCorrect) ? (
+        <div className="mt-1 text-xs text-green-700">
+          <span className="font-semibold">Correct:</span> {correctAnswer}
+        </div>
+      ) : null}
     </span>
   );
 }
@@ -119,6 +151,7 @@ export default function FillBlankStudy({ stem, blanks, wordBank, explanation, su
   const [bank, setBank] = useState<string[]>(() => [...(wordBank ?? [])]);
   const [checked, setChecked] = useState(false);
   const [perBlank, setPerBlank] = useState<Record<string | number, boolean>>({});
+  const [perBlankOverride, setPerBlankOverride] = useState<Record<string | number, "right" | "wrong" | undefined>>({});
   const [showCorrect, setShowCorrect] = useState(false);
   const [confidence, setConfidence] = useState<0|1|2|3|undefined>(undefined);
   const [guessed, setGuessed] = useState(false);
@@ -140,6 +173,17 @@ export default function FillBlankStudy({ stem, blanks, wordBank, explanation, su
     startRef.current = Date.now();
   }, [stem, blanksKey, propBankKey, wordBank]);
 
+  useEffect(() => {
+    if (!checked) return;
+    const updatedPer: Record<string | number, boolean> = {};
+    for (const b of blanks) {
+      const ov = perBlankOverride[b.id];
+      if (ov === "right") updatedPer[b.id] = true;
+      else if (ov === "wrong") updatedPer[b.id] = false;
+      else updatedPer[b.id] = perBlank[b.id] ?? true; // for auto-graded
+    }
+    setPerBlank(updatedPer);
+  }, [perBlankOverride, checked, blanks, perBlank]);
   // Support legacy __n__ markers by normalizing them to [[n]]
   const normalizedStem = useMemo(() => stem.replace(/__(\d+)__/g, "[[$1]]"), [stem]);
   const parts = useMemo(() => normalizedStem.split(/\[\[(\d+)\]\]/g), [normalizedStem]);
@@ -150,6 +194,18 @@ export default function FillBlankStudy({ stem, blanks, wordBank, explanation, su
     }
     return m;
   }, [blanks]);
+
+  const buildFilledText = useCallback(() => {
+    // Reconstruct stem by replacing [[n]] with value
+    return stem.replace(/\[\[(\d+)\]\]/g, (_m, g1) => placements[g1] ?? "");
+  }, [stem, placements]);
+
+  useEffect(() => {
+    if (!checked) return;
+    const allCorrect = Object.values(perBlank).every(Boolean);
+    const responseMs = Date.now() - startRef.current;
+    onAnswer({ perBlank, allCorrect, filledText: buildFilledText(), mode: "auto", responseMs, confidence, guessed });
+  }, [perBlank, checked, buildFilledText, confidence, guessed, onAnswer]);
 
   const dropInto = (id: string | number, value: string) => {
     setPlacements((prev) => {
@@ -179,24 +235,30 @@ export default function FillBlankStudy({ stem, blanks, wordBank, explanation, su
     }
   };
 
-  const buildFilledText = () => {
-    // Reconstruct stem by replacing [[n]] with value
-    return stem.replace(/\[\[(\d+)\]\]/g, (_m, g1) => placements[g1] ?? "");
-  };
-
   const checkNow = () => {
     const nextPer: Record<string | number, boolean> = {};
+    const nextOverride: Record<string | number, "right" | "wrong" | undefined> = {};
     for (const b of blanks) {
       const val = placements[b.id] ?? "";
-      const good = b.answers.some((a) => normalize(a, b.caseSensitive, b.ignorePunct) === normalize(val, b.caseSensitive, b.ignorePunct));
-      nextPer[b.id] = good;
+      const isTyped = !wordBank || !wordBank.includes(val); // typed if not in word bank
+      if (isTyped && (b.mode === "free" || b.mode === "either")) {
+        // For typed blanks, don't auto-grade, set to undefined for self-check
+        nextPer[b.id] = true; // assume correct initially
+        nextOverride[b.id] = undefined;
+      } else {
+        // Auto-grade for bank or dragged items
+        const good = b.answers.some((a) => normalize(a, b.caseSensitive, b.ignorePunct) === normalize(val, b.caseSensitive, b.ignorePunct));
+        nextPer[b.id] = good;
+        nextOverride[b.id] = good ? "right" : "wrong";
+      }
     }
     setPerBlank(nextPer);
+    setPerBlankOverride(nextOverride);
     setChecked(true);
     setShowCorrect(false);
     const allCorrect = Object.values(nextPer).every(Boolean);
-  const responseMs = Date.now() - startRef.current;
-  onAnswer({ perBlank: nextPer, allCorrect, filledText: buildFilledText(), mode: "auto", responseMs, confidence, guessed });
+    const responseMs = Date.now() - startRef.current;
+    onAnswer({ perBlank: nextPer, allCorrect, filledText: buildFilledText(), mode: "auto", responseMs, confidence, guessed });
   };
 
   return (
@@ -224,7 +286,7 @@ export default function FillBlankStudy({ stem, blanks, wordBank, explanation, su
                     onInput={handler}
                     isDroppable={droppable}
                     placeholder={`[[${id}]]`}
-          showClear={showClear}
+                    showClear={showClear}
                     onClear={() => {
                       setPlacements((prev) => ({ ...prev, [id]: "" }));
                       setBank((prev) => (val ? [...prev.filter((t) => t !== val), val] : prev));
@@ -232,6 +294,11 @@ export default function FillBlankStudy({ stem, blanks, wordBank, explanation, su
                     label={label}
                     hasError={hasError}
                     mode={mode}
+                    checked={checked}
+                    override={perBlankOverride[id]}
+                    onOverride={(ov) => setPerBlankOverride((prev) => ({ ...prev, [id]: ov }))}
+                    correctAnswer={correctMap[id]}
+                    showCorrect={showCorrect}
                   />
                 );
               }
