@@ -431,7 +431,7 @@ async function loadSummary(deckId: number, modeParam: string | null, hints?: { u
     if (fromParam === true) unlocked = true;
   } catch {}
   try {
-  type PB = Partial<Record<DeckBloomLevel, { mastered?: boolean; totalCards?: number; missionsCompleted?: number; accuracySum?: number; accuracyCount?: number; cleared?: boolean }>>;
+  type PB = Partial<Record<DeckBloomLevel, { mastered?: boolean; totalCards?: number; missionsCompleted?: number; missionsPassed?: number; accuracySum?: number; accuracyCount?: number; cleared?: boolean }>>;
     const perBloom: PB = progJson && typeof progJson === "object" && (progJson as { per_bloom?: PB }).per_bloom ? (progJson as { per_bloom?: PB }).per_bloom! : {};
     if (unlocked !== true && hints?.levelParam) {
       const lvl = (hints.levelParam as DeckBloomLevel);
@@ -440,13 +440,15 @@ async function loadSummary(deckId: number, modeParam: string | null, hints?: { u
     }
     const cap = DEFAULT_QUEST_SETTINGS.missionCap;
     const passThreshold = DEFAULT_QUEST_SETTINGS.passThreshold;
-    const levels = (BLOOM_LEVELS as DeckBloomLevel[]).map((lvl) => {
-      const p = perBloom[lvl] || {};
+    type LevelInfo = { level: DeckBloomLevel; totalCards: number; missionsCompleted: number; missionsPassed: number; totalMissions: number; mastered: boolean; unlocked: boolean };
+    const levels: LevelInfo[] = (BLOOM_LEVELS as DeckBloomLevel[]).map((lvl) => {
+  const p = perBloom[lvl] || {};
       const totalCards = Number(p.totalCards ?? 0);
-      const missionsCompleted = Number(p.missionsCompleted ?? 0);
+  const missionsCompleted = Number(p.missionsCompleted ?? 0);
+  const missionsPassed = Number(p.missionsPassed ?? missionsCompleted);
       const totalMissions = Math.ceil(totalCards / cap) || 0;
       const mastered = !!p.mastered;
-      return { level: lvl, totalCards, missionsCompleted, totalMissions, mastered, unlocked: false };
+      return { level: lvl, totalCards, missionsCompleted, missionsPassed, totalMissions, mastered, unlocked: false };
     });
     // unlocks: Remember always; others unlocked if previous mastered OR cleared (fallback: avg accuracy >= threshold with >=1 mission)
     for (let i = 0; i < levels.length; i++) {
@@ -464,7 +466,8 @@ async function loadSummary(deckId: number, modeParam: string | null, hints?: { u
       levels[i]!.unlocked = prevMastered || prevCleared || fallbackUnlock;
     }
     // choose next actionable: first unlocked level with remaining missions and has >0 missions
-    const candidate = levels.find((li) => li.unlocked && li.totalMissions > 0 && li.missionsCompleted < li.totalMissions)
+    // Use missionsPassed to determine remaining missions for gating
+  const candidate = levels.find((li) => li.unlocked && li.totalMissions > 0 && li.missionsPassed < li.totalMissions)
       // if none, optionally allow restart of the earliest unlocked level with missions
       ?? levels.find((li) => li.unlocked && li.totalMissions > 0);
     if (candidate) {

@@ -29,6 +29,8 @@ export type BloomProgress = {
   totalCards: number;
   completedCards: number;
   missionsCompleted: number;
+  // Number of missions PASSED (>= passThreshold). Used for mission gating/unlocks.
+  missionsPassed?: number;
   masteryPercent: number;
   mastered: boolean;
   commanderGranted: boolean; // commander XP awarded retroactively once mastered

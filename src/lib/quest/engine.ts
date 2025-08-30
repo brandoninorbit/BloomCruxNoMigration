@@ -313,6 +313,7 @@ export function initUserBloomProgress(allCards: DeckCard[]): UserBloomProgress {
       totalCards: byLevel[lvl],
       completedCards: 0,
       missionsCompleted: 0,
+  missionsPassed: 0,
       masteryPercent: 0,
       mastered: false,
   commanderGranted: false,

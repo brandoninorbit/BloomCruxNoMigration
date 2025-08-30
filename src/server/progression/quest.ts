@@ -163,6 +163,7 @@ export async function updateQuestProgressOnComplete(params: {
     totalMissions: number;
     completedCards: number;
     missionsCompleted: number;
+  missionsPassed: number;
     masteryPercent: number;
     mastered: boolean;
     commanderGranted: boolean;
@@ -191,6 +192,7 @@ export async function updateQuestProgressOnComplete(params: {
       totalMissions,
       completedCards: Number(cur.completedCards ?? 0),
       missionsCompleted: Number(cur.missionsCompleted ?? 0),
+      missionsPassed: Number(cur.missionsPassed ?? 0),
       masteryPercent: Number(cur.masteryPercent ?? 0),
       mastered: Boolean(cur.mastered ?? false),
       commanderGranted: Boolean(cur.commanderGranted ?? false),
@@ -205,6 +207,10 @@ export async function updateQuestProgressOnComplete(params: {
   // Update aggregates for the just-completed level
   const cur = (per[params.level] ?? {}) as Partial<PerBloomItem>;
   cur.missionsCompleted = Number(cur.missionsCompleted ?? 0) + 1;
+  // Only increment missionsPassed when passing threshold
+  if ((params.scorePct ?? 0) >= 65) {
+    cur.missionsPassed = Number(cur.missionsPassed ?? 0) + 1;
+  }
   const before = Number(cur.completedCards ?? 0);
   const totalCards = Number(cur.totalCards ?? 0);
   cur.completedCards = Math.min(totalCards, before + Math.max(0, Number(params.cardsSeen ?? 0)));

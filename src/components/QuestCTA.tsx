@@ -51,7 +51,7 @@ export default function QuestCTA({ deckId }: Props) {
           const totalCards = prog?.totalCards ?? 0;
           const cap = DEFAULT_QUEST_SETTINGS.missionCap;
           const totalMissions = Math.ceil(totalCards / cap) || 0;
-          const doneMissions = prog?.missionsCompleted ?? 0;
+          const doneMissions = prog?.missionsPassed ?? prog?.missionsCompleted ?? 0;
           const hasMoreMissions = doneMissions < totalMissions;
           if (percent >= passThreshold) {
             if (!hasMoreMissions) {
@@ -70,7 +70,7 @@ export default function QuestCTA({ deckId }: Props) {
         // ignore analytics lookup issues; fall back to targetLevel
       }
 
-  const mi = progress[targetLevel]?.missionsCompleted ?? 0;
+  const mi = progress[targetLevel]?.missionsPassed ?? progress[targetLevel]?.missionsCompleted ?? 0;
       const mission = await fetchMission(deckId, targetLevel, mi);
       if (!alive) return;
       const inProgress = !!mission && mission.answered.length < mission.cardOrder.length;
@@ -80,8 +80,9 @@ export default function QuestCTA({ deckId }: Props) {
       const totalCards = levelProgress?.totalCards ?? 0;
       const cap = DEFAULT_QUEST_SETTINGS.missionCap;
       const totalMissions = Math.ceil(totalCards / cap) || 0;
-      const missionsCompleted = levelProgress?.missionsCompleted ?? 0;
-      const isLevelCompleted = totalMissions > 0 && missionsCompleted >= totalMissions;
+  const missionsCompleted = levelProgress?.missionsCompleted ?? 0; // for history
+  const missionsPassed = levelProgress?.missionsPassed ?? missionsCompleted;
+  const isLevelCompleted = totalMissions > 0 && missionsPassed >= totalMissions;
 
       // Decide label: Try again if last mission failed
       let failedLast = false;

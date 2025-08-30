@@ -76,7 +76,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dec
       .eq("deck_id", deckId)
       .maybeSingle();
   if (row?.per_bloom && (mode ?? 'quest') === 'quest') {
-      type PB = Partial<{ updatedSinceLastRun: number; missionUnlocked: boolean; cleared: boolean; accuracyCount: number; lastCompletion: { percent: number; timestamp: string; attempts: number } }>;
+      type PB = Partial<{ updatedSinceLastRun: number; missionUnlocked: boolean; cleared: boolean; accuracyCount: number; lastCompletion: { percent: number; timestamp: string; attempts: number }; missionsPassed: number; totalMissions: number }>;
       const per = row.per_bloom as Record<string, PB>;
       const cur = (per[bloom_level] ?? {}) as PB;
       const was = Number(cur.updatedSinceLastRun ?? 0);
@@ -84,7 +84,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dec
       per[bloom_level] = {
         ...cur,
         updatedSinceLastRun: after,
-        missionUnlocked: Boolean(cur.missionUnlocked ?? cur.cleared ?? false),
+  missionUnlocked: Boolean(cur.missionUnlocked ?? cur.cleared ?? (Number(cur.missionsPassed ?? 0) > 0)),
         lastCompletion: { percent: score_pct, timestamp: ended_at ?? new Date().toISOString(), attempts: Number(cur.accuracyCount ?? 0) + 1 },
       };
       await sb

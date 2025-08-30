@@ -57,9 +57,9 @@ export default function QuestClient({ deckId }: { deckId: number }) {
       if (!(sp?.get("level") ?? "")) {
         const order = BLOOM_LEVELS as DeckBloomLevel[];
         const next = order.find((lvl) => {
-          const p = (progress ?? ({} as UserBloomProgress))[lvl as DeckBloomLevel];
+          const p = (progress ?? ({} as UserBloomProgress))[lvl as DeckBloomLevel] as (UserBloomProgress[DeckBloomLevel] & { missionsPassed?: number }) | undefined;
           if (!p) return false;
-          const remaining = Math.max(0, (p.totalMissions ?? 0) - (p.missionsCompleted ?? 0));
+          const remaining = Math.max(0, (p.totalMissions ?? 0) - (Number(p.missionsPassed ?? p.missionsCompleted ?? 0)));
           return remaining > 0 && !p.mastered && !p.cleared;
         }) as DeckBloomLevel | undefined;
         if (next) setLevel(next);
@@ -79,7 +79,8 @@ export default function QuestClient({ deckId }: { deckId: number }) {
       
       // Try resume existing mission from server (unless restarting)
       if (!isRestart) {
-        const mi = Math.max(0, (progress?.[level]?.missionsCompleted ?? 0));
+        // Mission gating: index is number of PASSED missions, not just completed attempts
+        const mi = Math.max(0, (progress?.[level]?.missionsPassed ?? progress?.[level]?.missionsCompleted ?? 0));
         const existing = await fetchMission(deckId, level, mi).catch(() => null);
         if (!alive) return;
         if (existing && existing.cardOrder.length > 0) {
@@ -92,7 +93,8 @@ export default function QuestClient({ deckId }: { deckId: number }) {
       // Compose a new mission (either no existing mission or restart requested)
   const srs = await fetchSrs(deckId).catch(() => ({}));
   srsRef.current = srs;
-      const mi = isRestart ? Math.max(0, (progress?.[level]?.missionsCompleted ?? 0)) : Math.max(0, (progress?.[level]?.missionsCompleted ?? 0));
+  // For fresh composition, also use missionsPassed as the mission index
+  const mi = Math.max(0, (progress?.[level]?.missionsPassed ?? progress?.[level]?.missionsCompleted ?? 0));
       const comp = composeMission({ deckId, level, allCards: cards, missionIndex: mi, srs });
       
       // Fallback: if this level has no cards for a mission, try another level that has cards

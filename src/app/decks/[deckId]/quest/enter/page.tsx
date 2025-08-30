@@ -17,12 +17,13 @@ export default async function QuestEnterPage({ params }: { params: Promise<{ dec
   const id = Number(deckId);
   if (!Number.isFinite(id)) notFound();
 
-  type BP = { totalCards?: number; missionsCompleted?: number; mastered?: boolean; accuracySum?: number; accuracyCount?: number; cleared?: boolean; weightedAvg?: number };
+  type BP = { totalCards?: number; missionsCompleted?: number; missionsPassed?: number; mastered?: boolean; accuracySum?: number; accuracyCount?: number; cleared?: boolean; weightedAvg?: number };
   let per: Partial<Record<DeckBloomLevel, BP & { updatedSinceLastRun?: number }>> = {};
   let levels: Array<{
     level: DeckBloomLevel;
     totalCards: number;
-    missionsCompleted: number;
+  missionsCompleted: number;
+  missionsPassed: number;
     totalMissions: number;
     mastered: boolean;
     unlocked: boolean;
@@ -68,10 +69,11 @@ export default async function QuestEnterPage({ params }: { params: Promise<{ dec
     const p: BP = (per && per[lvl]) || {};
   const totalCards = Number(p.totalCards ?? 0) || Number(cardTotals?.[lvl] ?? 0);
     const missionsCompleted = Number(p.missionsCompleted ?? 0);
+    const missionsPassed = Number(p.missionsPassed ?? 0);
     const totalMissions = Math.ceil(totalCards / cap) || 0;
     const mastered = !!p.mastered;
   const updatedSinceLastRun = Number((per?.[lvl] as (BP & { updatedSinceLastRun?: number }) | undefined)?.updatedSinceLastRun ?? 0);
-    return { level: lvl, totalCards, missionsCompleted, totalMissions, mastered, unlocked: false, updatedSinceLastRun };
+    return { level: lvl, totalCards, missionsCompleted, missionsPassed, totalMissions, mastered, unlocked: false, updatedSinceLastRun };
   });
   // Unlocking rules (single-pass model):
   // - Remember is always unlocked
@@ -125,7 +127,8 @@ export default async function QuestEnterPage({ params }: { params: Promise<{ dec
   {levels.map((li, idx) => {
           const color = BLOOM_COLOR_HEX[li.level] || "#e2e8f0";
           const isStarted = li.missionsCompleted > 0 && li.missionsCompleted < li.totalMissions;
-          const isCompleted = li.totalMissions > 0 && li.missionsCompleted >= li.totalMissions;
+          // Level considered completed for unlocking the next bloom when a mission meets pass threshold; we still show missionsCompleted for UI counts
+          const isCompleted = li.totalMissions > 0 && li.missionsPassed >= li.totalMissions;
           const multi = li.totalMissions > 1;
           const nextUnlocked = levels[idx + 1]?.unlocked ?? false;
           const hasMissions = li.totalMissions > 0;
@@ -221,8 +224,8 @@ export default async function QuestEnterPage({ params }: { params: Promise<{ dec
                   <div className="mt-2 space-y-2">
                     {Array.from({ length: li.totalMissions }).map((_, idx) => {
                       const ord = idx + 1;
-                      const isDone = ord <= li.missionsCompleted;
-                      const isNext = ord === li.missionsCompleted + 1;
+                      const isDone = ord <= li.missionsPassed; // passed missions
+                      const isNext = ord === li.missionsPassed + 1; // next mission locked until previous is passed
       const actionable = li.unlocked && (isNext || isDone) && hasMissions && !comingSoon;
                       return (
                         <div key={ord} className="flex items-center justify-between">
