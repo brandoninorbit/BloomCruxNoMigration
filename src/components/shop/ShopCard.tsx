@@ -13,6 +13,8 @@ export type ShopCardProps = {
   locked?: boolean;
   /** Optional: shows the level needed when locked. */
   unlockLevel?: number;
+  /** Current commander level to determine if this is the next unlock */
+  commanderLevel?: number;
   /** If already purchased, disable button and show status. */
   purchased?: boolean;
   /** Optional click handler to perform the purchase. */
@@ -21,7 +23,14 @@ export type ShopCardProps = {
   loading?: boolean;
 };
 
-export default function ShopCard({ title, description, price, icon, disabled, locked, unlockLevel, purchased, onPurchase, loading }: ShopCardProps) {
+export default function ShopCard({ title, description, price, icon, disabled, locked, unlockLevel, commanderLevel, purchased, onPurchase, loading }: ShopCardProps) {
+  // Determine if this locked item is the next unlock or not
+  const isNotNextUnlock = locked && unlockLevel && commanderLevel !== undefined && unlockLevel > (commanderLevel + 1);
+  
+  // For non-next unlocks, show encrypted text
+  const displayTitle = isNotNextUnlock ? "Encrypted cosmetic // Decrypt at higher Commander level" : title;
+  const displayUnlockText = isNotNextUnlock ? "Unlocks at: Encrypted unlock data // Decrypt at higher Commander level" : `Unlocks at Level ${unlockLevel}`;
+
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm hover:shadow-md transition-shadow flex flex-col">
       <div className="mb-4">
@@ -31,7 +40,7 @@ export default function ShopCard({ title, description, price, icon, disabled, lo
           icon
         )}
       </div>
-      <h3 className="text-xl font-semibold text-slate-800 mb-1">{title}</h3>
+      <h3 className="text-xl font-semibold text-slate-800 mb-1">{displayTitle}</h3>
       <p className="text-sm leading-6 text-slate-600 mb-4">{description}</p>
       <button
         className="w-full rounded-xl bg-[#2481f9] px-4 py-3 text-white text-sm font-semibold disabled:opacity-50"
@@ -42,7 +51,7 @@ export default function ShopCard({ title, description, price, icon, disabled, lo
         }}
       >
         {locked
-          ? (unlockLevel ? `Unlocks at Level ${unlockLevel}` : "Locked")
+          ? (unlockLevel ? displayUnlockText : "Locked")
           : purchased
           ? 'Purchased'
           : loading

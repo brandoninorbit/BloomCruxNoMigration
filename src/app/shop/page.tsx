@@ -233,6 +233,7 @@ export default function ShopPage() {
                         {...item}
                         locked={locked}
                         unlockLevel={unlockLevel}
+                        commanderLevel={commanderLevel}
             purchased={!!purchased[id]}
             loading={!!loading[id]}
             onPurchase={() => handlePurchase(id)}

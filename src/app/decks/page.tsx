@@ -240,6 +240,7 @@ function DecksPage() {
   const [editColorName, setEditColorName] = useState<ColorName>("blue");
   // Delete confirmation toast state
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const [confirmDeleteFolderId, setConfirmDeleteFolderId] = useState<number | null>(null);
   const [defaultCover, setDefaultCover] = useState<string | null>(null);
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -470,11 +471,37 @@ function DecksPage() {
     }
   }, [user, showMock, fetchUserData]);
 
+  // DELETE FOLDER
+  const handleDeleteFolder = useCallback(async (folderId: number) => {
+    try {
+      if (user && !showMock) {
+        // Delete from Supabase, scoped to current user
+        await supabase.from("folders").delete().eq("id", folderId).eq("user_id", user.id);
+        // Refresh folders list
+        await fetchUserData();
+      } else {
+        // Mock path: remove locally
+        setFolders((prev) => prev.filter((f) => f.id !== folderId));
+      }
+    } catch (e) {
+      // No-op; could surface a toast in future; avoid server overlay error spam
+      const msg = (e && typeof e === 'object' && 'message' in e) ? (e as { message?: string }).message : String(e);
+      console.warn('delete folder error:', msg);
+    }
+  }, [user, showMock, fetchUserData]);
+
   // Show confirmation toast for a few seconds
   const requestDeleteConfirm = useCallback((deckId: number) => {
     setConfirmDeleteId(deckId);
     if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
     confirmTimerRef.current = setTimeout(() => setConfirmDeleteId(null), 6000);
+  }, []);
+
+  // Show confirmation toast for folder deletion
+  const requestDeleteFolderConfirm = useCallback((folderId: number) => {
+    setConfirmDeleteFolderId(folderId);
+    if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+    confirmTimerRef.current = setTimeout(() => setConfirmDeleteFolderId(null), 6000);
   }, []);
 
   useEffect(() => () => { if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current); }, []);
@@ -630,7 +657,28 @@ function DecksPage() {
                         required
                         disabled={folderLoading}
                         placeholder="e.g., Biology 101"
+                        maxLength={50}
                       />
+                      {/* Character count indicators */}
+                      {newFolderName.length > 0 && (
+                        <div className="mt-2 text-xs">
+                          {newFolderName.length <= 8 && (
+                            <span className="text-green-600">✓ Text will display at normal size in deck cards</span>
+                          )}
+                          {newFolderName.length > 8 && newFolderName.length <= 12 && (
+                            <span className="text-yellow-600">⚠ Font will get smaller from here in deck cards</span>
+                          )}
+                          {newFolderName.length > 12 && newFolderName.length <= 20 && (
+                            <span className="text-orange-600">⚠ Text will be smaller in deck cards</span>
+                          )}
+                          {newFolderName.length > 20 && (
+                            <span className="text-red-600">⚠ Text will be cut off in deck cards (but not in folder view)</span>
+                          )}
+                          <div className="mt-1 text-gray-500">
+                            {newFolderName.length}/50 characters
+                          </div>
+                        </div>
+                      )}
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">Color</label>
@@ -678,129 +726,137 @@ function DecksPage() {
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
-  {decksToDisplay.map((d) => (
-    <DeckCardShell
-      key={d.id}
-      title={d.title}
-      titleBelow={(() => {
-        const deckMap = masteryByDeck[d.id] || {};
-        const levels = BLOOM_LEVELS as DeckBloomLevel[];
-        const mastered = levels
-          .map((lvl) => ({ lvl, pct: Number((deckMap as Partial<Record<DeckBloomLevel, number>>)[lvl] ?? 0) }))
-          .filter((x) => x.pct >= 80)
-          .sort((a, b) => levels.indexOf(a.lvl) - levels.indexOf(b.lvl));
-        const top = mastered[mastered.length - 1];
-        if (!top) return null;
-        const bg = BLOOM_COLOR_HEX[top.lvl] ?? "#4DA6FF";
-        return (
-          <div className="px-2 w-full flex justify-center">
-            <span
-              className="inline-flex items-center justify-center rounded-full px-2.5 py-0.5 text-xs font-semibold text-white shadow-sm whitespace-nowrap max-w-[20ch]"
-              style={{ backgroundColor: bg }}
-            >
-              {`Mastered: ${top.lvl}`}
-            </span>
-          </div>
-        );
-      })()}
-      onClick={() => (window.location.href = `/decks/${d.id}/edit`)}
-      cover={
-        (d.cover ?? defaultCover) ? (
-          <div className="absolute inset-0 z-0 pointer-events-none">
-            {(d.cover ?? defaultCover) === "Sunrise" ? (
-              <div className="h-full w-full">
-                <SunriseCover fill className="h-full w-full" />
-              </div>
-            ) : (d.cover ?? defaultCover) === "DeepSpace" ? (
-              <div className="h-full w-full">
-                <DeckCoverDeepSpace fill className="h-full w-full" />
-              </div>
-            ) : (d.cover ?? defaultCover) === "NightMission" ? (
-              <div className="h-full w-full">
-                <DeckCoverNightMission fill className="h-full w-full" />
-              </div>
-            ) : (d.cover ?? defaultCover) === "AgentStealth" ? (
-              <div className="h-full w-full">
-                <DeckCoverAgentStealth fill className="h-full w-full" />
-              </div>
-            ) : (d.cover ?? defaultCover) === "Rainforest" ? (
-              <div className="h-full w-full">
-                <DeckCoverRainforest fill={true} className="h-full w-full" />
-              </div>
-            ) : (d.cover ?? defaultCover) === "DesertStorm" ? (
-              <div className="h-full w-full">
-                <DeckCoverDesertStorm fill={true} className="h-full w-full" />
-              </div>
-            ) : (
-              <div className="h-full w-full bg-gray-100" />
-            )}
-          </div>
-        ) : null
-      }
-      footer={
-        <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-          <button
-            type="button"
-            className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-[#2481f9] text-white text-[13px] font-semibold py-2 shadow-sm hover:bg-blue-600"
-            onClick={(e) => {
-              e.stopPropagation();
-              window.location.href = `/decks/${d.id}/study`;
-            }}
-          >
-            <BookOpen className="h-4 w-4" />
-            Study deck
-          </button>
-          <div className="mt-2 flex flex-col items-center gap-2">
+  {decksToDisplay.map((d) => {
+    // Get folder name
+    const folder = folders.find(f => f.id === d.folderId);
+    const folderName = folder?.name || undefined;
+    
+    return (
+      <DeckCardShell
+        key={d.id}
+        title={d.title}
+        folderName={folderName}
+        titleBelow={undefined}
+        masteryPill={(() => {
+          // Get mastery info
+          const deckMap = masteryByDeck[d.id] || {};
+          const levels = BLOOM_LEVELS as DeckBloomLevel[];
+          const mastered = levels
+            .map((lvl) => ({ lvl, pct: Number((deckMap as Partial<Record<DeckBloomLevel, number>>)[lvl] ?? 0) }))
+            .filter((x) => x.pct >= 80)
+            .sort((a, b) => levels.indexOf(a.lvl) - levels.indexOf(b.lvl));
+          const top = mastered[mastered.length - 1];
+          
+          return top ? (
+            <div className="flex justify-center">
+              <span
+                className="inline-flex items-center justify-center rounded-full px-2.5 py-0.5 text-xs font-semibold text-white shadow-sm whitespace-nowrap max-w-[20ch]"
+                style={{ backgroundColor: BLOOM_COLOR_HEX[top.lvl] ?? "#4DA6FF" }}
+              >
+                {`Mastered: ${top.lvl}`}
+              </span>
+            </div>
+          ) : null;
+        })()}
+        onClick={() => (window.location.href = `/decks/${d.id}/edit`)}
+        cover={
+          (d.cover ?? defaultCover) ? (
+            <div className="absolute inset-0 z-0 pointer-events-none">
+              {(d.cover ?? defaultCover) === "Sunrise" ? (
+                <div className="h-full w-full">
+                  <SunriseCover fill className="h-full w-full" />
+                </div>
+              ) : (d.cover ?? defaultCover) === "DeepSpace" ? (
+                <div className="h-full w-full">
+                  <DeckCoverDeepSpace fill className="h-full w-full" />
+                </div>
+              ) : (d.cover ?? defaultCover) === "NightMission" ? (
+                <div className="h-full w-full">
+                  <DeckCoverNightMission fill className="h-full w-full" />
+                </div>
+              ) : (d.cover ?? defaultCover) === "AgentStealth" ? (
+                <div className="h-full w-full">
+                  <DeckCoverAgentStealth fill className="h-full w-full" />
+                </div>
+              ) : (d.cover ?? defaultCover) === "Rainforest" ? (
+                <div className="h-full w-full">
+                  <DeckCoverRainforest fill={true} className="h-full w-full" />
+                </div>
+              ) : (d.cover ?? defaultCover) === "DesertStorm" ? (
+                <div className="h-full w-full">
+                  <DeckCoverDesertStorm fill={true} className="h-full w-full" />
+                </div>
+              ) : (
+                <div className="h-full w-full bg-gray-100" />
+              )}
+            </div>
+          ) : null
+        }
+        footer={
+          <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200">
             <button
               type="button"
-              aria-label="Delete deck"
-              title="Delete deck"
-              className="inline-flex items-center justify-center rounded-md border border-slate-200 bg-white p-2 text-slate-600 shadow-sm hover:text-red-600 hover:border-red-300 transition-colors"
+              className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-[#2481f9] text-white text-[13px] font-semibold py-2 shadow-sm hover:bg-blue-600"
               onClick={(e) => {
                 e.stopPropagation();
-                requestDeleteConfirm(d.id);
+                window.location.href = `/decks/${d.id}/study`;
               }}
             >
-              <Trash2 className="h-4 w-4" />
+              <BookOpen className="h-4 w-4" />
+              Study deck
             </button>
-            {confirmDeleteId === d.id && (
-              <div
-                className="w-full max-w-[220px] rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 shadow-sm"
-                onClick={(e) => e.stopPropagation()}
+            <div className="mt-2 flex flex-col items-center gap-2">
+              <button
+                type="button"
+                aria-label="Delete deck"
+                title="Delete deck"
+                className="inline-flex items-center justify-center rounded-md border border-slate-200 bg-white p-2 text-slate-600 shadow-sm hover:text-red-600 hover:border-red-300 transition-colors"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  requestDeleteConfirm(d.id);
+                }}
               >
-                <div className="mb-2 font-medium">Delete this deck?</div>
-                <div className="flex items-center justify-center gap-2">
-                  <button
-                    type="button"
-                    className="px-2.5 py-1 rounded bg-red-600 text-white hover:bg-red-700"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteDeck(d.id);
-                      setConfirmDeleteId(null);
-                    }}
-                  >
-                    Delete
-                  </button>
-                  <button
-                    type="button"
-                    className="px-2.5 py-1 rounded border border-slate-200 text-slate-700 hover:bg-slate-50"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setConfirmDeleteId(null);
-                    }}
-                  >
-                    Cancel
-                  </button>
+                <Trash2 className="h-4 w-4" />
+              </button>
+              {confirmDeleteId === d.id && (
+                <div
+                  className="w-full max-w-[220px] rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 shadow-sm"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="mb-2 font-medium">Delete this deck?</div>
+                  <div className="flex items-center justify-center gap-2">
+                    <button
+                      type="button"
+                      className="px-2.5 py-1 rounded bg-red-600 text-white hover:bg-red-700"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteDeck(d.id);
+                        setConfirmDeleteId(null);
+                      }}
+                    >
+                      Delete
+                    </button>
+                    <button
+                      type="button"
+                      className="px-2.5 py-1 rounded border border-slate-200 text-slate-700 hover:bg-slate-50"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setConfirmDeleteId(null);
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
-        </div>
-      }
-    >
-      {/* mastery pill moved to titleBelow */}
-    </DeckCardShell>
-  ))}
+        }
+      >
+        {/* mastery pill moved to titleBelow */}
+      </DeckCardShell>
+    );
+  })}
 </div>
         </section>
 
@@ -841,6 +897,18 @@ function DecksPage() {
                   </div>
                   <button
                     type="button"
+                    aria-label="Delete folder"
+                    title="Delete folder"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      requestDeleteFolderConfirm(f.id);
+                    }}
+                    className="absolute right-16 top-1/2 -translate-y-1/2 inline-flex items-center rounded-md border border-slate-200 bg-white p-2 text-slate-600 shadow-sm opacity-0 group-hover:opacity-100 transition-colors hover:text-red-600 hover:border-red-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
                     aria-label="Edit folder"
                     onClick={(e) => {
                       e.stopPropagation();
@@ -851,6 +919,37 @@ function DecksPage() {
                   >
                     <Pencil className="h-4 w-4" />
                   </button>
+                  {confirmDeleteFolderId === f.id && (
+                    <div
+                      className="absolute right-16 top-full mt-2 w-full max-w-[220px] rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 shadow-sm z-10"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="mb-2 font-medium">Delete this folder?</div>
+                      <div className="flex items-center justify-center gap-2">
+                        <button
+                          type="button"
+                          className="px-2.5 py-1 rounded bg-red-600 text-white hover:bg-red-700"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteFolder(f.id);
+                            setConfirmDeleteFolderId(null);
+                          }}
+                        >
+                          Delete
+                        </button>
+                        <button
+                          type="button"
+                          className="px-2.5 py-1 rounded border border-slate-200 text-slate-700 hover:bg-slate-50"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setConfirmDeleteFolderId(null);
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -883,7 +982,28 @@ function DecksPage() {
                     onChange={e => setEditName(e.target.value)}
                     required
                     placeholder="e.g., Biology 101"
+                    maxLength={50}
                   />
+                  {/* Character count indicators */}
+                  {editName.length > 0 && (
+                    <div className="mt-2 text-xs">
+                      {editName.length <= 8 && (
+                        <span className="text-green-600">✓ Text will display at normal size in deck cards</span>
+                      )}
+                      {editName.length > 8 && editName.length <= 12 && (
+                        <span className="text-yellow-600">⚠ Font will get smaller from here in deck cards</span>
+                      )}
+                      {editName.length > 12 && editName.length <= 20 && (
+                        <span className="text-orange-600">⚠ Text will be smaller in deck cards</span>
+                      )}
+                      {editName.length > 20 && (
+                        <span className="text-red-600">⚠ Text will be cut off in deck cards (but not in folder view)</span>
+                      )}
+                      <div className="mt-1 text-gray-500">
+                        {editName.length}/50 characters
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Color</label>

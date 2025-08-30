@@ -16,8 +16,6 @@ import {
 import { getSupabaseClient } from "@/lib/supabase/browserClient";
 import GradientBackgroundWrapper from "@/components/GradientBackgroundWrapper";
 import { SunriseCover } from "@/components/DeckCovers";
-import { DeckCardShell } from "@/components/decks/DeckCardShell";
-import { MasteryPill } from "@/components/decks/MasteryPill";
 const supabase = getSupabaseClient();
 
 /* ---------- Types ---------- */
@@ -671,36 +669,55 @@ function DecksPage() {
                   {/* Content layout */}
                   <div className="absolute inset-0 p-4 flex flex-col z-10">
                     {/* Title band at top with backdrop blur for readability */}
-                    <div className="inline-block bg-white/30 backdrop-blur-sm rounded-md px-3 py-1 text-[15px] font-bold text-[#111418] line-clamp-2 pr-6">
-                      {d.title}
-                    </div>
-
-                    {/* Bloom mastery pills (top two mastered; lower level on top, highest below); hide if none */}
-                    <div className="mt-2">
+                    <div className="inline-block bg-white/30 backdrop-blur-sm rounded-md px-3 py-2 w-full">
+                      {/* Title */}
+                      <div className="text-[15px] font-bold text-[#111418] line-clamp-2 pr-1 text-center">{d.title}</div>
+                      {/* Folder name below */}
                       {(() => {
-                        const deckMap = masteryByDeck[d.id] || {};
-                        const levels = BLOOM_LEVELS as DeckBloomLevel[];
-                        const mastered = levels
-                          .map((lvl) => ({ lvl, pct: Number((deckMap as Partial<Record<DeckBloomLevel, number>>)[lvl] ?? 0) }))
-                          .filter((x) => x.pct >= 80)
-                          .sort((a, b) => levels.indexOf(a.lvl) - levels.indexOf(b.lvl));
-                        const topTwo = mastered.slice(-2); // highest two
-                        if (topTwo.length === 0) return null;
+                        const folder = folders.find(f => f.id === d.folderId);
+                        const folderName = folder?.name;
+                        if (!folderName) return null;
+                        
+                        // Dynamic font size based on folder name length
+                        const getFontSize = (text: string) => {
+                          if (text.length <= 8) return "text-[13px]";
+                          if (text.length <= 12) return "text-xs";
+                          if (text.length <= 16) return "text-[11px]";
+                          if (text.length <= 20) return "text-[10px]";
+                          return "text-[9px]"; // minimum font size
+                        };
+                        
                         return (
-                          <div className="flex flex-col gap-1 items-center">
-                            {topTwo.map((m, idx) => (
-                              <span
-                                key={`${m.lvl}-${idx}`}
-                                className="inline-flex items-center justify-center text-center rounded-full px-2 py-0.5 text-[11px] font-semibold text-white shadow-sm overflow-hidden whitespace-nowrap"
-                                style={{ backgroundColor: BLOOM_COLOR_HEX[m.lvl] ?? "#4DA6FF", width: 'min(22ch, 100%)', boxSizing: 'border-box' }}
-                              >
-                                {`MASTERED: ${m.lvl}`}
-                              </span>
-                            ))}
+                          <div className="mt-1 text-center">
+                            <div className={`${getFontSize(folderName)} text-[#111418] whitespace-nowrap overflow-hidden text-ellipsis max-w-full`}>
+                              {folderName}
+                            </div>
                           </div>
                         );
                       })()}
                     </div>
+
+                    {/* Mastery pill below blurred element */}
+                    {(() => {
+                      const deckMap = masteryByDeck[d.id] || {};
+                      const levels = BLOOM_LEVELS as DeckBloomLevel[];
+                      const mastered = levels
+                        .map((lvl) => ({ lvl, pct: Number((deckMap as Partial<Record<DeckBloomLevel, number>>)[lvl] ?? 0) }))
+                        .filter((x) => x.pct >= 80)
+                        .sort((a, b) => levels.indexOf(a.lvl) - levels.indexOf(b.lvl));
+                      const top = mastered[mastered.length - 1]; // highest only
+                      if (!top) return null;
+                      return (
+                        <div className="mt-2 flex justify-center">
+                          <span
+                            className="inline-flex items-center justify-center text-center rounded-full px-2.5 py-0.5 text-xs font-semibold text-white shadow-sm overflow-hidden whitespace-nowrap"
+                            style={{ backgroundColor: BLOOM_COLOR_HEX[top.lvl] ?? "#4DA6FF", maxWidth: 'min(22ch, 100%)', boxSizing: 'border-box' }}
+                          >
+                            {`Mastered: ${top.lvl}`}
+                          </span>
+                        </div>
+                      );
+                    })()}
 
                     {/* Deck progress chart removed per spec; only shown in Dashboard Deck Dossier */}
 

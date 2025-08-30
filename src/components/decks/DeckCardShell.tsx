@@ -9,11 +9,14 @@ export type DeckCardShellProps = {
   cover?: React.ReactNode;
   /** Optional content displayed just below the title band at the top of the card. */
   titleBelow?: React.ReactNode;
-  children?: React.ReactNode;
   footer?: React.ReactNode;
   className?: string;
   /** Optional: lets callers tag the shell with a Bloom level (used for styling/analytics). */
   level?: MasteryBloomLevel;
+  /** Optional folder name to display below the title */
+  folderName?: string;
+  /** Optional mastery pill to display below the blurred element */
+  masteryPill?: React.ReactNode;
 };
 
 export function DeckCardShell({
@@ -21,10 +24,11 @@ export function DeckCardShell({
   onClick,
   cover,
   titleBelow,
-  children,
   footer,
   className,
   level,
+  folderName,
+  masteryPill,
 }: DeckCardShellProps) {
   return (
     <div
@@ -37,16 +41,38 @@ export function DeckCardShell({
         {cover}
 
         {/* TITLE band + optional slot underneath */}
-        <div className="absolute top-3 left-3 right-3 space-y-2">
-          <div className="inline-block bg-white/30 dark:bg-neutral-900/30 backdrop-blur-sm px-3 py-1 rounded-md">
-            <span className="text-[15px] font-bold text-[#111418] line-clamp-2 pr-1">{title}</span>
+        <div className="absolute top-3 left-3 right-3">
+          <div className="inline-block bg-white/30 dark:bg-neutral-900/30 backdrop-blur-sm px-3 py-2 rounded-md w-full">
+            {/* Title */}
+            <div className="text-[15px] font-bold text-[#111418] line-clamp-2 pr-1 text-center">{title}</div>
+            {/* Folder name below, if provided */}
+            {folderName && (
+              <div className="mt-1 text-center">
+                <div className={`${(() => {
+                  // Dynamic font size based on folder name length
+                  if (folderName.length <= 8) return "text-[13px]";
+                  if (folderName.length <= 12) return "text-xs";
+                  if (folderName.length <= 16) return "text-[11px]";
+                  if (folderName.length <= 20) return "text-[10px]";
+                  return "text-[9px]"; // minimum font size
+                })()} text-[#111418] whitespace-nowrap overflow-hidden text-ellipsis max-w-full`}>
+                  {folderName}
+                </div>
+              </div>
+            )}
+            {/* Additional content below, if provided */}
+            {titleBelow && (
+              <div className="mt-1 text-center">
+                {titleBelow}
+              </div>
+            )}
           </div>
-          {titleBelow ? <div className="flex justify-center">{titleBelow}</div> : null}
+          {/* Mastery pill positioned below the blurred element with fixed gap */}
+          {masteryPill && <div className="mt-2">{masteryPill}</div>}
         </div>
 
         {/* SLOT area (pills/stats/actions supplied by caller) */}
         <div className="absolute inset-x-3 bottom-3 space-y-2">
-          {children}
           {footer ? <div className="pt-1">{footer}</div> : null}
         </div>
       </article>
