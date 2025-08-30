@@ -244,11 +244,13 @@ function SortingQuest({ card, onAnswer, onContinue }: { card: DeckCard & { type:
   const [assignments, setAssignments] = useState<Record<string, string>>({}); // term -> category
   const [checked, setChecked] = useState(false);
   const [showCorrect, setShowCorrect] = useState(false);
+  const [allCorrect, setAllCorrect] = useState<boolean | null>(null);
 
   useEffect(() => {
     setAssignments({});
     setChecked(false);
     setShowCorrect(false);
+    setAllCorrect(null);
   }, [card.id]);
 
   const categories = card.meta.categories;
@@ -264,7 +266,11 @@ function SortingQuest({ card, onAnswer, onContinue }: { card: DeckCard & { type:
       for (const it of card.meta.items) correctByTerm[it.term] = it.correctCategory;
       const cat = assignments[text];
       const ok = cat && cat === correctByTerm[text];
-      chipClass = ok ? "bg-green-50 border-green-300 text-green-800" : "bg-red-50 border-red-300 text-red-800";
+      if (showCorrect) {
+        chipClass = "bg-green-200 border-green-400 text-green-900"; // darker green for correct placement
+      } else {
+        chipClass = ok ? "bg-green-50 border-green-300 text-green-800" : "bg-red-50 border-red-300 text-red-800";
+      }
     }
     return (
       <div ref={setNodeRef} style={style} className={`px-2 py-1 rounded border text-sm shadow-sm ${chipClass || "bg-white"} ${checked ? "opacity-70" : "cursor-grab active:cursor-grabbing"} ${isDragging ? "opacity-75 dragging" : ""}`} {...(!checked ? { ...attributes, ...listeners } : {})}>
@@ -306,10 +312,16 @@ function SortingQuest({ card, onAnswer, onContinue }: { card: DeckCard & { type:
     const numCorrect = items.filter((t) => assignments[t] && assignments[t] === correctByTerm[t]).length;
     const correctness = Math.max(0, Math.min(1, numCorrect / total));
     setChecked(true);
+    setAllCorrect(correctness === 1);
     onAnswer({ cardId: card.id, correctness, correct: correctness === 1, cardType: card.type });
   };
 
-  const revealCorrect = () => setShowCorrect(true);
+  const revealCorrect = () => {
+    const correctByTerm: Record<string, string> = {};
+    for (const it of card.meta.items) correctByTerm[it.term] = it.correctCategory;
+    setAssignments(correctByTerm);
+    setShowCorrect(true);
+  };
 
   return (
     <div className="w-full">
@@ -333,7 +345,10 @@ function SortingQuest({ card, onAnswer, onContinue }: { card: DeckCard & { type:
           <div className="flex items-center gap-3">
             {!showCorrect ? <button type="button" className="px-3 py-2 rounded border border-slate-300" onClick={revealCorrect}>Show correct</button> : <span className="text-sm text-slate-600">Correct answers highlighted.</span>}
           </div>
-          <button type="button" className="px-4 py-2 rounded-lg font-medium bg-slate-900 text-white" onClick={onContinue}>Continue</button>
+          <div className={`rounded-xl border px-4 py-3 flex items-center justify-between ${allCorrect ? "bg-green-100 border-green-200 text-green-800" : "bg-red-100 border-red-200 text-red-800"}`}>
+            <div className="font-semibold">{allCorrect ? "Correct!" : "Not quite"}</div>
+            <button type="button" className={`px-4 py-2 rounded-lg font-medium shadow-sm ${allCorrect ? "bg-green-600 text-white hover:bg-green-700" : "bg-red-600 text-white hover:bg-red-700"}`} onClick={onContinue}>Continue</button>
+          </div>
         </div>
       )}
     </div>
