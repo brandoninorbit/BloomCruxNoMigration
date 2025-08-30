@@ -6,6 +6,8 @@ import type { DeckBloomLevel, DeckCard, DeckCardType } from "@/types/deck-cards"
 import { BLOOM_LEVELS } from "@/types/card-catalog";
 import { defaultBloomForType, Bloom } from "@/lib/bloom";
 import { useMasteryTracker } from "@/lib/useMasteryTracker";
+import { fetchSrs, upsertSrs } from "@/lib/quest/repo";
+import type { SRSPerformance } from "@/lib/quest/types";
 import QuestStudyCard from "@/components/study/QuestStudyCard";
 import { QuestProgress } from "@/components/QuestProgress";
 
@@ -40,6 +42,8 @@ export default function RemixClient({ deckId }: { deckId: number }) {
   const [idx, setIdx] = useState<number>(0);
   const [done, setDone] = useState<boolean>(false);
   const trackAnswer = useMasteryTracker();
+  const srsRef = useRef<SRSPerformance>({});
+  const perCardRef = useRef<Record<number, { attempts: number; correct: number }>>({});
   const [correctSum, setCorrectSum] = useState(0);
   const perBloomRef = useRef<Record<DeckBloomLevel, { seen: number; correctFloat: number }>>({ Remember: { seen: 0, correctFloat: 0 }, Understand: { seen: 0, correctFloat: 0 }, Apply: { seen: 0, correctFloat: 0 }, Analyze: { seen: 0, correctFloat: 0 }, Evaluate: { seen: 0, correctFloat: 0 }, Create: { seen: 0, correctFloat: 0 } });
   const startedIsoRef = useRef<string>(new Date().toISOString());
@@ -68,6 +72,8 @@ export default function RemixClient({ deckId }: { deckId: number }) {
       const list = await cardsRepo.listByDeck(deckId);
       if (!alive) return;
       setCards(list);
+  // Load current SRS snapshot for later persistence
+  try { srsRef.current = await fetchSrs(deckId).catch(() => ({})); } catch {}
     })();
     return () => { alive = false; };
   }, [deckId]);
@@ -106,6 +112,10 @@ export default function RemixClient({ deckId }: { deckId: number }) {
     try {
       const val = typeof payload.correctness === "number" ? payload.correctness : (typeof payload.correct === "boolean" ? (payload.correct ? 1 : 0) : 0);
       setCorrectSum((s) => s + (Number.isFinite(val) ? val : 0));
+  // accumulate per-card for SRS
+  const incCorrect = typeof payload.correctness === 'number' ? Math.max(0, Math.min(1, payload.correctness)) : (payload.correct ? 1 : 0);
+  const cur = perCardRef.current[payload.cardId] ?? { attempts: 0, correct: 0 };
+  perCardRef.current[payload.cardId] = { attempts: cur.attempts + 1, correct: cur.correct + incCorrect };
       // accumulate per-bloom
       const b = Bloom[payload.bloom] as unknown as DeckBloomLevel | undefined;
       const bloomKey = (typeof b === 'string' ? b : undefined) as DeckBloomLevel | undefined;
@@ -140,6 +150,21 @@ export default function RemixClient({ deckId }: { deckId: number }) {
     // Fire-and-forget finalize to mint XP/tokens; do not block UX
     // Also record a mission attempt to update progress/attempts history
     (async () => {
+      // Persist SRS per-card attempts before mastery updates
+      try {
+        const base = srsRef.current;
+        const changed: SRSPerformance = {};
+        const nowIso = new Date().toISOString();
+        Object.entries(perCardRef.current).forEach(([cardIdStr, inc]) => {
+          const cardId = Number(cardIdStr);
+          const prior = base[cardId] ?? { attempts: 0, correct: 0 };
+          changed[cardId] = { attempts: (prior.attempts ?? 0) + (inc?.attempts ?? 0), correct: (prior.correct ?? 0) + (inc?.correct ?? 0), lastSeenAt: nowIso };
+        });
+        if (Object.keys(changed).length > 0) {
+          await upsertSrs(deckId, changed);
+          srsRef.current = { ...srsRef.current, ...changed };
+        }
+      } catch {}
       // Finalize with per-bloom breakdown and capture deltas
       try {
         const map = perBloomRef.current;

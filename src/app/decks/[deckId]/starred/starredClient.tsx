@@ -6,6 +6,8 @@ import * as cardsRepo from "@/lib/cardsRepo";
 import type { DeckCard, DeckCardType, DeckBloomLevel } from "@/types/deck-cards";
 import { Bloom, defaultBloomForType } from "@/lib/bloom";
 import { useMasteryTracker } from "@/lib/useMasteryTracker";
+import { fetchSrs, upsertSrs } from "@/lib/quest/repo";
+import type { SRSPerformance } from "@/lib/quest/types";
 import QuestStudyCard from "@/components/study/QuestStudyCard";
 import { QuestProgress } from "@/components/QuestProgress";
 
@@ -24,6 +26,8 @@ export default function StarredClient({ deckId }: { deckId: number }) {
   const perBloomRef = useRef<Record<DeckBloomLevel, { seen: number; correctFloat: number }>>({ Remember: { seen: 0, correctFloat: 0 }, Understand: { seen: 0, correctFloat: 0 }, Apply: { seen: 0, correctFloat: 0 }, Analyze: { seen: 0, correctFloat: 0 }, Evaluate: { seen: 0, correctFloat: 0 }, Create: { seen: 0, correctFloat: 0 } });
   const startedIsoRef = useRef<string>(new Date().toISOString());
   const [finishing, setFinishing] = useState(false);
+  const srsRef = useRef<SRSPerformance>({});
+  const perCardRef = useRef<Record<number, { attempts: number; correct: number }>>({});
 
   // Load starred ids then cards
   useEffect(() => {
@@ -40,6 +44,7 @@ export default function StarredClient({ deckId }: { deckId: number }) {
       setOrder(starred.map((c) => c.id));
       setIdx(0);
       setDone(starred.length === 0);
+  try { srsRef.current = await fetchSrs(deckId).catch(() => ({})); } catch {}
     })();
     return () => { alive = false; };
   }, [deckId]);
@@ -60,6 +65,9 @@ export default function StarredClient({ deckId }: { deckId: number }) {
     try {
       const val = typeof payload.correctness === "number" ? payload.correctness : (typeof payload.correct === "boolean" ? (payload.correct ? 1 : 0) : 0);
       setCorrectSum((s) => s + (Number.isFinite(val) ? val : 0));
+  const incCorrect = typeof payload.correctness === 'number' ? Math.max(0, Math.min(1, payload.correctness)) : (payload.correct ? 1 : 0);
+  const cur = perCardRef.current[payload.cardId] ?? { attempts: 0, correct: 0 };
+  perCardRef.current[payload.cardId] = { attempts: cur.attempts + 1, correct: cur.correct + incCorrect };
       // accumulate per-bloom
       const key = Bloom[payload.bloom] as unknown as DeckBloomLevel | undefined;
       if (key) {
@@ -88,6 +96,21 @@ export default function StarredClient({ deckId }: { deckId: number }) {
     q.set("correct", String(Math.round(correct)));
     // Record mission attempt to update history and mastery per-bloom
     (async () => {
+      // Persist per-card SRS attempts first
+      try {
+        const base = srsRef.current;
+        const changed: SRSPerformance = {};
+        const nowIso = new Date().toISOString();
+        Object.entries(perCardRef.current).forEach(([cardIdStr, inc]) => {
+          const cardId = Number(cardIdStr);
+          const prior = base[cardId] ?? { attempts: 0, correct: 0 };
+          changed[cardId] = { attempts: (prior.attempts ?? 0) + (inc?.attempts ?? 0), correct: (prior.correct ?? 0) + (inc?.correct ?? 0), lastSeenAt: nowIso };
+        });
+        if (Object.keys(changed).length > 0) {
+          await upsertSrs(deckId, changed);
+          srsRef.current = { ...srsRef.current, ...changed };
+        }
+      } catch {}
       // Finalize with breakdown and capture deltas
       try {
         const map = perBloomRef.current;

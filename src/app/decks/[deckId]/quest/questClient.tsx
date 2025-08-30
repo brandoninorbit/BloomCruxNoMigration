@@ -6,11 +6,11 @@ import * as cardsRepo from "@/lib/cardsRepo";
 import type { DeckBloomLevel, DeckCard } from "@/types/deck-cards";
 import { BLOOM_LEVELS, BLOOM_COLOR_HEX } from "@/types/card-catalog";
 import { startMission, recordAnswer, computePass, composeMission, computeMissionSet } from "@/lib/quest/engine";
-import type { MissionState, UserBloomProgress } from "@/lib/quest/types";
+import type { MissionState, UserBloomProgress, SRSPerformance } from "@/lib/quest/types";
 import { QuestProgress } from "@/components/QuestProgress";
 // Centered study view: no Agent sidebar, but show a small header and progress
 import QuestStudyCard from "@/components/study/QuestStudyCard";
-import { fetchProgress, saveProgressRepo, fetchMission, upsertMission, fetchSrs, logXpEvent } from "@/lib/quest/repo";
+import { fetchProgress, saveProgressRepo, fetchMission, upsertMission, fetchSrs, logXpEvent, upsertSrs } from "@/lib/quest/repo";
 import { Bloom } from "@/lib/bloom";
 import { useMasteryTracker } from "@/lib/useMasteryTracker";
 // no auth header/sidebar needs
@@ -31,6 +31,8 @@ export default function QuestClient({ deckId }: { deckId: number }) {
   const startedIsoRef = useRef<string | null>(null);
   const pendingRef = useRef<{ cardId: number; correct: boolean | number; payload?: Record<string, unknown>; responseMs?: number; confidence?: 0|1|2|3; guessed?: boolean; cardType?: string } | null>(null);
   const [finishing, setFinishing] = useState(false);
+  // Cache SRS for this deck so we can persist attempts on mission completion
+  const srsRef = useRef<SRSPerformance>({});
   // Centered study page does not show header/sidebar; omit user/deck state.
 
   // Load deck cards
@@ -88,7 +90,8 @@ export default function QuestClient({ deckId }: { deckId: number }) {
       }
       
       // Compose a new mission (either no existing mission or restart requested)
-      const srs = await fetchSrs(deckId).catch(() => ({}));
+  const srs = await fetchSrs(deckId).catch(() => ({}));
+  srsRef.current = srs;
       const mi = isRestart ? Math.max(0, (progress?.[level]?.missionsCompleted ?? 0)) : Math.max(0, (progress?.[level]?.missionsCompleted ?? 0));
       const comp = composeMission({ deckId, level, allCards: cards, missionIndex: mi, srs });
       
@@ -192,6 +195,29 @@ export default function QuestClient({ deckId }: { deckId: number }) {
           await resp.json().catch(() => null);
         }
       } catch {}
+      // Record attempt row for history/progression
+      // First, persist per-card SRS attempts so retention/coverage have data
+      try {
+        const changed: SRSPerformance = {};
+        const nowIso = new Date().toISOString();
+        next.answered.forEach((ans) => {
+          const base = srsRef.current[ans.cardId] ?? { attempts: 0, correct: 0 };
+          const incAttempts = 1;
+          const incCorrect = typeof ans.correct === "number"
+            ? Math.max(0, Math.min(1, ans.correct))
+            : (ans.correct ? 1 : 0);
+          changed[ans.cardId] = {
+            attempts: (base.attempts ?? 0) + incAttempts,
+            correct: (base.correct ?? 0) + incCorrect,
+            lastSeenAt: nowIso,
+          };
+        });
+        if (Object.keys(changed).length > 0) {
+          await upsertSrs(deckId, changed);
+          srsRef.current = { ...srsRef.current, ...changed };
+        }
+      } catch {}
+
       // Record attempt row for history/progression
       try {
         // Compute per-bloom breakdown
