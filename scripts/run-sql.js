@@ -3,11 +3,11 @@
  Usage:
    node scripts/run-sql.js path/to/file.sql
 */
-const fs = require('fs');
+import fs from 'fs';
 // For Supabase pooler on some Windows/dev envs with self-signed certs
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = process.env.NODE_TLS_REJECT_UNAUTHORIZED || '0';
-const path = require('path');
-const { Client } = require('pg');
+import path from 'path';
+import { Client } from 'pg';
 
 function loadEnvLocal(root) {
   const envPath = path.join(root, '.env.local');

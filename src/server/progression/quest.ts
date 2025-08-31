@@ -19,6 +19,24 @@ export async function recordMissionAttempt(params: {
   mode?: 'quest' | 'remix' | 'drill' | 'study' | 'starred';
   breakdown?: Record<string, { scorePct: number; cardsSeen: number; cardsCorrect: number }>; // per-bloom summary
 }): Promise<{ ok: true; attemptId?: number } | { ok: false; error: string }> {
+  // Sanitize inputs and recompute aggregates if breakdown provided
+  const MAX_ATTEMPTS_PER_MISSION = 500;
+  let seenAgg = Math.max(0, Math.floor(Number(params.cardsSeen) || 0));
+  let corrAgg = Math.max(0, Math.floor(Number(params.cardsCorrect) || 0));
+  if (params.breakdown && typeof params.breakdown === 'object') {
+    let s = 0, c = 0;
+    for (const v of Object.values(params.breakdown)) {
+      const t = Math.max(0, Math.floor(Number(v?.cardsSeen ?? 0)));
+      const cc = Math.max(0, Math.floor(Number(v?.cardsCorrect ?? 0)));
+      s += t;
+      c += Math.min(cc, t);
+    }
+    seenAgg = s;
+    corrAgg = c;
+  }
+  const cardsSeenSafe = Math.min(MAX_ATTEMPTS_PER_MISSION, seenAgg);
+  const cardsCorrectSafe = Math.min(cardsSeenSafe, corrAgg);
+  const scorePctSafe = Math.max(0, Math.min(100, Number(params.scorePct) || 0));
   // Some databases may not allow certain custom modes (e.g., 'starred') via a CHECK constraint.
   // Clamp to an allowed set to avoid insert failures when schemas lag behind.
   const modeSafe = ((): 'quest' | 'remix' | 'drill' | 'study' | null => {
@@ -31,9 +49,9 @@ export async function recordMissionAttempt(params: {
     user_id: params.userId,
     deck_id: params.deckId,
     bloom_level: params.bloomLevel,
-    score_pct: params.scorePct,
-    cards_seen: params.cardsSeen,
-    cards_correct: params.cardsCorrect,
+    score_pct: scorePctSafe,
+    cards_seen: cardsSeenSafe,
+    cards_correct: cardsCorrectSafe,
     started_at: params.startedAt ?? null,
     ended_at: params.endedAt ?? new Date().toISOString(),
     mode: modeSafe,

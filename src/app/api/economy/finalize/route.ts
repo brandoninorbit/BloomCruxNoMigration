@@ -19,6 +19,7 @@ export async function POST(req: NextRequest) {
   let total = Number(body?.total ?? NaN);
   let percent = Number(body?.percent ?? (Number.isFinite(correct) && Number.isFinite(total) && total > 0 ? (correct / total) * 100 : NaN));
   const breakdownRaw = body?.breakdown as Record<string, { correct?: unknown; total?: unknown }> | undefined;
+  const MAX_ATTEMPTS_PER_MISSION = 500;
   // Normalize breakdown to BloomLevel keys if provided
   let breakdown: Partial<Record<BloomLevel, { correct: number; total: number }>> | undefined = undefined;
   if (breakdownRaw && typeof breakdownRaw === 'object') {
@@ -26,10 +27,12 @@ export async function POST(req: NextRequest) {
     for (const k of Object.keys(breakdownRaw)) {
       const key = String(k) as BloomLevel;
       const v = breakdownRaw[k] as { correct?: unknown; total?: unknown };
-      const c = Number(v?.correct ?? NaN);
-      const t = Number(v?.total ?? NaN);
-      if (Number.isFinite(c) || Number.isFinite(t)) {
-        map[key] = { correct: Math.max(0, Math.floor(Number.isFinite(c) ? c : 0)), total: Math.max(0, Math.floor(Number.isFinite(t) ? t : 0)) };
+      const c0 = Number(v?.correct ?? NaN);
+      const t0 = Number(v?.total ?? NaN);
+      if (Number.isFinite(c0) || Number.isFinite(t0)) {
+        const t = Math.max(0, Math.min(MAX_ATTEMPTS_PER_MISSION, Math.floor(Number.isFinite(t0) ? t0 : 0)));
+        const c = Math.max(0, Math.min(t, Math.floor(Number.isFinite(c0) ? c0 : 0)));
+        if (t > 0) map[key] = { correct: c, total: t };
       }
     }
     breakdown = map;
@@ -46,9 +49,22 @@ export async function POST(req: NextRequest) {
       aggTotal += t;
       aggCorrect += Math.min(c, t);
     }
+    // Cap aggregates to mission max
+    if (aggTotal > MAX_ATTEMPTS_PER_MISSION) {
+      const scale = MAX_ATTEMPTS_PER_MISSION / Math.max(1, aggTotal);
+      aggCorrect = Math.floor(Math.min(aggCorrect * scale, MAX_ATTEMPTS_PER_MISSION));
+      aggTotal = MAX_ATTEMPTS_PER_MISSION;
+    } else {
+      aggCorrect = Math.min(aggCorrect, MAX_ATTEMPTS_PER_MISSION);
+    }
     total = aggTotal;
-    correct = aggCorrect;
+    correct = Math.min(aggCorrect, total);
     percent = aggTotal > 0 ? (aggCorrect / aggTotal) * 100 : 0;
+  }
+  // If no breakdown, cap as well
+  if (!breakdown || Object.keys(breakdown).length === 0) {
+    total = Math.max(0, Math.min(MAX_ATTEMPTS_PER_MISSION, Math.floor(Number(total) || 0)));
+    correct = Math.max(0, Math.min(total, Math.floor(Number(correct) || 0)));
   }
   if (!Number.isFinite(correct) || correct < 0) return NextResponse.json({ error: "invalid correct" }, { status: 400 });
   if (!Number.isFinite(total) || total < 0) return NextResponse.json({ error: "invalid total" }, { status: 400 });

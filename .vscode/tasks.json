@@ -396,6 +396,16 @@
 			"label": "Build Next.js project",
 			"type": "shell",
 			"command": "npm run build"
+		},
+		{
+			"label": "Run repair glitch SQL",
+			"type": "shell",
+			"command": "node scripts\\run-sql.js sql\\repair_glitched_counts.sql"
+		},
+		{
+			"label": "Run repair glitch SQL",
+			"type": "shell",
+			"command": "node scripts\\run-sql.js sql\\repair_glitched_counts.sql"
 		}
 	]
 }
