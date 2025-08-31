@@ -110,6 +110,7 @@ type DeckProgress = {
   deckId: string;
   deckName: string;
   totalCards: number;
+  reviewedCount?: number;
   lastStudied: Date;
   isMastered: boolean;
   level: number;
@@ -299,13 +300,32 @@ export default function DashboardClient() {
           deck.bloomMastery = m;
         });
 
-        // Compute deck-level isMastered by averaging available blooms
+    // Fetch per-deck summary (reviewed cards + mastered flag) from server API for parity
+        try {
+          await Promise.all(Object.values(byDeck).map(async (deck) => {
+            const res = await fetch(`/api/decks/${deck.deckId}/summary`, { cache: "no-store" });
+            if (res.ok) {
+              const j = await res.json();
+              byDeck[deck.deckId]!.reviewedCount = Number(j.reviewedCards ?? 0);
+      byDeck[deck.deckId]!.isMastered = Boolean(j.mastered ?? false);
+            }
+          }));
+        } catch {
+          // ignore
+        }
+
+        // If any deck didn't get a server summary (fallback), compute mastered from mastery rows excluding Create
+        const bloomsToCheck = BLOOM_LEVELS.filter((b) => b !== "Create");
         Object.values(byDeck).forEach((deck) => {
-          const vals = Object.values(deck.bloomMastery).filter(Boolean);
-          const avg = vals.length
-            ? (vals.reduce((acc, v) => acc + (v!.correct / Math.max(1, v!.total)), 0) / vals.length) * 100
-            : 0;
-          deck.isMastered = avg >= 80;
+          if (typeof deck.isMastered === 'boolean') return; // already set via API
+          const stored = masteryRowsForDecks.filter((row) => String(row.deck_id) === deck.deckId);
+          let allMastered = true;
+          for (const b of bloomsToCheck) {
+            const r = stored.find((s) => String(s.bloom_level) === String(b));
+            const pct = Number(r?.mastery_pct ?? NaN);
+            if (!Number.isFinite(pct) || pct < 80) { allMastered = false; break; }
+          }
+          deck.isMastered = allMastered;
         });
 
         setRealDecks(Object.values(byDeck));
@@ -360,9 +380,7 @@ export default function DashboardClient() {
     let masteredDecks = 0;
     for (const deck of progressToDisplay) {
       if (deck.isMastered) masteredDecks++;
-      Object.values(deck.bloomMastery).forEach((lvl) => {
-        if (lvl) totalReviewed += lvl.total;
-      });
+  totalReviewed += Math.max(0, Number(deck.reviewedCount ?? 0));
     }
     return { reviewed: totalReviewed, masteredDecks };
   }, [progressToDisplay]);
