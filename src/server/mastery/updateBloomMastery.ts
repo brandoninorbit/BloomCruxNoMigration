@@ -2,8 +2,8 @@
 import type { DeckBloomLevel } from "@/types/deck-cards";
 import { supabaseAdmin } from "@/lib/supabase/server";
 
-const HALF_LIFE_DAYS = 7;
-const SESSION_WINDOW_MINUTES = 20;
+export const HALF_LIFE_DAYS = 7;
+export const SESSION_WINDOW_MINUTES = 20;
 const MIN_COVERAGE_THRESHOLD = 0.05;
 const MAX_COVERAGE_PER_ATTEMPT = 0.5;
 
@@ -129,6 +129,25 @@ async function calculateAttemptWeightedAccuracy(
   }
 
   return totalWeight > 0 ? weightedSum / totalWeight : 0;
+}
+
+/**
+ * Public wrapper to compute Attempt-Weighted Accuracy (0..1) for a user/deck/bloom.
+ * This uses the same internal logic as mastery updates to ensure 1:1 parity with UI/API.
+ */
+export async function getAttemptWeightedAccuracy(
+  userId: string,
+  deckId: number,
+  bloomLevel: DeckBloomLevel
+): Promise<number> {
+  const sb = supabaseAdmin();
+  const cardsRes = await sb
+    .from("cards")
+    .select("id")
+    .eq("deck_id", deckId)
+    .eq("bloom_level", bloomLevel);
+  const cardIds = (cardsRes.data ?? []).map((r) => Number(r.id));
+  return calculateAttemptWeightedAccuracy(userId, deckId, bloomLevel, cardIds);
 }
 
 export async function updateBloomMastery(params: {
