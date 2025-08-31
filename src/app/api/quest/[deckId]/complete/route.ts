@@ -16,12 +16,30 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dec
   const body = await req.json().catch(() => ({}));
   const bloom_level = body?.bloom_level as DeckBloomLevel | undefined;
   const score_pct = Number(body?.score_pct ?? NaN);
-  const cards_seen = Number(body?.cards_seen ?? 0);
-  const cards_correct = Number(body?.cards_correct ?? 0);
+  let cards_seen = Number(body?.cards_seen ?? 0);
+  let cards_correct = Number(body?.cards_correct ?? 0);
   const started_at = typeof body?.started_at === "string" ? body.started_at : null;
   const ended_at = typeof body?.ended_at === "string" ? body.ended_at : null;
   const mode = typeof body?.mode === 'string' ? (body.mode as 'quest'|'remix'|'drill'|'study'|'starred') : undefined;
   const breakdown = typeof body?.breakdown === 'object' && body.breakdown ? (body.breakdown as Record<string, { scorePct: number; cardsSeen: number; cardsCorrect: number }>) : undefined;
+  // If breakdown is provided, recompute aggregate counts for consistency and to avoid inflated values
+  if (breakdown && Object.keys(breakdown).length > 0) {
+    let aggSeen = 0;
+    let aggCorrect = 0;
+    for (const key of Object.keys(breakdown)) {
+      const part = breakdown[key]!;
+      const seen = Math.max(0, Math.floor(Number(part?.cardsSeen ?? 0)));
+      const corr = Math.max(0, Math.floor(Number(part?.cardsCorrect ?? 0)));
+      aggSeen += seen;
+      aggCorrect += Math.min(corr, seen);
+    }
+    cards_seen = aggSeen;
+    cards_correct = aggCorrect;
+  }
+  // Clamp to reasonable bounds
+  if (!Number.isFinite(cards_seen) || cards_seen < 0) cards_seen = 0;
+  if (!Number.isFinite(cards_correct) || cards_correct < 0) cards_correct = 0;
+  if (cards_correct > cards_seen) cards_correct = cards_seen;
   if (!bloom_level || Number.isNaN(score_pct)) return NextResponse.json({ error: "invalid payload" }, { status: 400 });
 
   // Insert attempt

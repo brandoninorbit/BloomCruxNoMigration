@@ -15,9 +15,9 @@ export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => ({}))) as FinalizeBody;
   const deckId = Number(body?.deckId ?? NaN);
   const mode = String(body?.mode ?? "remix");
-  const correct = Number(body?.correct ?? NaN);
-  const total = Number(body?.total ?? NaN);
-  const percent = Number(body?.percent ?? (Number.isFinite(correct) && Number.isFinite(total) && total > 0 ? (correct / total) * 100 : NaN));
+  let correct = Number(body?.correct ?? NaN);
+  let total = Number(body?.total ?? NaN);
+  let percent = Number(body?.percent ?? (Number.isFinite(correct) && Number.isFinite(total) && total > 0 ? (correct / total) * 100 : NaN));
   const breakdownRaw = body?.breakdown as Record<string, { correct?: unknown; total?: unknown }> | undefined;
   // Normalize breakdown to BloomLevel keys if provided
   let breakdown: Partial<Record<BloomLevel, { correct: number; total: number }>> | undefined = undefined;
@@ -36,6 +36,20 @@ export async function POST(req: NextRequest) {
   }
 
   if (!Number.isFinite(deckId) || deckId <= 0) return NextResponse.json({ error: "invalid deckId" }, { status: 400 });
+  // If a breakdown is provided, recompute aggregate correct/total to ensure consistency
+  if (breakdown && Object.keys(breakdown).length > 0) {
+    let aggTotal = 0;
+    let aggCorrect = 0;
+    for (const v of Object.values(breakdown)) {
+      const t = Math.max(0, Math.floor(Number(v?.total ?? 0)));
+      const c = Math.max(0, Math.floor(Number(v?.correct ?? 0)));
+      aggTotal += t;
+      aggCorrect += Math.min(c, t);
+    }
+    total = aggTotal;
+    correct = aggCorrect;
+    percent = aggTotal > 0 ? (aggCorrect / aggTotal) * 100 : 0;
+  }
   if (!Number.isFinite(correct) || correct < 0) return NextResponse.json({ error: "invalid correct" }, { status: 400 });
   if (!Number.isFinite(total) || total < 0) return NextResponse.json({ error: "invalid total" }, { status: 400 });
   const pct = Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : 0;

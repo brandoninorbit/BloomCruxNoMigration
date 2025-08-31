@@ -2,6 +2,7 @@
   "name": "bloomcrux-clean",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
@@ -10,7 +11,8 @@
     "test": "vitest run",
     "migrate:run-sql": "node scripts/run-sql.js",
     "migrate:deck_imports": "node scripts/run-sql.js supabase/migrations/20250819_deck_imports.sql",
-    "check:deck_imports": "node scripts/check-deck-imports.js"
+    "check:deck_imports": "node scripts/check-deck-imports.js",
+    "report:inconsistent": "node scripts/report-inconsistent.js"
   },
   "dependencies": {
     "@auth/supabase-adapter": "^1.10.0",

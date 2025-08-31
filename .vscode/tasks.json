@@ -362,6 +362,40 @@
 			"type": "shell",
 			"command": "npm run -s build",
 			"group": "build"
+		},
+		{
+			"label": "Build Next.js project",
+			"type": "shell",
+			"command": "npm run -s build",
+			"group": "build"
+		},
+		{
+			"label": "Run repair SQL",
+			"type": "shell",
+			"command": "node scripts/run-sql.js sql/repair_mission_attempts_breakdown.sql"
+		},
+		{
+			"label": "Build Next.js project",
+			"type": "shell",
+			"command": "npm run -s build",
+			"group": "build"
+		},
+		{
+			"label": "Build Next.js project",
+			"type": "shell",
+			"command": "npm run -s build",
+			"group": "build"
+		},
+		{
+			"label": "Build Next.js project",
+			"type": "shell",
+			"command": "npm run -s build",
+			"group": "build"
+		},
+		{
+			"label": "Build Next.js project",
+			"type": "shell",
+			"command": "npm run build"
 		}
 	]
 }

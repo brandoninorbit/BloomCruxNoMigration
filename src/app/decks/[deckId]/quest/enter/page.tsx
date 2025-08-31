@@ -1,4 +1,5 @@
-import { notFound } from "next/navigation";
+"use client";
+import { notFound, useParams } from "next/navigation";
 import Image from "next/image";
 import type { DeckBloomLevel } from "@/types/deck-cards";
 import { BLOOM_LEVELS, BLOOM_COLOR_HEX } from "@/types/card-catalog";
@@ -6,102 +7,109 @@ import { DEFAULT_QUEST_SETTINGS } from "@/lib/quest/types";
 import { fetchProgress } from "@/lib/quest/repo";
 import * as cardsRepo from "@/lib/cardsRepo";
 import { Lock as LockIcon } from "lucide-react";
-import { getSupabaseSession } from "@/app/supabase/session";
-import { supabaseAdmin } from "@/lib/supabase/server";
+import { useState, useEffect } from "react";
 
 export const dynamic = "force-dynamic";
 
-// Server-side page that renders the mission selection UI (formerly modal) as a full page.
-export default async function QuestEnterPage({ params }: { params: Promise<{ deckId: string }> }) {
-  const { deckId } = await params;
-  const id = Number(deckId);
+// Client-side page that renders the mission selection UI with modal for locked quests.
+export default function QuestEnterPage() {
+  const route = useParams() as { deckId?: string } | null;
+  const id = route?.deckId ? Number(route.deckId) : NaN;
   if (!Number.isFinite(id)) notFound();
 
   type BP = { totalCards?: number; missionsCompleted?: number; missionsPassed?: number; mastered?: boolean; accuracySum?: number; accuracyCount?: number; cleared?: boolean; weightedAvg?: number };
-  let per: Partial<Record<DeckBloomLevel, BP & { updatedSinceLastRun?: number }>> = {};
-  let levels: Array<{
+  type PerMap = Partial<Record<DeckBloomLevel, BP & { updatedSinceLastRun?: number }>>;
+  const [levels, setLevels] = useState<Array<{
     level: DeckBloomLevel;
     totalCards: number;
-  missionsCompleted: number;
-  missionsPassed: number;
+    missionsCompleted: number;
+    missionsPassed: number;
     totalMissions: number;
     mastered: boolean;
     unlocked: boolean;
     updatedSinceLastRun: number;
-  }> = [];
-  // Collect unlock reasoning for a lightweight debug panel
-  const unlockWhy: Array<{ level: DeckBloomLevel; prevMastered: boolean; prevCleared: boolean; prevAvg: number; prevHasMission: boolean }> = [];
+  }>>([]);
+  const [unlockWhy, setUnlockWhy] = useState<Array<{ level: DeckBloomLevel; prevMastered: boolean; prevCleared: boolean; prevAvg: number; prevHasMission: boolean }>>([]);
+  const [loading, setLoading] = useState(true);
+  const [modalLevel, setModalLevel] = useState<DeckBloomLevel | null>(null);
 
-  try {
-    // Prefer direct DB read with server session to avoid missing cookies when calling our API from a server component
-    const session = await getSupabaseSession();
-    if (session?.user?.id) {
-      const sb = supabaseAdmin();
-      const { data } = await sb
-        .from("user_deck_quest_progress")
-        .select("per_bloom")
-        .eq("user_id", session.user.id)
-        .eq("deck_id", id)
-        .maybeSingle();
-      if (data?.per_bloom) per = (data.per_bloom as unknown) as typeof per;
-    } else {
-      // Fallback to API if no session could be resolved (shouldn’t happen in normal usage)
-      const { progress } = await fetchProgress(id);
-      per = (progress ?? {}) as typeof per;
-    }
-  } catch {}
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        // Fetch progress
+  const { progress } = await fetchProgress(id);
+  const fetchedPer = (progress ?? {}) as PerMap;
 
-  // Safety: if totals are missing (e.g., after reset or blank row), compute from cards
-  let cardTotals: Partial<Record<DeckBloomLevel, number>> | null = null;
-  try {
-    const all = await cardsRepo.listByDeck(id);
-    const map: Partial<Record<DeckBloomLevel, number>> = {};
-    all.forEach((c) => {
-      const lvl = (c.bloomLevel ?? "Remember") as DeckBloomLevel;
-      map[lvl] = (map[lvl] ?? 0) + 1;
-    });
-    cardTotals = map;
-  } catch {}
+        // Fetch card totals
+        const all = await cardsRepo.listByDeck(id);
+        const map: Partial<Record<DeckBloomLevel, number>> = {};
+        all.forEach((c) => {
+          const lvl = (c.bloomLevel ?? "Remember") as DeckBloomLevel;
+          map[lvl] = (map[lvl] ?? 0) + 1;
+        });
 
-  // Build levels regardless of fetch outcome so the page always renders rows
-  const cap = DEFAULT_QUEST_SETTINGS.missionCap;
-  levels = (BLOOM_LEVELS as DeckBloomLevel[]).map((lvl) => {
-    const p: BP = (per && per[lvl]) || {};
-  const totalCards = Number(p.totalCards ?? 0) || Number(cardTotals?.[lvl] ?? 0);
-    const missionsCompleted = Number(p.missionsCompleted ?? 0);
-    const missionsPassed = Number(p.missionsPassed ?? 0);
-    const totalMissions = Math.ceil(totalCards / cap) || 0;
-    const mastered = !!p.mastered;
-  const updatedSinceLastRun = Number((per?.[lvl] as (BP & { updatedSinceLastRun?: number }) | undefined)?.updatedSinceLastRun ?? 0);
-    return { level: lvl, totalCards, missionsCompleted, missionsPassed, totalMissions, mastered, unlocked: false, updatedSinceLastRun };
-  });
-  // Unlocking rules (single-pass model):
-  // - Remember is always unlocked
-  // - Level N is unlocked if previous level is mastered or cleared (single pass ≥ threshold recorded)
-  const passThreshold = DEFAULT_QUEST_SETTINGS.passThreshold; // fallback only
-  for (let i = 0; i < levels.length; i++) {
-    if (i === 0) {
-      levels[i]!.unlocked = true;
-      unlockWhy.push({ level: levels[i]!.level, prevMastered: false, prevCleared: true, prevAvg: 100, prevHasMission: true });
-      continue;
-    }
-    const prevLvl = levels[i - 1]!.level;
-    const prev = per?.[prevLvl] as BP | undefined;
-    const prevMastered = !!prev?.mastered;
-    const prevCleared = !!prev?.cleared;
-    // backward-compatible fallback if cleared not present
-    let fallbackUnlock = false;
-    if (!prevCleared) {
-      const prevAvg = prev && (prev.accuracyCount ?? 0) > 0 ? Math.round(((prev.accuracySum ?? 0) / Math.max(1, prev.accuracyCount ?? 0)) * 100) : 0;
-      const prevHasMission = (prev?.missionsCompleted ?? 0) > 0;
-      fallbackUnlock = prevHasMission && prevAvg >= passThreshold;
-      unlockWhy.push({ level: levels[i]!.level, prevMastered, prevCleared, prevAvg, prevHasMission });
-    } else {
-      const prevAvg = prev && (prev.accuracyCount ?? 0) > 0 ? Math.round(((prev.accuracySum ?? 0) / Math.max(1, prev.accuracyCount ?? 0)) * 100) : 0;
-      const prevHasMission = (prev?.missionsCompleted ?? 0) > 0;
-      unlockWhy.push({ level: levels[i]!.level, prevMastered, prevCleared, prevAvg, prevHasMission });
-    }
-    levels[i]!.unlocked = prevMastered || prevCleared || fallbackUnlock;
+        // Build levels
+        const cap = DEFAULT_QUEST_SETTINGS.missionCap;
+        const builtLevels = (BLOOM_LEVELS as DeckBloomLevel[]).map((lvl) => {
+          const p: BP = (fetchedPer && fetchedPer[lvl]) || {};
+          const totalCards = Number(p.totalCards ?? 0) || Number(map[lvl] ?? 0);
+          const missionsCompleted = Number(p.missionsCompleted ?? 0);
+          const missionsPassed = Number(p.missionsPassed ?? 0);
+          const totalMissions = Math.ceil(totalCards / cap) || 0;
+          const mastered = !!p.mastered;
+          const updatedSinceLastRun = Number((fetchedPer?.[lvl] as (BP & { updatedSinceLastRun?: number }) | undefined)?.updatedSinceLastRun ?? 0);
+          return { level: lvl, totalCards, missionsCompleted, missionsPassed, totalMissions, mastered, unlocked: false, updatedSinceLastRun };
+        });
+
+        // Compute unlocking
+        const passThreshold = DEFAULT_QUEST_SETTINGS.passThreshold;
+        const why: Array<{ level: DeckBloomLevel; prevMastered: boolean; prevCleared: boolean; prevAvg: number; prevHasMission: boolean }> = [];
+        for (let i = 0; i < builtLevels.length; i++) {
+          if (i === 0) {
+            builtLevels[i]!.unlocked = true;
+            why.push({ level: builtLevels[i]!.level, prevMastered: false, prevCleared: true, prevAvg: 100, prevHasMission: true });
+            continue;
+          }
+          const prevLvl = builtLevels[i - 1]!.level;
+          const prev = fetchedPer?.[prevLvl] as BP | undefined;
+          const prevMastered = !!prev?.mastered;
+          const prevCleared = !!prev?.cleared;
+          let fallbackUnlock = false;
+          if (!prevCleared) {
+            const prevAvg = prev && (prev.accuracyCount ?? 0) > 0 ? Math.round(((prev.accuracySum ?? 0) / Math.max(1, prev.accuracyCount ?? 0)) * 100) : 0;
+            const prevHasMission = (prev?.missionsCompleted ?? 0) > 0;
+            fallbackUnlock = prevHasMission && prevAvg >= passThreshold;
+            why.push({ level: builtLevels[i]!.level, prevMastered, prevCleared, prevAvg, prevHasMission });
+          } else {
+            const prevAvg = prev && (prev.accuracyCount ?? 0) > 0 ? Math.round(((prev.accuracySum ?? 0) / Math.max(1, prev.accuracyCount ?? 0)) * 100) : 0;
+            const prevHasMission = (prev?.missionsCompleted ?? 0) > 0;
+            why.push({ level: builtLevels[i]!.level, prevMastered, prevCleared, prevAvg, prevHasMission });
+          }
+          builtLevels[i]!.unlocked = prevMastered || prevCleared || fallbackUnlock;
+        }
+
+        setLevels(builtLevels);
+        setUnlockWhy(why);
+      } catch (error) {
+        console.error("Error loading quest enter data:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+  }, [id]);
+
+  if (loading) {
+    return (
+      <main className="container mx-auto px-4 py-8">
+        <div className="mb-6 flex items-center justify-between">
+          <h1 className="text-2xl font-bold">Quest Missions</h1>
+          <a href={`/decks/${id}/study`} className="text-sm text-blue-700 hover:underline">Back to Study</a>
+        </div>
+        <div className="text-center py-8">Loading...</div>
+      </main>
+    );
   }
 
   // Icon mapping for each Bloom level
@@ -114,6 +122,26 @@ export default async function QuestEnterPage({ params }: { params: Promise<{ dec
     Create: "/icons/PalleteIcon_Create.svg",
   } as const;
 
+  const handleLockedClick = (level: DeckBloomLevel) => {
+    setModalLevel(level);
+  };
+
+  const closeModal = () => {
+    setModalLevel(null);
+  };
+
+  const getUnlockDetails = (level: DeckBloomLevel) => {
+    const why = unlockWhy.find(w => w.level === level);
+    if (!why) return null;
+    return {
+      prevLevel: BLOOM_LEVELS[BLOOM_LEVELS.indexOf(level) - 1] as DeckBloomLevel,
+      prevMastered: why.prevMastered,
+      prevCleared: why.prevCleared,
+      prevAvg: why.prevAvg,
+      prevHasMission: why.prevHasMission,
+    };
+  };
+
   return (
     <main className="container mx-auto px-4 py-8">
       <div className="mb-6 flex items-center justify-between">
@@ -121,58 +149,53 @@ export default async function QuestEnterPage({ params }: { params: Promise<{ dec
         <a href={`/decks/${id}/study`} className="text-sm text-blue-700 hover:underline">Back to Study</a>
       </div>
 
-  {/* Debug panel removed per request */}
-
       <div className="space-y-3">
-  {levels.map((li, idx) => {
+        {levels.map((li, idx) => {
           const color = BLOOM_COLOR_HEX[li.level] || "#e2e8f0";
           const isStarted = li.missionsCompleted > 0 && li.missionsCompleted < li.totalMissions;
-          // Level considered completed for unlocking the next bloom when a mission meets pass threshold; we still show missionsCompleted for UI counts
           const isCompleted = li.totalMissions > 0 && li.missionsPassed >= li.totalMissions;
           const multi = li.totalMissions > 1;
           const nextUnlocked = levels[idx + 1]?.unlocked ?? false;
           const hasMissions = li.totalMissions > 0;
           const comingSoon = li.level === ("Create" as DeckBloomLevel);
-          // Nudge when: user has done ≥1 mission on this level, hasn't mastered it yet,
-          // and the next level is still locked (i.e., average < pass threshold and not cleared)
           const shouldNudge = li.unlocked && !nextUnlocked && li.missionsCompleted > 0 && !li.mastered;
           return (
             <div key={li.level}>
               <div
-                className="w-full flex items-center justify-between rounded-[28px] shadow-lg p-4"
+                className={`w-full flex items-center justify-between rounded-[28px] shadow-lg p-4 ${!li.unlocked ? 'cursor-pointer hover:bg-gray-100' : ''}`}
                 style={{
-                  // Light tint of the bloom color for background, readable text foreground
-                  backgroundColor: li.unlocked ? `${color}1A` : "#f8fafc", // ~10% opacity
+                  backgroundColor: li.unlocked ? `${color}1A` : "#f8fafc",
                   opacity: li.unlocked ? 1 : 0.9,
                 }}
                 aria-disabled={!li.unlocked}
+                onClick={!li.unlocked ? () => handleLockedClick(li.level) : undefined}
               >
                 <div className="flex items-center gap-3">
                   <Image src={ICONS[li.level]} alt={`${li.level} icon`} width={28} height={28} className="h-7 w-7" />
                   <div className="text-left">
                     <div className="font-extrabold" style={{ color }}>{li.level}</div>
                     <div className="text-sm text-slate-600">
-                    {comingSoon
-                      ? "Coming soon"
-                      : li.totalMissions === 0
-                      ? `0 missions`
-                      : isCompleted || li.mastered
-                        ? `Completed • ${li.totalMissions} missions`
-                        : isStarted
-                          ? `${Math.min(li.missionsCompleted, li.totalMissions)} / ${li.totalMissions} completed`
-                          : `${li.totalMissions} missions`}
-                    {li.updatedSinceLastRun > 0 && (
-                      <span className="ml-2 inline-flex items-center rounded px-1.5 py-0.5 text-xs" style={{ background: "#f1f5f9", color: "#0f172a" }}>
-                        Updated: +{li.updatedSinceLastRun} new
-                      </span>
-                    )}
+                      {comingSoon
+                        ? "Coming soon"
+                        : li.totalMissions === 0
+                        ? `0 missions`
+                        : isCompleted || li.mastered
+                          ? `Completed • ${li.totalMissions} missions`
+                          : isStarted
+                            ? `${Math.min(li.missionsCompleted, li.totalMissions)} / ${li.totalMissions} completed`
+                            : `${li.totalMissions} missions`}
+                      {li.updatedSinceLastRun > 0 && (
+                        <span className="ml-2 inline-flex items-center rounded px-1.5 py-0.5 text-xs" style={{ background: "#f1f5f9", color: "#0f172a" }}>
+                          Updated: +{li.updatedSinceLastRun} new
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-          {li.unlocked ? (
+                  {li.unlocked ? (
                     <>
-            {comingSoon ? (
+                      {comingSoon ? (
                         <span className="text-sm font-medium px-3 py-1.5 rounded-[20px] bg-slate-200 text-slate-600 cursor-not-allowed" aria-disabled>Coming Soon</span>
                       ) : !hasMissions ? (
                         <span className="text-sm font-medium px-3 py-1.5 rounded-[20px] bg-slate-200 text-slate-600 cursor-not-allowed" aria-disabled>Start</span>
@@ -181,7 +204,7 @@ export default async function QuestEnterPage({ params }: { params: Promise<{ dec
                           href={`/decks/${id}/quest?level=${encodeURIComponent(li.level)}&restart=1`}
                           className="text-sm font-medium px-3 py-1.5 rounded-[20px] bg-slate-200 text-slate-700"
                         >
-              {shouldNudge ? "Try again to increase accuracy" : "Restart"}
+                          {shouldNudge ? "Try again to increase accuracy" : "Restart"}
                         </a>
                       ) : isStarted ? (
                         <>
@@ -203,7 +226,7 @@ export default async function QuestEnterPage({ params }: { params: Promise<{ dec
                           href={`/decks/${id}/quest?level=${encodeURIComponent(li.level)}`}
                           className="text-sm font-medium px-3 py-1.5 rounded-[20px] bg-blue-600 text-white hover:bg-blue-700"
                         >
-              {shouldNudge ? "Try again to increase accuracy" : `Start ${li.level}`}
+                          {shouldNudge ? "Try again to increase accuracy" : `Start ${li.level}`}
                         </a>
                       )}
                     </>
@@ -216,7 +239,7 @@ export default async function QuestEnterPage({ params }: { params: Promise<{ dec
                 </div>
               </div>
 
-        {multi && (
+              {multi && (
                 <details className="mt-2 ml-3 border-l pl-4">
                   <summary className="cursor-pointer list-none text-sm text-slate-600 hover:text-slate-800 select-none">
                     Show missions
@@ -224,9 +247,9 @@ export default async function QuestEnterPage({ params }: { params: Promise<{ dec
                   <div className="mt-2 space-y-2">
                     {Array.from({ length: li.totalMissions }).map((_, idx) => {
                       const ord = idx + 1;
-                      const isDone = ord <= li.missionsPassed; // passed missions
-                      const isNext = ord === li.missionsPassed + 1; // next mission locked until previous is passed
-      const actionable = li.unlocked && (isNext || isDone) && hasMissions && !comingSoon;
+                      const isDone = ord <= li.missionsPassed;
+                      const isNext = ord === li.missionsPassed + 1;
+                      const actionable = li.unlocked && (isNext || isDone) && hasMissions && !comingSoon;
                       return (
                         <div key={ord} className="flex items-center justify-between">
                           <div className="text-sm">
@@ -239,7 +262,7 @@ export default async function QuestEnterPage({ params }: { params: Promise<{ dec
                             aria-disabled={!actionable}
                             onClick={(e) => { if (!actionable) e.preventDefault(); }}
                           >
-            {isDone ? `Restart` : isNext ? `Start` : "Locked"}
+                            {isDone ? `Restart` : isNext ? `Start` : "Locked"}
                           </a>
                         </div>
                       );
@@ -251,6 +274,51 @@ export default async function QuestEnterPage({ params }: { params: Promise<{ dec
           );
         })}
       </div>
+
+      {/* Modal for locked quest details */}
+      {modalLevel && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h2 className="text-xl font-bold mb-4">Why is {modalLevel} locked?</h2>
+            {(() => {
+              const details = getUnlockDetails(modalLevel);
+              if (!details) return <p>Unable to determine unlock criteria.</p>;
+              return (
+                <div className="space-y-2">
+                  <p>To unlock <strong>{modalLevel}</strong>, you need to complete the previous level: <strong>{details.prevLevel}</strong>.</p>
+                  <p>Current status of {details.prevLevel}:</p>
+                  <ul className="list-disc list-inside space-y-1">
+                    {details.prevMastered && <li>✅ Mastered</li>}
+                    {details.prevCleared && <li>✅ Cleared with passing accuracy</li>}
+                    {!details.prevMastered && !details.prevCleared && (
+                      <>
+                        <li>❌ Not mastered</li>
+                        <li>❌ Not cleared</li>
+                        {details.prevHasMission ? (
+                          <li>Last attempt accuracy: {details.prevAvg}% (need ≥65% to unlock)</li>
+                        ) : (
+                          <li>No missions completed yet</li>
+                        )}
+                      </>
+                    )}
+                  </ul>
+                  {!details.prevMastered && !details.prevCleared && details.prevHasMission && details.prevAvg < 65 && (
+                    <p className="text-sm text-gray-600 mt-4">
+                      Try the {details.prevLevel} missions again to improve your accuracy and unlock {modalLevel}.
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
+            <button
+              onClick={closeModal}
+              className="mt-6 w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
