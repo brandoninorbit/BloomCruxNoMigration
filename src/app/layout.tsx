@@ -31,7 +31,16 @@ const navFont = localFont({
 export const metadata: Metadata = {
   title: 'BloomCrux',
   description: 'Study smarter with adaptive decks and progress tracking.',
+  icons: {
+    // Prefer SVG where supported (keeps vector crisp & transparent).
+    icon: [
+      { url: '/logo.svg', type: 'image/svg+xml' },
+      { url: '/favicon.ico', sizes: 'any' },
+    ],
+    shortcut: '/logo.svg',
+  },
 };
+
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
