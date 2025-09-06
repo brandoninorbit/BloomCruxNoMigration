@@ -892,7 +892,7 @@ function DecksPage() {
                     </svg>
                   </div>
                   <div>
-                    <p className="font-semibold text-[#111418]">{f.name}</p>
+                    <p className={`font-semibold ${f.colorClass}`}>{f.name}</p>
                     <p className="text-sm text-[#637488]">{deckCount} decks</p>
                   </div>
                   <button

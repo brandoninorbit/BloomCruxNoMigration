@@ -130,7 +130,15 @@ type UserXpStats = {
   isXpBoosted: boolean;
 };
 type UserSettings = { displayName: string; tokens: number };
-type DeckRow = { id: number; title: string | null };
+type DeckRow = { id: number; title: string | null; folder_id?: number | null };
+type FolderRow = { id: number; name: string | null; color: string | null };
+type FolderUI = {
+  id: number;
+  name: string;
+  colorName: string;
+  colorClass: string;
+  iconBgClass: string;
+};
 type MasteryRow = {
   deck_id: number;
   bloom_level: BloomLevel | string;
@@ -186,6 +194,8 @@ export default function DashboardClient() {
   // Default to real data for logged-in users, mock data if logged out
   const [showExample, setShowExample] = useState(!user);
   const [realDecks, setRealDecks] = useState<DeckProgress[]>([]);
+  const [decks, setDecks] = useState<DeckRow[]>([]);
+  const [folders, setFolders] = useState<FolderUI[]>([]);
   const [userTokens, setUserTokens] = useState<number>(0);
   const [commanderXpTotal, setCommanderXpTotal] = useState<number>(0);
   const [attemptsHistory, setAttemptsHistory] = useState<Array<{ at: string; acc: number }>>([]);
@@ -209,8 +219,9 @@ export default function DashboardClient() {
   const supabase = getSupabaseClient();
   // Fetch user's decks, quest xp, and recent attempts (last 90 days) in parallel
   const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
-  const [{ data: decks }, { data: mastery }, { data: quest }, { data: attempts }] = await Promise.all([
-          supabase.from("decks").select("id, title").order("created_at", { ascending: false }),
+  const [{ data: decks }, { data: foldersData }, { data: mastery }, { data: quest }, { data: attempts }] = await Promise.all([
+          supabase.from("decks").select("id, title, folder_id").order("created_at", { ascending: false }),
+          supabase.from("folders").select("id, name, color").order("created_at", { ascending: false }),
     // Keep mastery in case we need a fallback for decks with zero attempts in window
     supabase
       .from("user_deck_bloom_mastery")
@@ -245,6 +256,32 @@ export default function DashboardClient() {
             bloomMastery: {},
           } as DeckProgress;
         });
+
+  setDecks(deckRows);
+
+  // Process folders
+  const folderRows = (foldersData ?? []) as FolderRow[];
+  const processedFolders: FolderUI[] = folderRows.map((r) => {
+    const colorNames = ["blue", "green", "yellow", "purple", "pink", "orange", "gray"];
+    const safeColor = colorNames.includes(String(r.color)) ? String(r.color) : "blue";
+    const colorMap: Record<string, { text: string; bg: string }> = {
+      blue: { text: "text-blue-500", bg: "bg-blue-100" },
+      green: { text: "text-green-500", bg: "bg-green-100" },
+      yellow: { text: "text-yellow-500", bg: "bg-yellow-100" },
+      purple: { text: "text-purple-500", bg: "bg-purple-100" },
+      pink: { text: "text-pink-500", bg: "bg-pink-100" },
+      orange: { text: "text-orange-500", bg: "bg-orange-100" },
+      gray: { text: "text-gray-500", bg: "bg-gray-200" },
+    };
+    return {
+      id: Number(r.id),
+      name: String(r.name ?? ""),
+      colorName: safeColor,
+      colorClass: colorMap[safeColor].text,
+      iconBgClass: colorMap[safeColor].bg,
+    };
+  });
+  setFolders(processedFolders);
 
   const masteryRowsLocal = (mastery ?? []) as MasteryRow[];
   setMasteryRows(masteryRowsLocal);
@@ -550,218 +587,487 @@ export default function DashboardClient() {
           <p className="text-gray-600 mb-6">
             Select a deck to continue your training.
           </p>
-          <div className="space-y-4">
-            {progressToDisplay.map((deck) => (
-              <Collapsible
-                key={deck.deckId}
-                className="group bg-white p-6 rounded-2xl shadow-sm"
-              >
-                <CollapsibleTrigger className="w-full">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900 text-left">
-                        {deck.deckName}
-                      </h3>
-                      <p className="text-sm text-gray-500 text-left">
-                        Mastery: {" "}
-                        {(() => {
-                          // Exclude Create level from the aggregate mastery percent
-                          const entries = Object.entries(deck.bloomMastery).filter(([lvl]) => (lvl as BloomLevel) !== "Create");
-                          const sumCorrect = entries.reduce((acc, [, curr]) => acc + curr.correct, 0);
-                          const sumTotal = entries.reduce((acc, [, curr]) => acc + curr.total, 0);
-                          const pct = sumTotal > 0 ? (sumCorrect / sumTotal) * 100 : 0;
-                          return formatPercent1(pct);
-                        })()} | {deck.xp}/{deck.xpToNext} XP
-                      </p>
-                    </div>
-                    <div className="flex items-center flex-shrink-0">
-                      {deck.isMastered && (
-                        <Award className="text-yellow-500 mr-2" />
-                      )}
-                      <ChevronDown className="text-gray-400 cursor-pointer transition-transform duration-200 group-data-[state=open]:rotate-180" />
-                    </div>
-                  </div>
-                </CollapsibleTrigger>
-                <CollapsibleContent>
-                  <div className="space-y-3 mt-4">
-                    {/* Render blooms in defined order (easiest -> hardest) */}
-                    {(BLOOM_LEVELS as BloomLevel[]).map((level) => {
-                      const mastery = deck.bloomMastery[level];
-                      if (!mastery) return null;
-                      const percentage = mastery.total > 0 ? (mastery.correct / mastery.total) * 100 : 0;
-                      const grad = gradientForBloom(level as DeckBloomLevel);
-                      if (level === "Create") {
-                        return (
-                          <div key={level} className="flex items-center mb-2 group">
-                            <span className="text-sm font-medium text-gray-600 w-24 relative -top-[2px]">Create</span>
-                            <div className="text-xs ml-2" style={{ color: BLOOM_COLOR_HEX["Create"] }}>Coming soon</div>
-                          </div>
-                        );
-                      }
-                      return (
-                        <div key={level} className="flex items-center mb-2 group">
-                          <span className="text-sm font-medium text-gray-600 w-24 relative -top-[2px]">
-                            {level}
-                          </span>
+          <div className="space-y-6">
+            {/* Display folders with their decks */}
+            {folders.map((folder) => {
+              const folderDecks = progressToDisplay.filter((deck) => {
+                // Find the deck's folder_id from the original deck data
+                const deckData = (decks ?? []).find((d) => String(d.id) === deck.deckId);
+                return deckData && Number(deckData.folder_id) === folder.id;
+              });
 
-                          <div className="relative w-full">
-                            {/* progress bar background */}
-                            <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
-                              <div
-                                className="h-2.5 rounded-full"
-                                style={{ width: `${percentage}%`, background: grad }}
-                              />
+              if (folderDecks.length === 0) return null;
+
+              return (
+                <Collapsible key={folder.id} className="group">
+                  {/* Folder header - now the trigger */}
+                  <CollapsibleTrigger className="w-full">
+                    <div className="flex items-center justify-between space-x-3 bg-gray-50 p-4 rounded-xl hover:bg-gray-100 transition-colors">
+                      <div className="flex items-center space-x-3">
+                        <div className={`w-8 h-8 rounded-lg ${folder.iconBgClass} flex items-center justify-center`}>
+                          <BookOpen className={`w-4 h-4 ${folder.colorClass}`} />
+                        </div>
+                        <h3 className={`text-lg font-semibold ${folder.colorClass}`}>
+                          {folder.name}
+                        </h3>
+                        <span className="text-sm text-gray-500">
+                          ({folderDecks.length} deck{folderDecks.length !== 1 ? 's' : ''})
+                        </span>
+                      </div>
+                      <ChevronDown className="text-gray-400 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                    </div>
+                  </CollapsibleTrigger>
+
+                  {/* Decks in this folder */}
+                  <CollapsibleContent>
+                    <div className="space-y-4 mt-4 ml-11">
+                      {folderDecks.map((deck) => (
+                        <Collapsible
+                          key={deck.deckId}
+                          className="group bg-white p-6 rounded-2xl shadow-sm"
+                        >
+                          <CollapsibleTrigger className="w-full">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <h4 className="text-lg font-semibold text-gray-900 text-left">
+                                {deck.deckName}
+                              </h4>
+                              <p className="text-sm text-gray-500 text-left">
+                                Mastery: {" "}
+                                {(() => {
+                                  // Exclude Create level from the aggregate mastery percent
+                                  const entries = Object.entries(deck.bloomMastery).filter(([lvl]) => (lvl as BloomLevel) !== "Create");
+                                  const sumCorrect = entries.reduce((acc, [, curr]) => acc + curr.correct, 0);
+                                  const sumTotal = entries.reduce((acc, [, curr]) => acc + curr.total, 0);
+                                  const pct = sumTotal > 0 ? (sumCorrect / sumTotal) * 100 : 0;
+                                  return formatPercent1(pct);
+                                })()} | {deck.xp}/{deck.xpToNext} XP
+                              </p>
                             </div>
-
-                            {/* GoldMedal badge sticks onto left/top of the progress bar when mastered */}
-                            {percentage >= 80 && (
-                              <>
-                                <div className="absolute left-0 -top-4 transition-transform duration-200 transform group-hover:scale-125" aria-hidden style={{ transform: 'translateX(-50%)' }}>
-                                  <Image src="/icons/GoldMedal.svg" alt="Mastered" width={28} height={28} />
-                                </div>
-                                <span
-                                  className="absolute left-8 -top-1 opacity-0 group-hover:opacity-100 transform transition-all duration-200 rounded-full px-2 py-0.5 text-xs font-semibold text-white shadow-sm"
-                                  style={{ background: grad }}
-                                >
-                                  MASTERED
-                                </span>
-                              </>
-                            )}
+                            <div className="flex items-center flex-shrink-0">
+                              {deck.isMastered && (
+                                <Award className="text-yellow-500 mr-2" />
+                              )}
+                              <ChevronDown className="text-gray-400 cursor-pointer transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                            </div>
                           </div>
-
-                          <button
-                            type="button"
-                            className="text-sm font-medium text-blue-600 ml-3 hover:underline"
-                            title="How is this mastery calculated?"
-              onClick={async () => {
-                              try {
-                                setExplainerOpen({ deckId: Number(deck.deckId), level });
-                                const sb = getSupabaseClient();
-                                const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
-                                // Fetch attempts for this deck over 90 days (quest + non-quest), parse breakdown per bloom
-                                const { data: attempts } = await sb
-                                  .from("user_deck_mission_attempts")
-                                  .select("bloom_level, score_pct, cards_seen, cards_correct, ended_at, mode, breakdown")
-                                  .eq("deck_id", Number(deck.deckId))
-                                  .gte("ended_at", cutoff)
-                                  .order("ended_at", { ascending: false })
-                                  .limit(50);
-                                const rows: Array<{ at: string; mode?: string | null; acc: number; seen: number; correct: number }> = [];
-                                const lvl = level as string;
-                                for (const r of (attempts ?? []) as Array<{ bloom_level?: string | null; score_pct?: number | null; cards_seen?: number | null; cards_correct?: number | null; ended_at?: string | null; mode?: string | null; breakdown?: Record<string, { scorePct?: number; cardsSeen?: number; cardsCorrect?: number }> | null }>) {
-                                  const ended = r.ended_at ?? new Date().toISOString();
-                                  if (r.breakdown && typeof r.breakdown === 'object' && r.breakdown[lvl]) {
-                                    const b = r.breakdown[lvl]!;
-                                    rows.push({ at: ended, mode: r.mode ?? null, acc: Number(b.scorePct ?? 0), seen: Number(b.cardsSeen ?? 0), correct: Number(b.cardsCorrect ?? 0) });
-                                  } else if ((r.bloom_level ?? '') === lvl) {
-                                    const acc = Number(r.score_pct ?? 0);
-                                    rows.push({ at: ended, mode: r.mode ?? null, acc, seen: Number(r.cards_seen ?? 0), correct: Number(r.cards_correct ?? 0) });
-                                  }
-                                }
-                // Pull current mastery factors for this deck/bloom from the cached mastery list
-                                const match = masteryRows.find((r) => String(r.deck_id) === deck.deckId && String(r.bloom_level) === level);
-                                const retentionPct = Math.round(Math.max(0, Math.min(1, Number(match?.retention_strength ?? 0))) * 1000) / 10;
-                                const masteryPct = Math.round(Math.max(0, Math.min(100, Number(match?.mastery_pct ?? 0))) * 10) / 10;
-                                // Fetch server-computed AWA for 1:1 parity
-                                let awaPct = 0;
-                                try {
-                                  const res = await fetch(`/api/decks/${deck.deckId}/mastery-awa?level=${encodeURIComponent(level)}`);
-                                  if (res.ok) {
-                                    const j = await res.json();
-                                    if (typeof j.awa === 'number') awaPct = Math.round(j.awa * 1000) / 10;
-                                  }
-                                } catch {}
-                                // Compute coverage counts as Seen/Total via cards and user_deck_srs
-                                let coverageSeen: number | undefined;
-                                let coverageTotal: number | undefined;
-                                try {
-                                  const cardsRes = await sb
-                                    .from("cards")
-                                    .select("id")
-                                    .eq("deck_id", Number(deck.deckId))
-                                    .eq("bloom_level", level);
-                                  const cardIds = (cardsRes.data ?? []).map((c: any) => Number(c.id));
-                                  coverageTotal = cardIds.length;
-                                  if (user && cardIds.length > 0) {
-                                    const srsRes = await sb
-                                      .from("user_deck_srs")
-                                      .select("card_id, attempts")
-                                      .eq("user_id", user.id)
-                                      .eq("deck_id", Number(deck.deckId))
-                                      .in("card_id", cardIds);
-                                    const rowsSrs = (srsRes.data ?? []) as Array<{ card_id: number; attempts: number }>;
-                                    coverageSeen = rowsSrs.filter((r) => Number(r.attempts ?? 0) > 0).length;
-                                  }
-                                } catch {}
-                                setExplainerData({ rows, factors: { retentionPct, awaPct, masteryPct, coverageSeen, coverageTotal } });
-                              } catch {
-                                setExplainerData({ rows: [], note: 'Could not load attempts. Ensure you are logged in and have recent activity.' });
+                        </CollapsibleTrigger>
+                        <CollapsibleContent>
+                          <div className="space-y-3 mt-4">
+                            {/* Render blooms in defined order (easiest -> hardest) */}
+                            {(BLOOM_LEVELS as BloomLevel[]).map((level) => {
+                              const mastery = deck.bloomMastery[level];
+                              if (!mastery) return null;
+                              const percentage = mastery.total > 0 ? (mastery.correct / mastery.total) * 100 : 0;
+                              const grad = gradientForBloom(level as DeckBloomLevel);
+                              if (level === "Create") {
+                                return (
+                                  <div key={level} className="flex items-center mb-2 group">
+                                    <span className="text-sm font-medium text-gray-600 w-24 relative -top-[2px]">Create</span>
+                                    <div className="text-xs ml-2" style={{ color: BLOOM_COLOR_HEX["Create"] }}>Coming soon</div>
+                                  </div>
+                                );
                               }
-                            }}
-                          >
-                            {formatPercent1(percentage)}
+                              return (
+                                <div key={level} className="flex items-center mb-2 group">
+                                  <span className="text-sm font-medium text-gray-600 w-24 relative -top-[2px]">
+                                    {level}
+                                  </span>
+
+                                  <div className="relative w-full">
+                                    {/* progress bar background */}
+                                    <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
+                                      <div
+                                        className="h-2.5 rounded-full"
+                                        style={{ width: `${percentage}%`, background: grad }}
+                                      />
+                                    </div>
+
+                                    {/* GoldMedal badge sticks onto left/top of the progress bar when mastered */}
+                                    {percentage >= 80 && (
+                                      <>
+                                        <div className="absolute left-0 -top-4 transition-transform duration-200 transform group-hover:scale-125" aria-hidden style={{ transform: 'translateX(-50%)' }}>
+                                          <Image src="/icons/GoldMedal.svg" alt="Mastered" width={28} height={28} />
+                                        </div>
+                                        <span
+                                          className="absolute left-8 -top-1 opacity-0 group-hover:opacity-100 transform transition-all duration-200 rounded-full px-2 py-0.5 text-xs font-semibold text-white shadow-sm"
+                                          style={{ background: grad }}
+                                        >
+                                          MASTERED
+                                        </span>
+                                      </>
+                                    )}
+                                  </div>
+
+                                  <button
+                                    type="button"
+                                    className="text-sm font-medium text-blue-600 ml-3 hover:underline"
+                                    title="How is this mastery calculated?"
+                                    onClick={async () => {
+                                      try {
+                                        setExplainerOpen({ deckId: Number(deck.deckId), level });
+                                        const sb = getSupabaseClient();
+                                        const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+                                        // Fetch attempts for this deck over 90 days (quest + non-quest), parse breakdown per bloom
+                                        const { data: attempts } = await sb
+                                          .from("user_deck_mission_attempts")
+                                          .select("bloom_level, score_pct, cards_seen, cards_correct, ended_at, mode, breakdown")
+                                          .eq("deck_id", Number(deck.deckId))
+                                          .gte("ended_at", cutoff)
+                                          .order("ended_at", { ascending: false })
+                                          .limit(50);
+                                        const rows: Array<{ at: string; mode?: string | null; acc: number; seen: number; correct: number }> = [];
+                                        const lvl = level as string;
+                                        for (const r of (attempts ?? []) as Array<{ bloom_level?: string | null; score_pct?: number | null; cards_seen?: number | null; cards_correct?: number | null; ended_at?: string | null; mode?: string | null; breakdown?: Record<string, { scorePct?: number; cardsSeen?: number; cardsCorrect?: number }> | null }>) {
+                                          const ended = r.ended_at ?? new Date().toISOString();
+                                          if (r.breakdown && typeof r.breakdown === 'object' && r.breakdown[lvl]) {
+                                            const b = r.breakdown[lvl]!;
+                                            rows.push({ at: ended, mode: r.mode ?? null, acc: Number(b.scorePct ?? 0), seen: Number(b.cardsSeen ?? 0), correct: Number(b.cardsCorrect ?? 0) });
+                                          } else if ((r.bloom_level ?? '') === lvl) {
+                                            const acc = Number(r.score_pct ?? 0);
+                                            rows.push({ at: ended, mode: r.mode ?? null, acc, seen: Number(r.cards_seen ?? 0), correct: Number(r.cards_correct ?? 0) });
+                                          }
+                                        }
+                                        // Pull current mastery factors for this deck/bloom from the cached mastery list
+                                        const match = masteryRows.find((r) => String(r.deck_id) === deck.deckId && String(r.bloom_level) === level);
+                                        const retentionPct = Math.round(Math.max(0, Math.min(1, Number(match?.retention_strength ?? 0))) * 1000) / 10;
+                                        const masteryPct = Math.round(Math.max(0, Math.min(100, Number(match?.mastery_pct ?? 0))) * 10) / 10;
+                                        // Fetch server-computed AWA for 1:1 parity
+                                        let awaPct = 0;
+                                        try {
+                                          const res = await fetch(`/api/decks/${deck.deckId}/mastery-awa?level=${encodeURIComponent(level)}`);
+                                          if (res.ok) {
+                                            const j = await res.json();
+                                            if (typeof j.awa === 'number') awaPct = Math.round(j.awa * 1000) / 10;
+                                          }
+                                        } catch {}
+                                        // Compute coverage counts as Seen/Total via cards and user_deck_srs
+                                        let coverageSeen: number | undefined;
+                                        let coverageTotal: number | undefined;
+                                        try {
+                                          const cardsRes = await sb
+                                            .from("cards")
+                                            .select("id")
+                                            .eq("deck_id", Number(deck.deckId))
+                                            .eq("bloom_level", level);
+                                          const cardIds = (cardsRes.data ?? []).map((c: any) => Number(c.id));
+                                          coverageTotal = cardIds.length;
+                                          if (user && cardIds.length > 0) {
+                                            const srsRes = await sb
+                                              .from("user_deck_srs")
+                                              .select("card_id, attempts")
+                                              .eq("user_id", user.id)
+                                              .eq("deck_id", Number(deck.deckId))
+                                              .in("card_id", cardIds);
+                                            const rowsSrs = (srsRes.data ?? []) as Array<{ card_id: number; attempts: number }>;
+                                            coverageSeen = rowsSrs.filter((r) => Number(r.attempts ?? 0) > 0).length;
+                                          }
+                                        } catch {}
+                                        setExplainerData({ rows, factors: { retentionPct, awaPct, masteryPct, coverageSeen, coverageTotal } });
+                                      } catch {
+                                        setExplainerData({ rows: [], note: 'Could not load attempts. Ensure you are logged in and have recent activity.' });
+                                      }
+                                    }}
+                                  >
+                                    {formatPercent1(percentage)}
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          {/* Secondary lines: show Correctness counts and Coverage percent (from mastery) */}
+                          <div className="mt-2 space-y-1">
+                            {(BLOOM_LEVELS as BloomLevel[]).map((level) => {
+                              const agg = deck.bloomAttempts?.[level];
+                              const match = masteryRows.find((r) => String(r.deck_id) === deck.deckId && String(r.bloom_level) === level);
+                              const coverage = Math.max(0, Math.min(1, Number(match?.coverage ?? 0)));
+                              const coveragePct = coverage * 100;
+                              return (
+                                <div key={`ct-${level}`} className="flex items-center text-xs text-gray-600">
+                                  <span className="w-24" />
+                                  {agg && (
+                                    <span className="ml-0.5 mr-3">Correct: {Math.max(0, Math.round(agg.correct))} / Seen: {Math.max(0, Math.round(agg.total))}</span>
+                                  )}
+                                  <span className="ml-0.5">Coverage: {formatPercent1(coveragePct)}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          {/* Per-deck 30-day trend chart: X=attempt index, Y=score_pct, blue raw + green SMA(5) */}
+                          <div className="mt-4 relative">
+                            <div className="absolute right-0 -top-8">
+                              <button onClick={() => setSmaOpen(true)} className="px-3 py-1 rounded-full bg-gray-100 text-sm text-gray-700 border border-gray-200 hover:bg-gray-200">What is SMA?</button>
+                            </div>
+                            <DeckProgressChart deckId={Number(deck.deckId)} height={150} />
+                          </div>
+                          {/* Gentle banner if any non-Create mastery < 80 after updates (non-punitive) */}
+                          {(() => {
+                            try {
+                              const entries = Object.entries(deck.bloomMastery || {}).filter(([lvl]) => (lvl as any) !== "Create");
+                              const percents = entries.map(([, v]: any) => {
+                                const pct = (v?.total ?? 0) > 0 ? (v.correct / v.total) * 100 : 0;
+                                return Math.round(pct);
+                              });
+                              const minPct = percents.length ? Math.min(...percents) : 100;
+                              if (minPct > 0 && minPct < 80) {
+                                return (
+                                  <div className="mt-3 rounded border border-amber-200 bg-amber-50 p-2 text-amber-800 text-sm">
+                                    Mastery needs refresh (now {minPct}%). Replay to reinforce.
+                                  </div>
+                                );
+                              }
+                            } catch {}
+                            return null;
+                          })()}
+                          <div className="flex justify-end items-center mt-4 space-x-4">
+                            <button className="text-sm font-medium text-blue-600 hover:text-blue-800 flex items-center">
+                              <TrendingUp className="text-sm mr-1" />
+                              Level Up
+                            </button>
+                            <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-semibold">
+                              Continue Study
+                            </button>
+                          </div>
+                        </CollapsibleContent>
+                      </Collapsible>
+                    ))}
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+              );
+            })}
+
+            {/* Decks without folders */}
+            {progressToDisplay.filter((deck) => {
+              const deckData = (decks ?? []).find((d) => String(d.id) === deck.deckId);
+              return !deckData || !deckData.folder_id;
+            }).length > 0 && (
+              <div className="space-y-4">
+                <div className="flex items-center space-x-3">
+                  <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center">
+                    <BookOpen className="w-4 h-4 text-gray-500" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-500">
+                    Unorganized
+                  </h3>
+                </div>
+                <div className="space-y-4 ml-11">
+                  {progressToDisplay.filter((deck) => {
+                    const deckData = (decks ?? []).find((d) => String(d.id) === deck.deckId);
+                    return !deckData || !deckData.folder_id;
+                  }).map((deck) => (
+                    <Collapsible
+                      key={deck.deckId}
+                      className="group bg-white p-6 rounded-2xl shadow-sm"
+                    >
+                      <CollapsibleTrigger className="w-full">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <h4 className="text-lg font-semibold text-gray-900 text-left">
+                              {deck.deckName}
+                            </h4>
+                            <p className="text-sm text-gray-500 text-left">
+                              Mastery: {" "}
+                              {(() => {
+                                // Exclude Create level from the aggregate mastery percent
+                                const entries = Object.entries(deck.bloomMastery).filter(([lvl]) => (lvl as BloomLevel) !== "Create");
+                                const sumCorrect = entries.reduce((acc, [, curr]) => acc + curr.correct, 0);
+                                const sumTotal = entries.reduce((acc, [, curr]) => acc + curr.total, 0);
+                                const pct = sumTotal > 0 ? (sumCorrect / sumTotal) * 100 : 0;
+                                return formatPercent1(pct);
+                              })()} | {deck.xp}/{deck.xpToNext} XP
+                            </p>
+                          </div>
+                          <div className="flex items-center flex-shrink-0">
+                            {deck.isMastered && (
+                              <Award className="text-yellow-500 mr-2" />
+                            )}
+                            <ChevronDown className="text-gray-400 cursor-pointer transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                          </div>
+                        </div>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <div className="space-y-3 mt-4">
+                          {/* Render blooms in defined order (easiest -> hardest) */}
+                          {(BLOOM_LEVELS as BloomLevel[]).map((level) => {
+                            const mastery = deck.bloomMastery[level];
+                            if (!mastery) return null;
+                            const percentage = mastery.total > 0 ? (mastery.correct / mastery.total) * 100 : 0;
+                            const grad = gradientForBloom(level as DeckBloomLevel);
+                            if (level === "Create") {
+                              return (
+                                <div key={level} className="flex items-center mb-2 group">
+                                  <span className="text-sm font-medium text-gray-600 w-24 relative -top-[2px]">Create</span>
+                                  <div className="text-xs ml-2" style={{ color: BLOOM_COLOR_HEX["Create"] }}>Coming soon</div>
+                                </div>
+                              );
+                            }
+                            return (
+                              <div key={level} className="flex items-center mb-2 group">
+                                <span className="text-sm font-medium text-gray-600 w-24 relative -top-[2px]">
+                                  {level}
+                                </span>
+
+                                <div className="relative w-full">
+                                  {/* progress bar background */}
+                                  <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
+                                    <div
+                                      className="h-2.5 rounded-full"
+                                      style={{ width: `${percentage}%`, background: grad }}
+                                    />
+                                  </div>
+
+                                  {/* GoldMedal badge sticks onto left/top of the progress bar when mastered */}
+                                  {percentage >= 80 && (
+                                    <>
+                                      <div className="absolute left-0 -top-4 transition-transform duration-200 transform group-hover:scale-125" aria-hidden style={{ transform: 'translateX(-50%)' }}>
+                                        <Image src="/icons/GoldMedal.svg" alt="Mastered" width={28} height={28} />
+                                      </div>
+                                      <span
+                                        className="absolute left-8 -top-1 opacity-0 group-hover:opacity-100 transform transition-all duration-200 rounded-full px-2 py-0.5 text-xs font-semibold text-white shadow-sm"
+                                        style={{ background: grad }}
+                                      >
+                                        MASTERED
+                                      </span>
+                                    </>
+                                  )}
+                                </div>
+
+                                <button
+                                  type="button"
+                                  className="text-sm font-medium text-blue-600 ml-3 hover:underline"
+                                  title="How is this mastery calculated?"
+                                  onClick={async () => {
+                                    try {
+                                      setExplainerOpen({ deckId: Number(deck.deckId), level });
+                                      const sb = getSupabaseClient();
+                                      const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+                                      // Fetch attempts for this deck over 90 days (quest + non-quest), parse breakdown per bloom
+                                      const { data: attempts } = await sb
+                                        .from("user_deck_mission_attempts")
+                                        .select("bloom_level, score_pct, cards_seen, cards_correct, ended_at, mode, breakdown")
+                                        .eq("deck_id", Number(deck.deckId))
+                                        .gte("ended_at", cutoff)
+                                        .order("ended_at", { ascending: false })
+                                        .limit(50);
+                                      const rows: Array<{ at: string; mode?: string | null; acc: number; seen: number; correct: number }> = [];
+                                      const lvl = level as string;
+                                      for (const r of (attempts ?? []) as Array<{ bloom_level?: string | null; score_pct?: number | null; cards_seen?: number | null; cards_correct?: number | null; ended_at?: string | null; mode?: string | null; breakdown?: Record<string, { scorePct?: number; cardsSeen?: number; cardsCorrect?: number }> | null }>) {
+                                        const ended = r.ended_at ?? new Date().toISOString();
+                                        if (r.breakdown && typeof r.breakdown === 'object' && r.breakdown[lvl]) {
+                                          const b = r.breakdown[lvl]!;
+                                          rows.push({ at: ended, mode: r.mode ?? null, acc: Number(b.scorePct ?? 0), seen: Number(b.cardsSeen ?? 0), correct: Number(b.cardsCorrect ?? 0) });
+                                        } else if ((r.bloom_level ?? '') === lvl) {
+                                          const acc = Number(r.score_pct ?? 0);
+                                          rows.push({ at: ended, mode: r.mode ?? null, acc, seen: Number(r.cards_seen ?? 0), correct: Number(r.cards_correct ?? 0) });
+                                        }
+                                      }
+                                      // Pull current mastery factors for this deck/bloom from the cached mastery list
+                                      const match = masteryRows.find((r) => String(r.deck_id) === deck.deckId && String(r.bloom_level) === level);
+                                      const retentionPct = Math.round(Math.max(0, Math.min(1, Number(match?.retention_strength ?? 0))) * 1000) / 10;
+                                      const masteryPct = Math.round(Math.max(0, Math.min(100, Number(match?.mastery_pct ?? 0))) * 10) / 10;
+                                      // Fetch server-computed AWA for 1:1 parity
+                                      let awaPct = 0;
+                                      try {
+                                        const res = await fetch(`/api/decks/${deck.deckId}/mastery-awa?level=${encodeURIComponent(level)}`);
+                                        if (res.ok) {
+                                          const j = await res.json();
+                                          if (typeof j.awa === 'number') awaPct = Math.round(j.awa * 1000) / 10;
+                                        }
+                                      } catch {}
+                                      // Compute coverage counts as Seen/Total via cards and user_deck_srs
+                                      let coverageSeen: number | undefined;
+                                      let coverageTotal: number | undefined;
+                                      try {
+                                        const cardsRes = await sb
+                                          .from("cards")
+                                          .select("id")
+                                          .eq("deck_id", Number(deck.deckId))
+                                          .eq("bloom_level", level);
+                                        const cardIds = (cardsRes.data ?? []).map((c: any) => Number(c.id));
+                                        coverageTotal = cardIds.length;
+                                        if (user && cardIds.length > 0) {
+                                          const srsRes = await sb
+                                            .from("user_deck_srs")
+                                            .select("card_id, attempts")
+                                            .eq("user_id", user.id)
+                                            .eq("deck_id", Number(deck.deckId))
+                                            .in("card_id", cardIds);
+                                          const rowsSrs = (srsRes.data ?? []) as Array<{ card_id: number; attempts: number }>;
+                                          coverageSeen = rowsSrs.filter((r) => Number(r.attempts ?? 0) > 0).length;
+                                        }
+                                      } catch {}
+                                      setExplainerData({ rows, factors: { retentionPct, awaPct, masteryPct, coverageSeen, coverageTotal } });
+                                    } catch {
+                                      setExplainerData({ rows: [], note: 'Could not load attempts. Ensure you are logged in and have recent activity.' });
+                                    }
+                                  }}
+                                >
+                                  {formatPercent1(percentage)}
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {/* Secondary lines: show Correctness counts and Coverage percent (from mastery) */}
+                        <div className="mt-2 space-y-1">
+                          {(BLOOM_LEVELS as BloomLevel[]).map((level) => {
+                            const agg = deck.bloomAttempts?.[level];
+                            const match = masteryRows.find((r) => String(r.deck_id) === deck.deckId && String(r.bloom_level) === level);
+                            const coverage = Math.max(0, Math.min(1, Number(match?.coverage ?? 0)));
+                            const coveragePct = coverage * 100;
+                            return (
+                              <div key={`ct-${level}`} className="flex items-center text-xs text-gray-600">
+                                <span className="w-24" />
+                                {agg && (
+                                  <span className="ml-0.5 mr-3">Correct: {Math.max(0, Math.round(agg.correct))} / Seen: {Math.max(0, Math.round(agg.total))}</span>
+                                )}
+                                <span className="ml-0.5">Coverage: {formatPercent1(coveragePct)}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {/* Per-deck 30-day trend chart: X=attempt index, Y=score_pct, blue raw + green SMA(5) */}
+                        <div className="mt-4 relative">
+                          <div className="absolute right-0 -top-8">
+                            <button onClick={() => setSmaOpen(true)} className="px-3 py-1 rounded-full bg-gray-100 text-sm text-gray-700 border border-gray-200 hover:bg-gray-200">What is SMA?</button>
+                          </div>
+                          <DeckProgressChart deckId={Number(deck.deckId)} height={150} />
+                        </div>
+                        {/* Gentle banner if any non-Create mastery < 80 after updates (non-punitive) */}
+                        {(() => {
+                          try {
+                            const entries = Object.entries(deck.bloomMastery || {}).filter(([lvl]) => (lvl as any) !== "Create");
+                            const percents = entries.map(([, v]: any) => {
+                              const pct = (v?.total ?? 0) > 0 ? (v.correct / v.total) * 100 : 0;
+                              return Math.round(pct);
+                            });
+                            const minPct = percents.length ? Math.min(...percents) : 100;
+                            if (minPct > 0 && minPct < 80) {
+                              return (
+                                <div className="mt-3 rounded border border-amber-200 bg-amber-50 p-2 text-amber-800 text-sm">
+                                  Mastery needs refresh (now {minPct}%). Replay to reinforce.
+                                </div>
+                              );
+                            }
+                          } catch {}
+                          return null;
+                        })()}
+                        <div className="flex justify-end items-center mt-4 space-x-4">
+                          <button className="text-sm font-medium text-blue-600 hover:text-blue-800 flex items-center">
+                            <TrendingUp className="text-sm mr-1" />
+                            Level Up
+                          </button>
+                          <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-semibold">
+                            Continue Study
                           </button>
                         </div>
-                      );
-                    })}
-                  </div>
-                  {/* Secondary lines: show Correctness counts and Coverage percent (from mastery) */}
-                  <div className="mt-2 space-y-1">
-                    {(BLOOM_LEVELS as BloomLevel[]).map((level) => {
-                      const agg = deck.bloomAttempts?.[level];
-                      const match = masteryRows.find((r) => String(r.deck_id) === deck.deckId && String(r.bloom_level) === level);
-                      const coverage = Math.max(0, Math.min(1, Number(match?.coverage ?? 0)));
-                      const coveragePct = coverage * 100;
-                      return (
-                        <div key={`ct-${level}`} className="flex items-center text-xs text-gray-600">
-                          <span className="w-24" />
-                          {agg && (
-                            <span className="ml-0.5 mr-3">Correct: {Math.max(0, Math.round(agg.correct))} / Seen: {Math.max(0, Math.round(agg.total))}</span>
-                          )}
-                          <span className="ml-0.5">Coverage: {formatPercent1(coveragePct)}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  {/* Per-deck 30-day trend chart: X=attempt index, Y=score_pct, blue raw + green SMA(5) */}
-                  <div className="mt-4 relative">
-                    <div className="absolute right-0 -top-8">
-                      <button onClick={() => setSmaOpen(true)} className="px-3 py-1 rounded-full bg-gray-100 text-sm text-gray-700 border border-gray-200 hover:bg-gray-200">What is SMA?</button>
-                    </div>
-                    <DeckProgressChart deckId={Number(deck.deckId)} height={150} />
-                  </div>
-                  {/* Gentle banner if any non-Create mastery < 80 after updates (non-punitive) */}
-                  {(() => {
-                    try {
-                      const entries = Object.entries(deck.bloomMastery || {}).filter(([lvl]) => (lvl as any) !== "Create");
-                      const percents = entries.map(([, v]: any) => {
-                        const pct = (v?.total ?? 0) > 0 ? (v.correct / v.total) * 100 : 0;
-                        return Math.round(pct);
-                      });
-                      const minPct = percents.length ? Math.min(...percents) : 100;
-                      if (minPct > 0 && minPct < 80) {
-                        return (
-                          <div className="mt-3 rounded border border-amber-200 bg-amber-50 p-2 text-amber-800 text-sm">
-                            Mastery needs refresh (now {minPct}%). Replay to reinforce.
-                          </div>
-                        );
-                      }
-                    } catch {}
-                    return null;
-                  })()}
-                  <div className="flex justify-end items-center mt-4 space-x-4">
-                    <button className="text-sm font-medium text-blue-600 hover:text-blue-800 flex items-center">
-                      <TrendingUp className="text-sm mr-1" />
-                      Level Up
-                    </button>
-                    <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-semibold">
-                      Continue Study
-                    </button>
-                  </div>
-                </CollapsibleContent>
-              </Collapsible>
-            ))}
-            
+                      </CollapsibleContent>
+                    </Collapsible>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </section>
 
