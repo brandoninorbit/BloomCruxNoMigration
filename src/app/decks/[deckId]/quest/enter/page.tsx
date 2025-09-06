@@ -32,6 +32,7 @@ export default function QuestEnterPage() {
   const [unlockWhy, setUnlockWhy] = useState<Array<{ level: DeckBloomLevel; prevMastered: boolean; prevCleared: boolean; prevAvg: number; prevHasMission: boolean }>>([]);
   const [loading, setLoading] = useState(true);
   const [modalLevel, setModalLevel] = useState<DeckBloomLevel | null>(null);
+  const [recentAttempt, setRecentAttempt] = useState<{ accuracy: number; date: string } | null>(null);
 
   useEffect(() => {
     const loadData = async () => {
@@ -122,12 +123,106 @@ export default function QuestEnterPage() {
     Create: "/icons/PalleteIcon_Create.svg",
   } as const;
 
-  const handleLockedClick = (level: DeckBloomLevel) => {
+  const handleLockedClick = async (level: DeckBloomLevel) => {
     setModalLevel(level);
+    
+    // Fetch the most recent attempt for the previous level
+    const prevLevelIndex = BLOOM_LEVELS.indexOf(level) - 1;
+    if (prevLevelIndex >= 0) {
+      const prevLevel = BLOOM_LEVELS[prevLevelIndex] as DeckBloomLevel;
+      try {
+        const response = await fetch(`/api/quest/${id}/attempts`);
+        if (response.ok) {
+          const data = await response.json();
+          
+          // Check if the response contains an error or is invalid
+          if (data && typeof data === 'object' && 'error' in data) {
+            console.error('API error:', data.error);
+            setRecentAttempt(null);
+            return;
+          }
+          
+          // Extract attempts array and total cards from response
+          const attempts = data?.attempts;
+          const totalCards = data?.totalCards || 0;
+          
+          // Ensure attempts is an array before filtering
+          if (!Array.isArray(attempts)) {
+            console.error('API response attempts is not a valid array:', attempts);
+            setRecentAttempt(null);
+            return;
+          }
+          
+          const typedData: Array<{
+            id: number;
+            bloom_level: string;
+            score_pct: number;
+            ended_at: string;
+            mode: string;
+            stored?: { seen: number; correct: number };
+            recomputed?: { seen: number; correct: number } | null;
+          }> = attempts;
+          
+          const prevLevelAttempts = typedData.filter((attempt) => attempt.bloom_level === prevLevel);
+          if (prevLevelAttempts.length > 0) {
+            // Find the most recent quest attempt
+            const questAttempts = prevLevelAttempts.filter(attempt => attempt.mode === 'quest');
+            const mostRecentQuest = questAttempts.length > 0 ? questAttempts[0] : null;
+            
+            // Look for attempts with 100% coverage and 65%+ accuracy that might indicate mastery
+            const masteryAttempts = prevLevelAttempts.filter(attempt => {
+              const accuracy = attempt.score_pct; // score_pct is already a percentage
+              const cardsSeen = attempt.recomputed?.seen || attempt.stored?.seen || 0;
+              const coverage = totalCards > 0 ? (cardsSeen / totalCards) * 100 : 0;
+              
+              // Consider it a mastery attempt if coverage is 100% AND accuracy > 65%
+              return coverage >= 100 && accuracy > 65;
+            });
+            
+            let bestAttempt = mostRecentQuest;
+            
+            // If there's a 100% coverage attempt with better score than the most recent quest,
+            // use that instead (this allows unlocking based on complete coverage mastery)
+            if (masteryAttempts.length > 0 && mostRecentQuest) {
+              const bestMastery = masteryAttempts.reduce((best: typeof masteryAttempts[0], current: typeof masteryAttempts[0]) => 
+                current.score_pct > best.score_pct ? current : best
+              );
+              
+              if (bestMastery.score_pct > mostRecentQuest.score_pct) {
+                bestAttempt = bestMastery;
+              }
+            } else if (masteryAttempts.length > 0 && !mostRecentQuest) {
+              // If no quest attempts but there are 100% coverage mastery attempts, use the best one
+              bestAttempt = masteryAttempts.reduce((best: typeof masteryAttempts[0], current: typeof masteryAttempts[0]) => 
+                current.score_pct > best.score_pct ? current : best
+              );
+            }
+            
+            if (bestAttempt) {
+              setRecentAttempt({
+                accuracy: bestAttempt.score_pct, // score_pct is already a percentage
+                date: new Date(bestAttempt.ended_at).toLocaleDateString()
+              });
+            } else {
+              setRecentAttempt(null);
+            }
+          } else {
+            setRecentAttempt(null);
+          }
+        } else {
+          console.error('Failed to fetch attempts, status:', response.status);
+          setRecentAttempt(null);
+        }
+      } catch (error) {
+        console.error('Failed to fetch recent attempt:', error);
+        setRecentAttempt(null);
+      }
+    }
   };
 
   const closeModal = () => {
     setModalLevel(null);
+    setRecentAttempt(null);
   };
 
   const getUnlockDetails = (level: DeckBloomLevel) => {
@@ -277,31 +372,45 @@ export default function QuestEnterPage() {
 
       {/* Modal for locked quest details */}
       {modalLevel && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-transparent flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
             <h2 className="text-xl font-bold mb-4">Why is {modalLevel} locked?</h2>
             {(() => {
               const details = getUnlockDetails(modalLevel);
               if (!details) return <p>Unable to determine unlock criteria.</p>;
               return (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <p>To unlock <strong>{modalLevel}</strong>, you need to complete the previous level: <strong>{details.prevLevel}</strong>.</p>
-                  <p>Current status of {details.prevLevel}:</p>
-                  <ul className="list-disc list-inside space-y-1">
-                    {details.prevMastered && <li>✅ Mastered</li>}
-                    {details.prevCleared && <li>✅ Cleared with passing accuracy</li>}
-                    {!details.prevMastered && !details.prevCleared && (
-                      <>
-                        <li>❌ Not mastered</li>
-                        <li>❌ Not cleared</li>
-                        {details.prevHasMission ? (
-                          <li>Last attempt accuracy: {details.prevAvg}% (need ≥65% to unlock)</li>
-                        ) : (
-                          <li>No missions completed yet</li>
-                        )}
-                      </>
-                    )}
-                  </ul>
+                  
+                  <div className="bg-gray-50 p-3 rounded-lg">
+                    <p className="font-medium mb-2">Current status of {details.prevLevel}:</p>
+                    <ul className="list-disc list-inside space-y-1 text-sm">
+                      {details.prevMastered && <li>✅ Mastered</li>}
+                      {details.prevCleared && <li>✅ Is cleared (65% or higher required)</li>}
+                      {!details.prevMastered && !details.prevCleared && (
+                        <>
+                          <li>❌ Not mastered</li>
+                          <li>❌ Not cleared</li>
+                          {details.prevHasMission ? (
+                            <li>Last attempt accuracy: {details.prevAvg}% (need ≥65% to unlock)</li>
+                          ) : (
+                            <li>No missions completed yet</li>
+                          )}
+                        </>
+                      )}
+                    </ul>
+                  </div>
+
+                  {recentAttempt && (
+                    <div className="bg-blue-50 p-3 rounded-lg">
+                      <p className="font-medium mb-2">Most Recent Attempt:</p>
+                      <div className="text-sm space-y-1">
+                        <p><strong>Accuracy:</strong> {recentAttempt.accuracy.toFixed(2)}%</p>
+                        <p><strong>Date:</strong> {recentAttempt.date}</p>
+                      </div>
+                    </div>
+                  )}
+
                   {!details.prevMastered && !details.prevCleared && details.prevHasMission && details.prevAvg < 65 && (
                     <p className="text-sm text-gray-600 mt-4">
                       Try the {details.prevLevel} missions again to improve your accuracy and unlock {modalLevel}.

@@ -29,14 +29,22 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ deck
   if (!Number.isFinite(deckIdNum)) return NextResponse.json({ error: "invalid deckId" }, { status: 400 });
 
   const sb = supabaseAdmin();
-  const { data, error } = await sb
-    .from("user_deck_mission_attempts")
-    .select("id, mode, ended_at, bloom_level, score_pct, cards_seen, cards_correct, breakdown")
-    .eq("user_id", session.user.id)
-    .eq("deck_id", deckIdNum)
-    .order("ended_at", { ascending: false })
-    .limit(20);
+  const [{ data, error }, { data: cardsData }] = await Promise.all([
+    sb
+      .from("user_deck_mission_attempts")
+      .select("id, mode, ended_at, bloom_level, score_pct, cards_seen, cards_correct, breakdown")
+      .eq("user_id", session.user.id)
+      .eq("deck_id", deckIdNum)
+      .order("ended_at", { ascending: false })
+      .limit(20),
+    sb
+      .from("cards")
+      .select("id", { count: "exact" })
+      .eq("deck_id", deckIdNum)
+  ]);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  
+  const totalCards = cardsData?.length ?? 0;
   const rows = (data ?? []).map((r) => {
     const recomputed = recomputeFromBreakdown(r.breakdown);
     return {
@@ -50,5 +58,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ deck
       breakdown: r.breakdown ?? null,
     };
   });
-  return NextResponse.json({ ok: true, attempts: rows });
+  return NextResponse.json({ 
+    ok: true, 
+    attempts: rows,
+    totalCards 
+  });
 }
