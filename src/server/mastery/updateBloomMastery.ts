@@ -2,17 +2,20 @@
 import type { DeckBloomLevel } from "@/types/deck-cards";
 import { supabaseAdmin } from "@/lib/supabase/server";
 
-export const HALF_LIFE_DAYS = 7;
+export const HALF_LIFE_DAYS = 7; // Kept for backward compatibility, but now using tiered recency
 export const SESSION_WINDOW_MINUTES = 20;
 const MIN_COVERAGE_THRESHOLD = 0.05;
 const MAX_COVERAGE_PER_ATTEMPT = 0.5;
+const TIME_DECAY_RATE = 0.98; // 2% decay per day
 
 /**
  * Calculate Attempt-Weighted Accuracy (AWA) for a bloom level
  * AWA = weighted average of past mission accuracies, weighted by:
  * - Coverage (unique cards seen / total cards in bloom)
- * - Recency (exponential decay with 7-day half-life)
+ * - Tiered Recency (1.0 for most recent, 0.7 for 2-3, 0.4 for 4-5, 0.3 for 6-7, 0.08 for 8-10)
+ * - Small time decay (2% per day)
  * - Session bundling (group attempts within 20 minutes)
+ * - Hard stop at 10 most recent sessions
  */
 async function calculateAttemptWeightedAccuracy(
   userId: string,
@@ -71,12 +74,21 @@ async function calculateAttemptWeightedAccuracy(
     }
   }
 
-  // Calculate weighted accuracy for each session
+  // Calculate weighted accuracy for each session with tiered recency weighting
   let totalWeight = 0;
   let weightedSum = 0;
   const now = new Date();
 
-  for (const session of sessions) {
+  // Sort sessions by recency (most recent first)
+  sessions.sort((a, b) => b.endTime.getTime() - a.endTime.getTime());
+
+  for (let i = 0; i < sessions.length; i++) {
+    const session = sessions[i];
+    const recencyOrder = i + 1; // 1 = most recent, 2 = next, etc.
+
+    // Hard stop at 10 attempts - don't use anything older than 10th most recent
+    if (recencyOrder > 10) break;
+
     // Calculate session coverage and accuracy
     const uniqueCardsSeen = new Set<number>();
     let totalCorrect = 0;
@@ -94,8 +106,8 @@ async function calculateAttemptWeightedAccuracy(
           totalSeen += seen;
           totalCorrect += correct;
           // For coverage, we'd need card-level data, but for now use seen count as proxy
-          for (let i = 0; i < Math.min(seen, totalCards); i++) {
-            uniqueCardsSeen.add(i); // Simplified - in reality would need actual card IDs
+          for (let j = 0; j < Math.min(seen, totalCards); j++) {
+            uniqueCardsSeen.add(j); // Simplified - in reality would need actual card IDs
           }
         }
       } else {
@@ -117,12 +129,20 @@ async function calculateAttemptWeightedAccuracy(
       if (daysSince > 1) continue; // Only keep very recent tiny sessions
     }
 
-    // Time decay weight
+    // Tiered recency weighting
+    let recencyWeight;
+    if (recencyOrder === 1) recencyWeight = 1.0;      // Most recent
+    else if (recencyOrder <= 3) recencyWeight = 0.7;  // Recent 2-3
+    else if (recencyOrder <= 5) recencyWeight = 0.4;  // Recent 4-5
+    else if (recencyOrder <= 7) recencyWeight = 0.3;  // Recent 6-7
+    else recencyWeight = 0.08;                        // Older attempts (8-10)
+
+    // Small time decay (2% per day)
     const daysSince = (now.getTime() - session.endTime.getTime()) / (24 * 60 * 60 * 1000);
-    const timeWeight = Math.pow(0.5, daysSince / HALF_LIFE_DAYS);
+    const timeDecay = Math.pow(TIME_DECAY_RATE, daysSince);
 
     // Final weight
-    const weight = timeWeight * coverage;
+    const weight = recencyWeight * timeDecay * coverage;
 
     totalWeight += weight;
     weightedSum += weight * sessionAccuracy;
