@@ -72,17 +72,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dec
   });
   if (!attempt.ok) return NextResponse.json({ error: attempt.error }, { status: 500 });
 
-  // Unlock next on single pass (>=65) only for quest missions
-  if ((mode ?? 'quest') === 'quest' && score_pct >= 65) {
-    await unlockNextBloomLevel(session.user.id, deckId, bloom_level);
+  // Update per_bloom aggregates for counters and averages first, then mark cleared/unlock idempotently.
+  if ((mode ?? 'quest') === 'quest') {
+    await updateQuestProgressOnComplete({ userId: session.user.id, deckId, level: bloom_level, scorePct: score_pct, cardsSeen: cards_seen });
   }
 
-  // Update per_bloom aggregates for counters and averages
-  try {
-    if ((mode ?? 'quest') === 'quest') {
-      await updateQuestProgressOnComplete({ userId: session.user.id, deckId, level: bloom_level, scorePct: score_pct, cardsSeen: cards_seen });
-    }
-  } catch {}
+  // Unlock next on single pass (>=65) only for quest missions. Do this after progress update to avoid races.
+  if ((mode ?? 'quest') === 'quest' && score_pct >= 65) {
+    try { await unlockNextBloomLevel(session.user.id, deckId, bloom_level); } catch {}
+  }
 
   // Adjust updatedSinceLastRun and add lastCompletion snapshot; never relock missionUnlocked
   try {

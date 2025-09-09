@@ -1,6 +1,7 @@
 // src/server/progression/quest.ts
 import type { DeckBloomLevel } from "@/types/deck-cards";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { info, error, makeReqId } from "@/lib/logger";
 import { BLOOM_LEVELS } from "@/types/card-catalog";
 import { DEFAULT_QUEST_SETTINGS } from "@/lib/quest/types";
 import { cookies } from "next/headers";
@@ -103,6 +104,8 @@ export async function recordMissionAttempt(params: {
 
   // First: try with a session-bound server client (RLS must allow user_id = auth.uid())
   try {
+  const reqId = makeReqId('attempt');
+  info('recordMissionAttempt.start', { userId: params.userId, deckId: params.deckId, bloom: params.bloomLevel, scorePct: params.scorePct }, { reqId, userId: params.userId, deckId: params.deckId, bloom: params.bloomLevel });
     type CookieAdapter = { get: (name: string) => { value: string } | undefined; set: (name: string, value: string, options?: Record<string, unknown>) => void };
     const jar = cookies() as unknown as CookieAdapter;
     const sbUser = createServerClient(
@@ -134,29 +137,45 @@ export async function recordMissionAttempt(params: {
   try {
     const sb = supabaseAdmin();
     const res = await tryInsert(sb);
-    if (res.ok) return res;
+    if (res.ok) {
+      info('recordMissionAttempt.ok', { attemptId: res.attemptId }, { reqId: `attempt-${params.userId}-${params.deckId}`, userId: params.userId, deckId: params.deckId });
+      return res;
+    }
+    error('recordMissionAttempt.failed', { error: res.error }, { reqId: `attempt-${params.userId}-${params.deckId}`, userId: params.userId, deckId: params.deckId });
     return res;
   } catch (e) {
     const msg = e && typeof e === "object" && "message" in e ? (e as { message: string }).message : String(e);
+    error('recordMissionAttempt.exception', { error: msg }, { userId: params.userId, deckId: params.deckId });
     return { ok: false, error: msg };
   }
 }
 
 export async function unlockNextBloomLevel(userId: string, deckId: number, levelJustPassed: DeckBloomLevel): Promise<void> {
-  const sb = supabaseAdmin();
-  const { data } = await sb
-    .from("user_deck_quest_progress")
-    .select("id, per_bloom")
-    .eq("user_id", userId)
-    .eq("deck_id", deckId)
-    .maybeSingle();
-  const per = (data?.per_bloom ?? {}) as Record<string, Record<string, unknown>>;
-  const cur = per[levelJustPassed] ?? {};
-  if ((cur as Record<string, unknown>).cleared === true) return; // idempotent
-  per[levelJustPassed] = { ...cur, cleared: true } as Record<string, unknown>;
-  await sb
-    .from("user_deck_quest_progress")
-    .upsert({ user_id: userId, deck_id: deckId, per_bloom: per }, { onConflict: "user_id,deck_id" });
+  const reqId = makeReqId('unlock');
+  try {
+    info('unlockNextBloomLevel.start', { userId, deckId, level: levelJustPassed }, { reqId, userId, deckId, bloom: levelJustPassed });
+    const sb = supabaseAdmin();
+    const { data } = await sb
+      .from("user_deck_quest_progress")
+      .select("id, per_bloom")
+      .eq("user_id", userId)
+      .eq("deck_id", deckId)
+      .maybeSingle();
+    const per = (data?.per_bloom ?? {}) as Record<string, Record<string, unknown>>;
+    const cur = per[levelJustPassed] ?? {};
+    if (cur.cleared === true) {
+      info('unlockNextBloomLevel.noop', { reason: 'already_cleared' }, { reqId, userId, deckId, bloom: levelJustPassed });
+      return; // idempotent
+    }
+    per[levelJustPassed] = { ...cur, cleared: true };
+    await sb
+      .from("user_deck_quest_progress")
+      .upsert({ user_id: userId, deck_id: deckId, per_bloom: per }, { onConflict: "user_id,deck_id" });
+    info('unlockNextBloomLevel.ok', { userId, deckId, level: levelJustPassed }, { reqId, userId, deckId, bloom: levelJustPassed });
+  } catch (e) {
+    const msg = e && typeof e === "object" && "message" in e ? (e as { message: string }).message : String(e);
+    error('unlockNextBloomLevel.error', { error: msg }, { userId, deckId, bloom: levelJustPassed });
+  }
 }
 
 // Ensure per_bloom totals exist and aggregate mission counters on completion
@@ -167,7 +186,9 @@ export async function updateQuestProgressOnComplete(params: {
   scorePct: number; // 0..100
   cardsSeen: number;
 }): Promise<void> {
+  const reqId = makeReqId('progress');
   const sb = supabaseAdmin();
+  info('updateQuestProgressOnComplete.start', { userId: params.userId, deckId: params.deckId, level: params.level, scorePct: params.scorePct }, { reqId, userId: params.userId, deckId: params.deckId, bloom: params.level });
   const [{ data: row }, { data: cardRows }] = await Promise.all([
     sb.from("user_deck_quest_progress").select("id, per_bloom, xp").eq("user_id", params.userId).eq("deck_id", params.deckId).maybeSingle(),
     sb
@@ -247,7 +268,14 @@ export async function updateQuestProgressOnComplete(params: {
   // Single-pass clear flag
   if ((params.scorePct ?? 0) >= 65) cur.cleared = true;
   per[params.level] = cur;
-  await sb
-    .from("user_deck_quest_progress")
-    .upsert({ user_id: params.userId, deck_id: params.deckId, per_bloom: per, xp: row?.xp ?? {} }, { onConflict: "user_id,deck_id" });
+  try {
+    await sb
+      .from("user_deck_quest_progress")
+      .upsert({ user_id: params.userId, deck_id: params.deckId, per_bloom: per, xp: row?.xp ?? {} }, { onConflict: "user_id,deck_id" });
+    info('updateQuestProgressOnComplete.ok', { userId: params.userId, deckId: params.deckId, level: params.level, cleared: cur.cleared ?? false }, { reqId, userId: params.userId, deckId: params.deckId, bloom: params.level });
+  } catch (e) {
+    const msg = e && typeof e === "object" && "message" in e ? (e as { message: string }).message : String(e);
+    error('updateQuestProgressOnComplete.error', { error: msg }, { reqId, userId: params.userId, deckId: params.deckId, bloom: params.level });
+    throw e;
+  }
 }
