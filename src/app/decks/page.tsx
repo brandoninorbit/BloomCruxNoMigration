@@ -33,6 +33,7 @@ interface Deck {
   folderId?: number;
   tag: string;
   title: string;
+  description?: string;
   locked: boolean;
   cover?: string | null;
   mastery: number; // percentage 0-100
@@ -138,6 +139,7 @@ const MOCK_DECKS: Deck[] = [
     folderId: FOLDER_SCIENCE,
     tag: "Biology",
     title: "Biology 101",
+    description: "Introduction to basic biological concepts including cell structure, genetics, and ecosystems.",
     locked: false,
     mastery: 54,
     bloomLevel: "Understand",
@@ -147,6 +149,7 @@ const MOCK_DECKS: Deck[] = [
     folderId: FOLDER_SCIENCE,
     tag: "Chemistry",
     title: "Organic Chemistry",
+    description: "Study of carbon-based compounds, reactions, and their applications in medicine and materials.",
     locked: true,
     mastery: 0,
     bloomLevel: "Remember",
@@ -156,6 +159,7 @@ const MOCK_DECKS: Deck[] = [
     folderId: FOLDER_SCIENCE,
     tag: "Anatomy",
     title: "Anatomy",
+    description: "Detailed exploration of human body systems, organs, and their functions.",
     locked: false,
     mastery: 95,
     bloomLevel: "Evaluate",
@@ -165,6 +169,7 @@ const MOCK_DECKS: Deck[] = [
     folderId: FOLDER_SCIENCE,
     tag: "Physics",
     title: "Physics 101",
+    description: "Fundamentals of mechanics, thermodynamics, and electromagnetism.",
     locked: false,
     mastery: 33,
     bloomLevel: "Apply",
@@ -174,6 +179,7 @@ const MOCK_DECKS: Deck[] = [
     folderId: FOLDER_LANGUAGES,
     tag: "Spanish",
     title: "Spanish Vocabulary",
+    description: "Essential Spanish words and phrases for everyday communication.",
     locked: false,
     mastery: 72,
     bloomLevel: "Apply",
@@ -183,6 +189,7 @@ const MOCK_DECKS: Deck[] = [
     folderId: FOLDER_HUMANITIES,
     tag: "History",
     title: "World History",
+    description: "Comprehensive overview of major historical events, civilizations, and cultural developments.",
     locked: false,
     mastery: 10,
     bloomLevel: "Remember",
@@ -276,6 +283,7 @@ function DecksPage() {
             folderId: d.folder_id ? Number(d.folder_id) : undefined,
             tag: typeof d.tag === 'string' ? d.tag : "",
             title: typeof d.title === 'string' ? d.title : "New Deck",
+            description: typeof d.description === 'string' ? d.description : undefined,
             locked: Boolean(d.locked),
             mastery: typeof d.mastery === 'number' ? d.mastery : 0,
             bloomLevel: typeof d.bloomLevel === 'string' ? d.bloomLevel : "",
@@ -736,6 +744,7 @@ function DecksPage() {
         key={d.id}
         title={d.title}
         folderName={folderName}
+        description={d.description}
         titleBelow={undefined}
         masteryPill={(() => {
           // Get mastery info
