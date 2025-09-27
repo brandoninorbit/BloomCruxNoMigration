@@ -49,6 +49,21 @@ export default function QuestEnterPage() {
           map[lvl] = (map[lvl] ?? 0) + 1;
         });
 
+        // Fetch recent attempts (for fallback unlock inference when per_bloom data missing)
+        let attemptScores: Record<string, number> = {};
+        try {
+          const atRes = await fetch(`/api/quest/${id}/attempts`, { cache: 'no-store' });
+          if (atRes.ok) {
+            const atJson = await atRes.json().catch(() => null) as { attempts?: Array<{ bloom_level: string; score_pct: number; mode?: string }> } | null;
+            (atJson?.attempts ?? []).forEach(a => {
+              if (a?.mode === 'quest') {
+                const cur = attemptScores[a.bloom_level];
+                if (typeof cur === 'undefined' || a.score_pct > cur) attemptScores[a.bloom_level] = a.score_pct;
+              }
+            });
+          }
+        } catch {}
+
         // Build levels
         const cap = DEFAULT_QUEST_SETTINGS.missionCap;
         const builtLevels = (BLOOM_LEVELS as DeckBloomLevel[]).map((lvl) => {
@@ -59,7 +74,11 @@ export default function QuestEnterPage() {
           const totalMissions = Math.ceil(totalCards / cap) || 0;
           const mastered = !!p.mastered;
           const updatedSinceLastRun = Number((fetchedPer?.[lvl] as (BP & { updatedSinceLastRun?: number }) | undefined)?.updatedSinceLastRun ?? 0);
-          return { level: lvl, totalCards, missionsCompleted, missionsPassed, totalMissions, mastered, unlocked: false, updatedSinceLastRun };
+          // Fallback: if missionsPassed missing (0) and we have an attempt score >= threshold, treat as passed for unlocking
+          const passThreshold = DEFAULT_QUEST_SETTINGS.passThreshold;
+          const inferredPassed = missionsPassed === 0 && (p.cleared !== true) && typeof attemptScores[lvl] === 'number' && attemptScores[lvl] >= passThreshold;
+          const effMissionsPassed = inferredPassed ? 1 : missionsPassed;
+          return { level: lvl, totalCards, missionsCompleted, missionsPassed: effMissionsPassed, totalMissions, mastered, unlocked: false, updatedSinceLastRun };
         });
 
         // Compute unlocking
