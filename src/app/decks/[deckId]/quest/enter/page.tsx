@@ -50,7 +50,7 @@ export default function QuestEnterPage() {
         });
 
         // Fetch recent attempts (for fallback unlock inference when per_bloom data missing)
-        let attemptScores: Record<string, number> = {};
+  const attemptScores: Record<string, number> = {};
         try {
           const atRes = await fetch(`/api/quest/${id}/attempts`, { cache: 'no-store' });
           if (atRes.ok) {
@@ -107,6 +107,20 @@ export default function QuestEnterPage() {
           builtLevels[i]!.unlocked = prevMastered || prevCleared || fallbackUnlock;
         }
 
+        // Debug console log for unlocking diagnostics
+        try {
+          // Only log in browser (avoid SSR noise) and strip large arrays
+          if (typeof window !== 'undefined') {
+            // Prepare a succinct snapshot
+            // eslint-disable-next-line no-console
+            console.log('[questUnlockDebug]', {
+              deckId: id,
+              attemptScores,
+              builtLevels: builtLevels.map(b => ({ level: b.level, missionsCompleted: b.missionsCompleted, missionsPassed: b.missionsPassed, totalMissions: b.totalMissions, mastered: b.mastered, unlocked: b.unlocked })),
+              perBloomKeys: Object.keys(fetchedPer || {}),
+            });
+          }
+        } catch {}
         setLevels(builtLevels);
         setUnlockWhy(why);
       } catch (error) {
