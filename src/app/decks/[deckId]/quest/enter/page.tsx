@@ -109,10 +109,7 @@ export default function QuestEnterPage() {
 
         // Debug console log for unlocking diagnostics
         try {
-          // Only log in browser (avoid SSR noise) and strip large arrays
           if (typeof window !== 'undefined') {
-            // Prepare a succinct snapshot
-            // eslint-disable-next-line no-console
             console.log('[questUnlockDebug]', {
               deckId: id,
               attemptScores,

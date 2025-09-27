@@ -19,8 +19,15 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ dec
   if (progressRow.error) return NextResponse.json({ error: progressRow.error.message }, { status: 500 });
   if (attemptsRes.error) return NextResponse.json({ error: attemptsRes.error.message }, { status: 500 });
 
-  const per = (progressRow.data?.per_bloom ?? {}) as Record<string, any>;
-  const attempts = (attemptsRes.data ?? []).filter(a => a.mode === 'quest');
+  type PerBloomMinimal = {
+    mastered?: boolean;
+    cleared?: boolean;
+    missionsPassed?: number;
+    [k: string]: unknown;
+  };
+  const per = (progressRow.data?.per_bloom ?? {}) as Record<string, PerBloomMinimal>;
+  type Attempt = { bloom_level: string; score_pct: number; mode?: string | null; ended_at: string };
+  const attempts: Attempt[] = (attemptsRes.data ?? []).filter((a: Attempt) => a.mode === 'quest');
   const passThreshold = 65;
 
   const reasoning: Array<{ level: string; prev?: string; unlocked: boolean; basis: string[] }> = [];
@@ -31,15 +38,15 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ dec
       continue;
     }
     const prev = BLOOM_LEVELS[i - 1]!;
-    const prevData = per[prev] || {};
+  const prevData: PerBloomMinimal = per[prev] || {};
     const basis: string[] = [];
     let unlocked = false;
     if (prevData.mastered) { unlocked = true; basis.push('prev.mastered'); }
     if (!unlocked && prevData.cleared) { unlocked = true; basis.push('prev.cleared'); }
     const missionsPassed = Number(prevData.missionsPassed ?? 0);
     if (!unlocked && missionsPassed > 0) { unlocked = true; basis.push('prev.missionsPassed>0'); }
-    const prevAttempts = attempts.filter(a => a.bloom_level === prev);
-    const best = prevAttempts.reduce((m, a) => (a.score_pct > (m?.score_pct ?? -1) ? a : m), null as any);
+  const prevAttempts = attempts.filter(a => a.bloom_level === prev);
+  const best = prevAttempts.reduce<Attempt | null>((m, a) => (a.score_pct > (m?.score_pct ?? -1) ? a : m), null);
     if (!unlocked && best && best.score_pct >= passThreshold) { unlocked = true; basis.push('bestAttempt>=65'); }
     reasoning.push({ level: lvl, prev, unlocked, basis });
   }
