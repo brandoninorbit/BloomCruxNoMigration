@@ -210,7 +210,7 @@ function explanationFrom(row: CsvRow): string | undefined {
 }
 
 // ---------- Per-type mapping with validation (returns errors instead of throwing) ----------
-type MapResult = { payload?: ImportPayload; errors: string[] };
+type MapResult = { payload?: ImportPayload; errors: string[]; warnings: string[] };
 
 function mapMCQ(row: CsvRow, idx: number, bloom: Bloom): MapResult {
   const errors: string[] = [];
@@ -226,13 +226,14 @@ function mapMCQ(row: CsvRow, idx: number, bloom: Bloom): MapResult {
   if (!C) errors.push(`Row ${idx}: missing C`);
   if (!D) errors.push(`Row ${idx}: missing D`);
   if (!ans) errors.push(`Row ${idx}: missing Answer`);
-  if (errors.length) return { errors };
+  if (errors.length) return { errors, warnings: [] };
   const options = { A: stripLabel(A!), B: stripLabel(B!), C: stripLabel(C!), D: stripLabel(D!) };
   const answerKey = letterToKey(ans!);
   if (!options[answerKey]) errors.push(`Row ${idx}: Answer points to empty option`);
-  if (errors.length) return { errors };
+  if (errors.length) return { errors, warnings: [] };
   return {
     errors,
+    warnings: [],
     payload: { type: 'mcq', question, bloom, explanation: explanationFrom(row), meta: { options, answer: answerKey } },
   };
 }
@@ -255,13 +256,14 @@ function mapTwoTier(row: CsvRow, idx: number, bloom: Bloom): MapResult {
   if (!RC) errors.push(`Row ${idx}: missing RC`);
   if (!RD) errors.push(`Row ${idx}: missing RD`);
   if (!RAnswer) errors.push(`Row ${idx}: missing RAnswer`);
-  if (errors.length) return { errors };
+  if (errors.length) return { errors, warnings: [] };
   const ropts = { A: stripLabel(RA!), B: stripLabel(RB!), C: stripLabel(RC!), D: stripLabel(RD!) };
   const rKey = letterToKey(RAnswer!);
   if (!ropts[rKey]) errors.push(`Row ${idx}: RAnswer points to empty RA/RB/RC/RD`);
-  if (errors.length) return { errors };
+  if (errors.length) return { errors, warnings: [] };
   return {
     errors: [],
+    warnings: [],
     payload: {
       type: 'twoTier',
   question: t1.payload!.question,
@@ -280,7 +282,7 @@ function detectMaxPlaceholder(prompt: string): number {
 
 function mapFill(row: CsvRow, idx: number, bloom: Bloom): MapResult {
   const question = questionFrom(row);
-  if (!question) return { errors: [`Row ${idx}: missing Prompt/Question/Title`] };
+  if (!question) return { errors: [`Row ${idx}: missing Prompt/Question/Title`], warnings: [] };
   const modeRaw = pick(row, 'Mode') || '';
   const mode: DeckFillMode = /drag/i.test(modeRaw)
     ? 'Drag & Drop'
@@ -293,6 +295,7 @@ function mapFill(row: CsvRow, idx: number, bloom: Bloom): MapResult {
   const answers: string[] = [];
   const alternates: string[][] = [];
   const errors: string[] = [];
+  const warnings: string[] = [];
   let multi = false;
   for (let n = 1; n <= 20; n++) {
     const a = pick(row, n === 1 ? 'Answer' : `Answer${n}`);
@@ -315,15 +318,24 @@ function mapFill(row: CsvRow, idx: number, bloom: Bloom): MapResult {
     }
   }
   if (answers.length === 0) errors.push(`Row ${idx}: missing Answer/Answer1`);
+  if (answers.length > 0 && maxInPrompt === 0) {
+    errors.push(`Row ${idx}: Fill in the Blank prompt must contain [[n]] placeholders`);
+  }
   if (multi && maxInPrompt < answers.length) {
     errors.push(`Row ${idx}: Prompt must include [[n]] placeholders up to [[${answers.length}]]`);
   }
-  if (errors.length) return { errors };
+  if (errors.length) return { errors, warnings };
 
   // Flags and options (no seeding)
   const caseSensitive = truthy(pick(row, 'CaseSensitive')) || undefined;
   const ignorePunct = truthy(pick(row, 'IgnorePunct')) || undefined;
   const options = splitPipes(pick(row, 'Options'));
+  if (options.length > 0 && mode === 'Free Text') {
+    warnings.push(`Row ${idx}: Word bank provided but mode is Free Text`);
+  }
+  if (options.length > 0 && answers.length === 0) {
+    warnings.push(`Row ${idx}: Word bank provided but no answers`);
+  }
   const perBlank: FillPerBlankOverrides = {};
   for (let n = 1; n <= answers.length; n++) {
     const bModeRaw = pick(row, `Blank${n}Mode`);
@@ -341,6 +353,7 @@ function mapFill(row: CsvRow, idx: number, bloom: Bloom): MapResult {
 
   return {
     errors: [],
+    warnings,
     payload: {
       type: 'fill',
       question,
@@ -367,8 +380,8 @@ function mapSorting(row: CsvRow, idx: number, bloom: Bloom): MapResult {
     }
     return { term: s.slice(0, idxColon).trim(), category: s.slice(idxColon + 1).trim() };
   });
-  if (errors.length) return { errors };
-  return { errors: [], payload: { type: 'sorting', question, bloom, explanation: explanationFrom(row), meta: { categories: cats, items } } };
+  if (errors.length) return { errors, warnings: [] };
+  return { errors: [], warnings: [], payload: { type: 'sorting', question, bloom, explanation: explanationFrom(row), meta: { categories: cats, items } } };
 }
 
 function mapShort(row: CsvRow, idx: number, bloom: Bloom): MapResult {
@@ -376,9 +389,10 @@ function mapShort(row: CsvRow, idx: number, bloom: Bloom): MapResult {
   const suggested = pick(row, 'SuggestedAnswer', 'Suggested', 'Answer');
   const errors: string[] = [];
   if (!question) errors.push(`Row ${idx}: missing Title/Question/Prompt/Scenario`);
-  if (errors.length) return { errors };
+  if (errors.length) return { errors, warnings: [] };
   return {
     errors: [],
+    warnings: [],
   payload: { type: 'short', question, bloom, explanation: explanationFrom(row), meta: { suggestedAnswer: suggested ?? '' } },
   };
 }
@@ -389,8 +403,8 @@ function mapSequencing(row: CsvRow, idx: number, bloom: Bloom): MapResult {
   const errors: string[] = [];
   if (!question) errors.push(`Row ${idx}: missing Title/Question/Prompt/Scenario`);
   if (!steps.length) errors.push(`Row ${idx}: Sequencing requires Steps or Items`);
-  if (errors.length) return { errors };
-  return { errors: [], payload: { type: 'sequencing', question, bloom, explanation: explanationFrom(row), meta: { steps } } };
+  if (errors.length) return { errors, warnings: [] };
+  return { errors: [], warnings: [], payload: { type: 'sequencing', question, bloom, explanation: explanationFrom(row), meta: { steps } } };
 }
 
 function mapCompare(row: CsvRow, idx: number, bloom: Bloom): MapResult {
@@ -412,8 +426,8 @@ function mapCompare(row: CsvRow, idx: number, bloom: Bloom): MapResult {
     const [feature, a, b] = parts;
     return { feature, a, b };
   });
-  if (errors.length) return { errors };
-  return { errors: [], payload: { type: 'compare', question, bloom, explanation: explanationFrom(row), meta: { itemA: itemA!, itemB: itemB!, points } } };
+  if (errors.length) return { errors, warnings: [] };
+  return { errors: [], warnings: [], payload: { type: 'compare', question, bloom, explanation: explanationFrom(row), meta: { itemA: itemA!, itemB: itemB!, points } } };
 }
 
 function mapCER(row: CsvRow, idx: number, bloom: Bloom): MapResult {
@@ -432,7 +446,7 @@ function mapCER(row: CsvRow, idx: number, bloom: Bloom): MapResult {
     const claim: CERPartFree = { sampleAnswer: pick(row, 'Claim') };
     const evidence: CERPartFree = { sampleAnswer: pick(row, 'Evidence') };
     const reasoning: CERPartFree = { sampleAnswer: pick(row, 'Reasoning') };
-    return { errors, payload: { type: 'cer', question, bloom, explanation: explanationFrom(row), meta: { mode, guidance, claim, evidence, reasoning } } };
+    return { errors, warnings: [], payload: { type: 'cer', question, bloom, explanation: explanationFrom(row), meta: { mode, guidance, claim, evidence, reasoning } } };
   }
   // Multiple Choice
   const parseMC = (prefix: 'Claim' | 'Evidence' | 'Reasoning') => {
@@ -450,9 +464,10 @@ function mapCER(row: CsvRow, idx: number, bloom: Bloom): MapResult {
   if (c.err) errors.push(`Row ${idx}: ${c.err}`);
   if (e.err) errors.push(`Row ${idx}: ${e.err}`);
   if (r.err) errors.push(`Row ${idx}: ${r.err}`);
-  if (errors.length) return { errors };
+  if (errors.length) return { errors, warnings: [] };
   return {
     errors: [],
+    warnings: [],
     payload: { type: 'cer', question, bloom, explanation: explanationFrom(row), meta: { mode, guidance, claim: c.part!, evidence: e.part!, reasoning: r.part! } },
   };
 }
@@ -542,8 +557,9 @@ export function parseCsv(csvText: string): {
         res = mapCER(row, index, bloom);
         break;
       default:
-        res = { errors: [`Row ${index}: unsupported CardType`] };
+        res = { errors: [`Row ${index}: unsupported CardType`], warnings: [] };
     }
+    warnings.push(...res.warnings);
     if (res.payload) okRows.push({ index, payload: res.payload });
     else badRows.push({ index, errors: res.errors });
   });
