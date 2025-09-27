@@ -90,20 +90,17 @@ export default function QuestEnterPage() {
             why.push({ level: builtLevels[i]!.level, prevMastered: false, prevCleared: true, prevAvg: 100, prevHasMission: true });
             continue;
           }
-          const prevLvl = builtLevels[i - 1]!.level;
-          const prev = fetchedPer?.[prevLvl] as (BP & { missionUnlocked?: boolean }) | undefined;
-          const prevMastered = !!prev?.mastered;
-          // Treat a passed mission (missionsPassed > 0) as cleared if cleared flag hasn't been persisted yet.
-          const inferredCleared = Number(prev?.missionsPassed ?? 0) > 0;
-          const prevCleared = !!prev?.cleared || inferredCleared || !!prev?.missionUnlocked;
-          // Consider a mission "attempted" if either missionsCompleted or missionsPassed incremented
-          const prevHasMission = (prev?.missionsCompleted ?? prev?.missionsPassed ?? 0) > 0;
-          const prevAvg = prev && (prev.accuracyCount ?? 0) > 0
-            ? Math.round(((prev.accuracySum ?? 0) / Math.max(1, prev.accuracyCount ?? 0)) * 100)
+          const prevBuilt = builtLevels[i - 1]!; // includes inferred missionsPassed
+          const prevLvl = prevBuilt.level;
+          const prevRaw = fetchedPer?.[prevLvl] as (BP & { missionUnlocked?: boolean }) | undefined;
+          const prevMastered = !!prevRaw?.mastered;
+          const prevHasMission = (prevRaw?.missionsCompleted ?? prevRaw?.missionsPassed ?? 0) > 0 || prevBuilt.missionsPassed > 0;
+          const avgFromRaw = prevRaw && (prevRaw.accuracyCount ?? 0) > 0
+            ? Math.round(((prevRaw.accuracySum ?? 0) / Math.max(1, prevRaw.accuracyCount ?? 0)) * 100)
             : 0;
-          // Fallback unlock via accuracy average even if cleared bit missing
-          const fallbackUnlock = !prevCleared && prevHasMission && prevAvg >= passThreshold;
-          why.push({ level: builtLevels[i]!.level, prevMastered, prevCleared, prevAvg, prevHasMission });
+          const prevCleared = !!prevRaw?.cleared || !!prevRaw?.missionUnlocked || prevBuilt.missionsPassed > 0;
+          const fallbackUnlock = !prevCleared && prevHasMission && avgFromRaw >= passThreshold;
+          why.push({ level: builtLevels[i]!.level, prevMastered, prevCleared, prevAvg: avgFromRaw, prevHasMission });
           builtLevels[i]!.unlocked = prevMastered || prevCleared || fallbackUnlock;
         }
 
