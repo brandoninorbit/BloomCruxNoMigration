@@ -127,7 +127,8 @@ function MissionPanel({ deckId, mode, unlockedParam, pctParam, levelParam }: { d
   const [summary, setSummary] = useState<MissionSummary | null>(null);
   const [accuracyOpen, setAccuracyOpen] = useState(false);
   const [answers, setAnswers] = useState<MissionAnswer[] | null>(null);
-  const [cardsById, setCardsById] = useState<Record<number, { id: number; front?: string; back?: string }>>({});
+  interface SimpleCardMeta { id: number; front?: string; back?: string; question?: string; prompt?: string; name?: string; explanation?: string; answer?: string; suggestedAnswer?: string }
+  const [cardsById, setCardsById] = useState<Record<number, SimpleCardMeta>>({});
   useEffect(() => { if (deckId !== null) void loadSummary(deckId, mode, { unlockedParam, pctParam, levelParam }).then(setSummary); }, [deckId, mode, unlockedParam, pctParam, levelParam]);
   const stats = useMemo(() => ([
     { k: "XP Earned", v: `+${Math.max(0, Math.round(summary?.xpEarned ?? 0))}` , c: "--hud-blue" },
@@ -192,7 +193,10 @@ function MissionPanel({ deckId, mode, unlockedParam, pctParam, levelParam }: { d
         try {
           const cards = await cardsRepo.listByDeck(deckId);
           const map: Record<number, { id: number; front?: string; back?: string }> = {};
-          for (const c of cards) map[c.id] = { id: c.id, front: (c as any).front, back: (c as any).back };
+          for (const c of cards) {
+            const anyCard = c as unknown as SimpleCardMeta;
+            map[c.id] = { id: c.id, front: anyCard.front, back: anyCard.back, question: anyCard.question, prompt: anyCard.prompt, name: anyCard.name, explanation: anyCard.explanation, answer: anyCard.answer, suggestedAnswer: anyCard.suggestedAnswer };
+          }
           setCardsById(map);
         } catch {}
       })();
@@ -219,7 +223,10 @@ function MissionPanel({ deckId, mode, unlockedParam, pctParam, levelParam }: { d
               const cards = await cardsRepo.listByDeck(deckId);
               if (ignore) return;
               const map: Record<number, { id: number; front?: string; back?: string }> = {};
-              for (const c of cards) map[c.id] = { id: c.id, front: (c as any).front, back: (c as any).back };
+              for (const c of cards) {
+                const anyCard = c as unknown as SimpleCardMeta;
+                map[c.id] = { id: c.id, front: anyCard.front, back: anyCard.back, question: anyCard.question, prompt: anyCard.prompt, name: anyCard.name, explanation: anyCard.explanation, answer: anyCard.answer, suggestedAnswer: anyCard.suggestedAnswer };
+              }
               setCardsById(map);
             } catch {}
           }
