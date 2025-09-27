@@ -72,11 +72,11 @@ export default function QuestEnterPage() {
             continue;
           }
           const prevLvl = builtLevels[i - 1]!.level;
-          const prev = fetchedPer?.[prevLvl] as BP | undefined;
+          const prev = fetchedPer?.[prevLvl] as (BP & { missionUnlocked?: boolean }) | undefined;
           const prevMastered = !!prev?.mastered;
           // Treat a passed mission (missionsPassed > 0) as cleared if cleared flag hasn't been persisted yet.
           const inferredCleared = Number(prev?.missionsPassed ?? 0) > 0;
-          const prevCleared = !!prev?.cleared || inferredCleared;
+          const prevCleared = !!prev?.cleared || inferredCleared || !!prev?.missionUnlocked;
           // Consider a mission "attempted" if either missionsCompleted or missionsPassed incremented
           const prevHasMission = (prev?.missionsCompleted ?? prev?.missionsPassed ?? 0) > 0;
           const prevAvg = prev && (prev.accuracyCount ?? 0) > 0
