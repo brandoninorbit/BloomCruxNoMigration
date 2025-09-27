@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useEffect, useMemo } from "react";
-import type { DeckCard } from "@/types/deck-cards";
+// Using a lightweight card meta shape; full DeckCard is not required for display.
+interface CardMetaLite { id: number; [k: string]: unknown }
 
 /**
  * AccuracyDetailsModal
@@ -16,7 +17,7 @@ export interface AccuracyDetailsModalProps {
   open: boolean;
   onClose: () => void;
   answers: MissionAnswer[] | null | undefined;
-  cardsById?: Record<number, DeckCard> | null;
+  cardsById?: Record<number, CardMetaLite> | null;
   accuracyPercent?: number; // overall mission accuracy (0-100)
   loading?: boolean;
 }

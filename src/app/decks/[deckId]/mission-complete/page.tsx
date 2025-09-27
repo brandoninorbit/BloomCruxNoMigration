@@ -1,4 +1,5 @@
-// @ts-nocheck
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// Temporary: rely on shimmed JSX types; remove this disable once React types resolve normally.
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -128,7 +129,7 @@ function MissionPanel({ deckId, mode, unlockedParam, pctParam, levelParam }: { d
   const [summary, setSummary] = useState<MissionSummary | null>(null);
   const [accuracyOpen, setAccuracyOpen] = useState(false);
   const [answers, setAnswers] = useState<MissionAnswer[] | null>(null);
-  interface SimpleCardMeta { id: number; front?: string; back?: string; question?: string; prompt?: string; name?: string; explanation?: string; answer?: string; suggestedAnswer?: string }
+  interface SimpleCardMeta { id: number; front?: string; back?: string; question?: string; prompt?: string; name?: string; explanation?: string; answer?: string; suggestedAnswer?: string; [k: string]: unknown }
   const [cardsById, setCardsById] = useState<Record<number, SimpleCardMeta>>({});
   useEffect(() => { if (deckId !== null) void loadSummary(deckId, mode, { unlockedParam, pctParam, levelParam }).then(setSummary); }, [deckId, mode, unlockedParam, pctParam, levelParam]);
   const stats = useMemo(() => ([
