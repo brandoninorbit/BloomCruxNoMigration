@@ -1,8 +1,7 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo } from "react";
 import type { DeckCard } from "@/types/deck-cards";
-import { BLOOM_LEVELS } from "@/types/card-catalog";
 
 /**
  * AccuracyDetailsModal
@@ -74,9 +73,18 @@ export const AccuracyDetailsModal: React.FC<AccuracyDetailsModalProps> = (props:
                 {weak.length > 0 && (
                   <ul className="space-y-1">
                     {weak.map((a: MissionAnswer) => {
-                      const card = cardsById?.[a.cardId] as any;
-                      const label = (card?.question || card?.front || card?.prompt || card?.name) ?? `Card #${a.cardId}`;
-                      const back = (card?.explanation || card?.back || card?.answer || card?.suggestedAnswer) as string | undefined;
+                      const meta: Partial<Record<string, unknown>> | undefined = cardsById?.[a.cardId];
+                      const suggested = meta && 'suggestedAnswer' in meta && typeof meta.suggestedAnswer === 'string' ? (meta.suggestedAnswer as string) : undefined;
+                      const label = (meta && typeof meta.question === 'string' && meta.question)
+                        || (meta && typeof meta.front === 'string' && meta.front)
+                        || (meta && typeof meta.prompt === 'string' && meta.prompt)
+                        || (meta && typeof meta.name === 'string' && meta.name)
+                        || `Card #${a.cardId}`;
+                      const back = (meta && typeof meta.explanation === 'string' && meta.explanation)
+                        || (meta && typeof meta.back === 'string' && meta.back)
+                        || (meta && typeof meta.answer === 'string' && meta.answer)
+                        || suggested
+                        || undefined;
                       return (
                         <li key={a.cardId} className="px-3 py-2 rounded-md bg-red-50 border border-red-100 flex items-start gap-2">
                           <span className="mt-0.5 inline-flex h-2 w-2 rounded-full bg-red-500" />
@@ -93,9 +101,18 @@ export const AccuracyDetailsModal: React.FC<AccuracyDetailsModalProps> = (props:
                 {strong.length > 0 && (
                   <ul className="space-y-1">
                     {strong.map((a: MissionAnswer) => {
-                      const card = cardsById?.[a.cardId] as any;
-                      const label = (card?.question || card?.front || card?.prompt || card?.name) ?? `Card #${a.cardId}`;
-                      const back = (card?.explanation || card?.back || card?.answer || card?.suggestedAnswer) as string | undefined;
+                      const meta: Partial<Record<string, unknown>> | undefined = cardsById?.[a.cardId];
+                      const suggested = meta && 'suggestedAnswer' in meta && typeof meta.suggestedAnswer === 'string' ? (meta.suggestedAnswer as string) : undefined;
+                      const label = (meta && typeof meta.question === 'string' && meta.question)
+                        || (meta && typeof meta.front === 'string' && meta.front)
+                        || (meta && typeof meta.prompt === 'string' && meta.prompt)
+                        || (meta && typeof meta.name === 'string' && meta.name)
+                        || `Card #${a.cardId}`;
+                      const back = (meta && typeof meta.explanation === 'string' && meta.explanation)
+                        || (meta && typeof meta.back === 'string' && meta.back)
+                        || (meta && typeof meta.answer === 'string' && meta.answer)
+                        || suggested
+                        || undefined;
                       return (
                         <li key={a.cardId} className="px-3 py-2 rounded-md bg-emerald-50 border border-emerald-100 flex items-start gap-2">
                           <span className="mt-0.5 inline-flex h-2 w-2 rounded-full bg-emerald-500" />
