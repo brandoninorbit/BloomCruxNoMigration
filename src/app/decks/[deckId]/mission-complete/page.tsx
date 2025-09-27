@@ -7,6 +7,8 @@ import AgentCard from "@/components/AgentCard";
 import { XP_MODEL } from "@/lib/xp";
 import { getSupabaseClient } from "@/lib/supabase/browserClient";
 import { BLOOM_LEVELS } from "@/types/card-catalog";
+import AccuracyDetailsModal, { type MissionAnswer } from "@/components/AccuracyDetailsModal";
+import * as cardsRepo from "@/lib/cardsRepo";
 import { getUnlocksNewBetween } from "@/lib/unlocks";
 import { DEFAULT_QUEST_SETTINGS } from "@/lib/quest/types";
 import type { DeckBloomLevel } from "@/types/deck-cards";
@@ -123,11 +125,14 @@ function LeftAgentCard({ deckId }: { deckId: number | null }) {
 
 function MissionPanel({ deckId, mode, unlockedParam, pctParam, levelParam }: { deckId: number | null; mode: string | null; unlockedParam?: string | null; pctParam?: string | null; levelParam?: string | null }) {
   const [summary, setSummary] = useState<MissionSummary | null>(null);
+  const [accuracyOpen, setAccuracyOpen] = useState(false);
+  const [answers, setAnswers] = useState<MissionAnswer[] | null>(null);
+  const [cardsById, setCardsById] = useState<Record<number, { id: number; front?: string; back?: string }>>({});
   useEffect(() => { if (deckId !== null) void loadSummary(deckId, mode, { unlockedParam, pctParam, levelParam }).then(setSummary); }, [deckId, mode, unlockedParam, pctParam, levelParam]);
   const stats = useMemo(() => ([
     { k: "XP Earned", v: `+${Math.max(0, Math.round(summary?.xpEarned ?? 0))}` , c: "--hud-blue" },
     { k: "Tokens", v: `+${Math.max(0, Math.round(summary?.tokensEarned ?? 0))}` , c: "--hud-yellow" },
-  { k: "Accuracy", v: `${formatPercent1(Number(summary?.accuracyPercent ?? 0))}`, c: "--hud-green" },
+  { k: "Accuracy", v: `${formatPercent1(Number(summary?.accuracyPercent ?? 0))}`, c: "--hud-green", interactive: true },
   { k: "Correct / Total", v: `${typeof summary?.correct === "number" ? Math.max(0, Math.round(summary.correct)) : "–"} / ${typeof summary?.total === "number" ? Math.max(0, Math.round(summary.total)) : (Number.isFinite(summary?.answered as number) ? Math.max(0, Math.round(summary!.answered)) : "–")}` , c: "--hud-purple" },
   ]), [summary]);
 
@@ -172,6 +177,57 @@ function MissionPanel({ deckId, mode, unlockedParam, pctParam, levelParam }: { d
       setTimeout(() => { try { document.body.removeChild(root); } catch {} }, 2400);
     } catch {}
   }, [leveledUp]);
+
+  // Load mission answers from localStorage quest state (last mission stored under quest:deckId). Fallback to xp event payload not implemented yet.
+  useEffect(() => {
+    if (deckId === null) return;
+    try {
+      const raw = localStorage.getItem(`quest:${deckId}`);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { mission?: { answered?: MissionAnswer[]; cardOrder?: number[]; bloomLevel?: string } };
+      const ans = Array.isArray(parsed?.mission?.answered) ? parsed.mission!.answered! : [];
+      setAnswers(ans);
+      // fetch cards for label display if not already
+      (async () => {
+        try {
+          const cards = await cardsRepo.listByDeck(deckId);
+          const map: Record<number, { id: number; front?: string; back?: string }> = {};
+          for (const c of cards) map[c.id] = { id: c.id, front: (c as any).front, back: (c as any).back };
+          setCardsById(map);
+        } catch {}
+      })();
+    } catch {}
+  }, [deckId]);
+
+  // When modal opens, attempt to fetch authoritative per-card answers from API if we don't have them yet or only have empty array.
+  useEffect(() => {
+    if (!accuracyOpen || deckId === null) return;
+    let ignore = false;
+    (async () => {
+      try {
+        // Only fetch if missing or empty (so we still show local answers immediately if present)
+        if (answers && answers.length > 0) return;
+        const res = await fetch(`/api/quest/${deckId}/attempts/last-answers`, { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (ignore) return;
+        if (data?.found && Array.isArray(data.answers)) {
+          setAnswers(data.answers as MissionAnswer[]);
+          // If we have cards but some missing, we can lazily refetch
+          if (Object.keys(cardsById).length === 0) {
+            try {
+              const cards = await cardsRepo.listByDeck(deckId);
+              if (ignore) return;
+              const map: Record<number, { id: number; front?: string; back?: string }> = {};
+              for (const c of cards) map[c.id] = { id: c.id, front: (c as any).front, back: (c as any).back };
+              setCardsById(map);
+            } catch {}
+          }
+        }
+      } catch {}
+    })();
+    return () => { ignore = true; };
+  }, [accuracyOpen, deckId, answers, cardsById]);
 
   return (
     <section className="lg:col-span-2 bg-[var(--secondary-color)]/90 backdrop-blur-sm rounded-xl p-6 md:p-8 shadow-sm border border-slate-200 relative h-full">
@@ -235,13 +291,31 @@ function MissionPanel({ deckId, mode, unlockedParam, pctParam, levelParam }: { d
         })() : null;
       })()}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        {stats.map(({ k, v, c }) => (
-          <div key={k} className="rounded-lg p-4 border text-center shadow-sm" style={{ backgroundColor: `color-mix(in srgb, var(${c}), white 90%)`, borderColor: `color-mix(in srgb, var(${c}), transparent 70%)` }}>
-            <p className="text-sm font-semibold" style={{ color: `var(${c})` }}>{k}</p>
-            <p className="text-2xl font-extrabold" style={{ color: `var(${c})` }}>{v}</p>
-          </div>
-        ))}
+        {stats.map(({ k, v, c, interactive }) => {
+          const clickable = !!interactive;
+          return (
+            <button
+              key={k}
+              type={clickable ? "button" : undefined as any}
+              onClick={clickable ? () => setAccuracyOpen(true) : undefined}
+              className={`rounded-lg p-4 border text-center shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--primary-color)] ${clickable ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
+              style={{ backgroundColor: `color-mix(in srgb, var(${c}), white 90%)`, borderColor: `color-mix(in srgb, var(${c}), transparent 70%)` }}
+              aria-label={clickable ? 'View accuracy details' : undefined}
+            >
+              <p className="text-sm font-semibold" style={{ color: `var(${c})` }}>{k}{clickable ? ' (details)' : ''}</p>
+              <p className="text-2xl font-extrabold" style={{ color: `var(${c})` }}>{v}</p>
+            </button>
+          );
+        })}
       </div>
+
+      <AccuracyDetailsModal
+        open={accuracyOpen}
+        onClose={() => setAccuracyOpen(false)}
+        answers={answers}
+        cardsById={cardsById}
+        accuracyPercent={summary?.accuracyPercent}
+      />
 
       <div className="flex flex-col sm:flex-row justify-center gap-4">
         {(() => {

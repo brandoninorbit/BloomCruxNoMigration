@@ -19,6 +19,7 @@ export async function recordMissionAttempt(params: {
   contentVersion?: number;
   mode?: 'quest' | 'remix' | 'drill' | 'study' | 'starred';
   breakdown?: Record<string, { scorePct: number; cardsSeen: number; cardsCorrect: number }>; // per-bloom summary
+  answers?: Array<{ cardId: number; correct: boolean | number }>; // optional raw per-card answers for persistence
 }): Promise<{ ok: true; attemptId?: number } | { ok: false; error: string }> {
   // Sanitize inputs and recompute aggregates if breakdown provided
   const MAX_ATTEMPTS_PER_MISSION = 500;
@@ -46,6 +47,12 @@ export async function recordMissionAttempt(params: {
   if (m === 'quest' || m === 'remix' || m === 'drill' || m === 'study') return m;
   return null;
   })();
+  const answersSanitized = Array.isArray(params.answers)
+    ? params.answers
+        .filter(a => a && typeof a.cardId === 'number')
+        .map(a => ({ cardId: Number(a.cardId), correct: (typeof a.correct === 'number' ? Math.max(0, Math.min(1, a.correct)) : (a.correct ? 1 : 0)) }))
+    : undefined;
+
   const basePayload: Record<string, unknown> = {
     user_id: params.userId,
     deck_id: params.deckId,
@@ -57,6 +64,7 @@ export async function recordMissionAttempt(params: {
     ended_at: params.endedAt ?? new Date().toISOString(),
     mode: modeSafe,
     breakdown: params.breakdown ? (params.breakdown as unknown as object) : null,
+    answers_json: answersSanitized ? JSON.stringify(answersSanitized) : null,
   } as const;
   const withContentVersion: Record<string, unknown> = (Number.isFinite(params.contentVersion as number))
     ? { ...basePayload, content_version: params.contentVersion as number }
@@ -91,7 +99,26 @@ export async function recordMissionAttempt(params: {
           .insert(p)
           .select("id")
           .maybeSingle();
-        if (!error) return { ok: true, attemptId: (data as { id: number } | null | undefined)?.id };
+        if (!error) {
+          const attemptId = (data as { id: number } | null | undefined)?.id;
+          // If we captured answers and have attempt id, insert detail rows (best-effort; ignore failures)
+          if (attemptId && answersSanitized && answersSanitized.length > 0) {
+            try {
+              const rows = answersSanitized.slice(0, 5000).map(ans => ({
+                attempt_id: attemptId,
+                user_id: params.userId,
+                deck_id: params.deckId,
+                card_id: ans.cardId,
+                bloom_level: params.bloomLevel,
+                correct_fraction: ans.correct,
+              }));
+              if (rows.length > 0) {
+                await client.from('user_deck_mission_card_answers').insert(rows);
+              }
+            } catch {}
+          }
+          return { ok: true, attemptId };
+        }
         lastErr = String(error?.message || "insert failed");
         // continue to next variant
       }

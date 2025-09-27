@@ -26,6 +26,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dec
   const modeLower = rawMode ? rawMode.toLowerCase() : undefined;
   const mode = (allowedModes as readonly string[]).includes(modeLower ?? '') ? (modeLower as typeof allowedModes[number]) : undefined;
   const breakdown = typeof body?.breakdown === 'object' && body.breakdown ? (body.breakdown as Record<string, { scorePct: number; cardsSeen: number; cardsCorrect: number }>) : undefined;
+  const answers = Array.isArray(body?.answers) ? (body.answers as Array<{ cardId: number; correct: boolean | number }>) : undefined;
   // If breakdown is provided, recompute aggregate counts for consistency and to avoid inflated values
   if (breakdown && Object.keys(breakdown).length > 0) {
     let aggSeen = 0;
@@ -73,6 +74,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dec
     contentVersion,
     mode,
     breakdown,
+  answers,
   });
   if (!attempt.ok) return NextResponse.json({ error: attempt.error }, { status: 500 });
 
