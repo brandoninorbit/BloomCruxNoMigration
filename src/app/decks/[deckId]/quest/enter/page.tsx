@@ -74,18 +74,17 @@ export default function QuestEnterPage() {
           const prevLvl = builtLevels[i - 1]!.level;
           const prev = fetchedPer?.[prevLvl] as BP | undefined;
           const prevMastered = !!prev?.mastered;
-          const prevCleared = !!prev?.cleared;
-          let fallbackUnlock = false;
-          if (!prevCleared) {
-            const prevAvg = prev && (prev.accuracyCount ?? 0) > 0 ? Math.round(((prev.accuracySum ?? 0) / Math.max(1, prev.accuracyCount ?? 0)) * 100) : 0;
-            const prevHasMission = (prev?.missionsCompleted ?? 0) > 0;
-            fallbackUnlock = prevHasMission && prevAvg >= passThreshold;
-            why.push({ level: builtLevels[i]!.level, prevMastered, prevCleared, prevAvg, prevHasMission });
-          } else {
-            const prevAvg = prev && (prev.accuracyCount ?? 0) > 0 ? Math.round(((prev.accuracySum ?? 0) / Math.max(1, prev.accuracyCount ?? 0)) * 100) : 0;
-            const prevHasMission = (prev?.missionsCompleted ?? 0) > 0;
-            why.push({ level: builtLevels[i]!.level, prevMastered, prevCleared, prevAvg, prevHasMission });
-          }
+          // Treat a passed mission (missionsPassed > 0) as cleared if cleared flag hasn't been persisted yet.
+          const inferredCleared = Number(prev?.missionsPassed ?? 0) > 0;
+          const prevCleared = !!prev?.cleared || inferredCleared;
+          // Consider a mission "attempted" if either missionsCompleted or missionsPassed incremented
+          const prevHasMission = (prev?.missionsCompleted ?? prev?.missionsPassed ?? 0) > 0;
+          const prevAvg = prev && (prev.accuracyCount ?? 0) > 0
+            ? Math.round(((prev.accuracySum ?? 0) / Math.max(1, prev.accuracyCount ?? 0)) * 100)
+            : 0;
+          // Fallback unlock via accuracy average even if cleared bit missing
+          const fallbackUnlock = !prevCleared && prevHasMission && prevAvg >= passThreshold;
+          why.push({ level: builtLevels[i]!.level, prevMastered, prevCleared, prevAvg, prevHasMission });
           builtLevels[i]!.unlocked = prevMastered || prevCleared || fallbackUnlock;
         }
 
