@@ -20,7 +20,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dec
   let cards_correct = Number(body?.cards_correct ?? 0);
   const started_at = typeof body?.started_at === "string" ? body.started_at : null;
   const ended_at = typeof body?.ended_at === "string" ? body.ended_at : null;
-  const mode = typeof body?.mode === 'string' ? (body.mode as 'quest'|'remix'|'drill'|'study'|'starred') : undefined;
+  // Normalize mode case-insensitively; older clients may send capitalized values like "Quest"
+  const allowedModes = ['quest','remix','drill','study','starred'] as const;
+  const rawMode = typeof body?.mode === 'string' ? body.mode : undefined;
+  const modeLower = rawMode ? rawMode.toLowerCase() : undefined;
+  const mode = (allowedModes as readonly string[]).includes(modeLower ?? '') ? (modeLower as typeof allowedModes[number]) : undefined;
   const breakdown = typeof body?.breakdown === 'object' && body.breakdown ? (body.breakdown as Record<string, { scorePct: number; cardsSeen: number; cardsCorrect: number }>) : undefined;
   // If breakdown is provided, recompute aggregate counts for consistency and to avoid inflated values
   if (breakdown && Object.keys(breakdown).length > 0) {
