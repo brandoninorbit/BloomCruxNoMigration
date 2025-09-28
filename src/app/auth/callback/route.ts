@@ -5,7 +5,7 @@ import { createServerClient } from "@supabase/ssr";
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const code = url.searchParams.get("code");
-  const redirect = url.searchParams.get("redirect") || "/dashboard";
+  const redirect = url.searchParams.get("redirect") || "/"; // unified home redirect
 
   if (code) {
     // Prepare the redirect response first so we can attach Set-Cookie to it

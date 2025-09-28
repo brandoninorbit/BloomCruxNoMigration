@@ -46,6 +46,8 @@ import DashboardProgressChart from "@/components/DashboardProgressChart";
 import Image from "next/image";
 import { XP_MODEL } from "@/lib/xp";
 import DeckProgressChart from "@/components/decks/DeckProgressChart";
+import AccuracyDetailsModal, { type MissionAnswer } from "@/components/AccuracyDetailsModal";
+import * as cardsRepo from "@/lib/cardsRepo";
 
 // Helper component for Progress Ring
 const ProgressRing = ({
@@ -206,6 +208,16 @@ export default function DashboardClient() {
     note?: string;
   } | null>(null);
   const [masteryRows, setMasteryRows] = useState<MasteryRow[]>([]);
+  // Per-attempt accuracy modal (new)
+  const [accuracyOpen, setAccuracyOpen] = useState(false);
+  const [accuracyLoading, setAccuracyLoading] = useState(false);
+  const [accuracyAnswers, setAccuracyAnswers] = useState<MissionAnswer[] | null>(null);
+  const [accuracyPct, setAccuracyPct] = useState<number | undefined>(undefined);
+  const [selectedAttempt, setSelectedAttempt] = useState<{ deckId: number; attemptId: number } | null>(null);
+  const [cardsByDeck, setCardsByDeck] = useState<Record<number, Record<number, { id: number; [k: string]: unknown }>>>({});
+  const [deckAttempts, setDeckAttempts] = useState<Record<number, Array<{ id: number; acc: number; ended_at: string; mode?: string | null }>>>({});
+  // Cache of answers per attempt to prevent refetching when user re-opens the modal for the same attempt
+  const [attemptAnswersCache, setAttemptAnswersCache] = useState<Record<number, Record<number, MissionAnswer[]>>>({});
 
   // Load real mastery when logged in and not showing example
   useEffect(() => {
@@ -233,7 +245,7 @@ export default function DashboardClient() {
             .order("updated_at", { ascending: false }),
           supabase
             .from("user_deck_mission_attempts")
-            .select("deck_id, bloom_level, score_pct, cards_seen, cards_correct, ended_at, mode, breakdown")
+            .select("id, deck_id, bloom_level, score_pct, cards_seen, cards_correct, ended_at, mode, breakdown")
             .gte("ended_at", cutoff)
             .order("ended_at", { ascending: false }),
         ]);
@@ -287,9 +299,10 @@ export default function DashboardClient() {
   setMasteryRows(masteryRowsLocal);
 
         // Aggregate attempts for the window: sum of cards_correct and cards_seen per deck/bloom
-        type AttemptRow = { deck_id: number; bloom_level: BloomLevel | string | null; score_pct: number | null; cards_seen: number | null; cards_correct: number | null; ended_at?: string | null; mode?: string | null; breakdown?: Record<string, { scorePct: number; cardsSeen: number; cardsCorrect: number }> | null };
+  type AttemptRow = { id?: number; deck_id: number; bloom_level: BloomLevel | string | null; score_pct: number | null; cards_seen: number | null; cards_correct: number | null; ended_at?: string | null; mode?: string | null; breakdown?: Record<string, { scorePct: number; cardsSeen: number; cardsCorrect: number }> | null };
         const attRows = (attempts ?? []) as AttemptRow[];
         const hist: Array<{ at: string; acc: number }> = [];
+  const perDeckAttempts: Record<number, Array<{ id: number; acc: number; ended_at: string; mode?: string | null }>> = {};
         for (const r of attRows) {
           const deckId = String(r.deck_id);
           const cur = byDeck[deckId] ? ((byDeck[deckId].bloomAttempts ?? {}) as NonNullable<DeckProgress["bloomAttempts"]>) : null;
@@ -319,10 +332,22 @@ export default function DashboardClient() {
           const acc = t > 0 ? c / t : 0;
           const atIso = r.ended_at ?? new Date().toISOString();
           hist.push({ at: atIso, acc });
+          const did = Number(r.deck_id);
+          if (!perDeckAttempts[did]) perDeckAttempts[did] = [];
+          if (typeof r.id === 'number') {
+            perDeckAttempts[did].push({ id: r.id, acc: Math.max(0, Math.min(100, Number(r.score_pct ?? (acc * 100)))), ended_at: atIso, mode: r.mode ?? null });
+          }
         }
         // sort ascending by time for chart
         hist.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
         setAttemptsHistory(hist);
+        // sort per-deck attempts (newest first) and keep at most 8 for UI brevity
+        const limited: typeof perDeckAttempts = {};
+        Object.keys(perDeckAttempts).forEach((k) => {
+          const arr = perDeckAttempts[Number(k)].sort((a,b)=> new Date(b.ended_at).getTime() - new Date(a.ended_at).getTime());
+          limited[Number(k)] = arr.slice(0, 8);
+        });
+        setDeckAttempts(limited);
 
         // Display mastery from persisted mastery table; attempts remain as history for the explainer.
   const masteryRowsForDecks = masteryRowsLocal as MasteryRow[];
@@ -423,6 +448,61 @@ export default function DashboardClient() {
   }, [progressToDisplay]);
 
   const [smaOpen, setSmaOpen] = useState(false);
+
+  // Open accuracy modal for a given attempt
+  const openAttemptAccuracy = async (deckId: number, attemptId: number, accPct: number) => {
+    setSelectedAttempt({ deckId, attemptId });
+    setAccuracyPct(accPct);
+    // If we already have answers cached for this attempt, reuse them immediately and skip fetch
+    const cached = attemptAnswersCache[deckId]?.[attemptId];
+    if (cached) {
+      setAccuracyAnswers(cached);
+      setAccuracyLoading(false);
+      setAccuracyOpen(true);
+      // Ensure cards metadata still loads if absent (async & fire-and-forget)
+      if (!cardsByDeck[deckId]) {
+        (async () => {
+          try {
+            const cards = await cardsRepo.listByDeck(deckId);
+            const map: Record<number, { id: number; [k: string]: unknown }> = {};
+            for (const c of cards) map[c.id] = { ...c } as any;
+            setCardsByDeck((prev) => ({ ...prev, [deckId]: map }));
+          } catch {}
+        })();
+      }
+      return;
+    }
+    setAccuracyAnswers(null);
+    setAccuracyLoading(true);
+    setAccuracyOpen(true);
+    try {
+      const res = await fetch(`/api/quest/${deckId}/attempts/last-answers?attemptId=${attemptId}`, { cache: 'no-store' });
+      let answers: MissionAnswer[] = [];
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.found && Array.isArray(data.answers)) {
+          answers = data.answers as MissionAnswer[];
+        }
+      }
+      setAccuracyAnswers(answers);
+      setAttemptAnswersCache(prev => ({
+        ...prev,
+        [deckId]: { ...(prev[deckId] || {}), [attemptId]: answers }
+      }));
+      if (!cardsByDeck[deckId]) {
+        try {
+          const cards = await cardsRepo.listByDeck(deckId);
+          const map: Record<number, { id: number; [k: string]: unknown }> = {};
+          for (const c of cards) map[c.id] = { ...c } as any;
+          setCardsByDeck((prev) => ({ ...prev, [deckId]: map }));
+        } catch {}
+      }
+    } catch {
+      setAccuracyAnswers([]);
+    } finally {
+      setAccuracyLoading(false);
+    }
+  };
 
   return (
     <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -799,6 +879,32 @@ export default function DashboardClient() {
                               <button onClick={() => setSmaOpen(true)} className="px-3 py-1 rounded-full bg-gray-100 text-sm text-gray-700 border border-gray-200 hover:bg-gray-200">What is SMA?</button>
                             </div>
                             <DeckProgressChart deckId={Number(deck.deckId)} height={150} />
+                            {/* Recent attempts list with clickable accuracy */}
+                            {(() => {
+                              const idNum = Number(deck.deckId);
+                              const attempts = deckAttempts[idNum] || [];
+                              if (attempts.length === 0) return null;
+                              return (
+                                <div className="mt-4">
+                                  <div className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-1">Recent Attempts</div>
+                                  <ul className="space-y-1">
+                                    {attempts.map((a, idx) => (
+                                      <li key={a.id}>
+                                        <button
+                                          type="button"
+                                          onClick={() => openAttemptAccuracy(idNum, a.id, a.acc)}
+                                          className="w-full text-left px-2 py-1 rounded-md border border-gray-200 bg-gray-50 hover:bg-white hover:shadow-sm transition text-xs flex items-center justify-between"
+                                          aria-label={`View attempt ${a.id} accuracy details`}
+                                        >
+                                          <span className="truncate">{new Date(a.ended_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · {a.mode ?? 'quest'}</span>
+                                          <span className="font-semibold text-blue-600">{formatPercent1(a.acc)}</span>
+                                        </button>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              );
+                            })()}
                           </div>
                           {/* Gentle banner if any non-Create mastery < 80 after updates (non-punitive) */}
                           {(() => {
@@ -1033,6 +1139,31 @@ export default function DashboardClient() {
                             <button onClick={() => setSmaOpen(true)} className="px-3 py-1 rounded-full bg-gray-100 text-sm text-gray-700 border border-gray-200 hover:bg-gray-200">What is SMA?</button>
                           </div>
                           <DeckProgressChart deckId={Number(deck.deckId)} height={150} />
+                          {(() => {
+                            const idNum = Number(deck.deckId);
+                            const attempts = deckAttempts[idNum] || [];
+                            if (attempts.length === 0) return null;
+                            return (
+                              <div className="mt-4">
+                                <div className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-1">Recent Attempts</div>
+                                <ul className="space-y-1">
+                                  {attempts.map((a) => (
+                                    <li key={a.id}>
+                                      <button
+                                        type="button"
+                                        onClick={() => openAttemptAccuracy(idNum, a.id, a.acc)}
+                                        className="w-full text-left px-2 py-1 rounded-md border border-gray-200 bg-gray-50 hover:bg-white hover:shadow-sm transition text-xs flex items-center justify-between"
+                                        aria-label={`View attempt ${a.id} accuracy details`}
+                                      >
+                                        <span className="truncate">{new Date(a.ended_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · {a.mode ?? 'quest'}</span>
+                                        <span className="font-semibold text-blue-600">{formatPercent1(a.acc)}</span>
+                                      </button>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            );
+                          })()}
                         </div>
                         {/* Gentle banner if any non-Create mastery < 80 after updates (non-punitive) */}
                         {(() => {
@@ -1172,6 +1303,14 @@ export default function DashboardClient() {
         </div>
       </DialogContent>
       </Dialog>
+      <AccuracyDetailsModal
+        open={accuracyOpen}
+        onClose={() => { setAccuracyOpen(false); setSelectedAttempt(null); }}
+        answers={accuracyAnswers}
+        cardsById={selectedAttempt ? cardsByDeck[selectedAttempt.deckId] : undefined}
+        accuracyPercent={typeof accuracyPct === 'number' ? accuracyPct : undefined}
+        loading={accuracyLoading}
+      />
       </div>
     </main>
   );

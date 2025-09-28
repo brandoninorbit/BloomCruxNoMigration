@@ -6,12 +6,12 @@ import { getSupabaseClient } from "@/lib/supabase/browserClient";
 function FinalizeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirect = searchParams?.get("redirect") || "/dashboard";
+  const redirect = searchParams?.get("redirect") || "/"; // unified home redirect
   // Use our unified client (autoRefreshToken: false) to read any existing client session
   const supabaseClient = getSupabaseClient();
 
   useEffect(() => {
-    async function syncIfNeeded() {
+  async function syncIfNeeded() {
       try {
         // 1) If the client already has a session, ensure server cookies are synced
         const { data: s } = await supabaseClient.auth.getSession();
@@ -41,7 +41,14 @@ function FinalizeContent() {
   // Touch the session endpoint again to ensure cookies are set for subsequent SSR fetches
   try { await fetch('/api/auth/session', { cache: 'no-store' }); } catch {}
       } finally {
-        // Always proceed to the target to avoid getting stuck on /auth/finalize
+        // Poll a few times (fast) for session to appear before redirect to avoid flash of mock decks
+        try {
+          for (let i = 0; i < 4; i++) {
+            const { data } = await supabaseClient.auth.getSession();
+            if (data.session?.user) break;
+            await new Promise(r => setTimeout(r, 120));
+          }
+        } catch {}
         const target = new URL(redirect, window.location.origin);
         target.searchParams.set("finalized", "1");
         router.replace(target.pathname + target.search);
