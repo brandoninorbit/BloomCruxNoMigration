@@ -72,8 +72,9 @@ export default function AgentCard({
   // Centralized next unlock
   const next = getNextUnlockForLevel(level);
 
-  const BASE_W = 319;
-  const BASE_H = 344;
+  const BASE_W = 319; // original design width
+  const BASE_H = 344; // original design height (ratio ~1.078)
+  const RATIO = BASE_H / BASE_W;
   const [scale, setScale] = useState(1);
   useEffect(() => {
     const calc = () => {
@@ -86,12 +87,13 @@ export default function AgentCard({
     return () => window.removeEventListener('resize', calc);
   }, []);
 
-  const w = Math.max(140, BASE_W * scale); // floor to avoid disappearing
-  const h = Math.max(150, BASE_H * scale);
+  // Maintain original aspect ratio strictly. Width scales with viewport, height derives.
+  const w = Math.max(200, BASE_W * scale); // single floor; tweakable
+  const h = Math.round(w * RATIO);
 
   return (
     <Card
-      style={{ width: w, height: h }}
+      style={{ width: w, height: h, aspectRatio: `${BASE_W} / ${BASE_H}` }}
       className={cn(
         'transition will-change-transform bg-white relative overflow-hidden',
         'hover:-translate-y-1 hover:scale-[1.01] hover:shadow-xl',
