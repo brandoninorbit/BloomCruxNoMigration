@@ -505,8 +505,8 @@ export default function DashboardClient() {
   };
 
   return (
-    <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="max-w-4xl mx-auto">
+    <main className="container mx-auto px-4 sm:px-8 xl:px-12 py-8 max-w-[1600px]">
+      <div className="max-w-6xl xl:max-w-[1400px] mx-auto">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-3xl font-extrabold text-gray-900">
             Commander Debriefing
@@ -733,9 +733,10 @@ export default function DashboardClient() {
                           </div>
                         </CollapsibleTrigger>
                         <CollapsibleContent>
-                          <div className="space-y-3 mt-4">
-                            {/* Render blooms in defined order (easiest -> hardest) */}
-                            {(BLOOM_LEVELS as BloomLevel[]).map((level) => {
+                          <div className="mt-4 flex flex-col md:flex-row gap-6">
+                            <div className="flex-1 md:w-1/2 space-y-3">
+                              {/* Render blooms in defined order (easiest -> hardest) */}
+                              {(BLOOM_LEVELS as BloomLevel[]).map((level) => {
                               const mastery = deck.bloomMastery[level];
                               if (!mastery) return null;
                               const percentage = mastery.total > 0 ? (mastery.correct / mastery.total) * 100 : 0;
@@ -853,45 +854,44 @@ export default function DashboardClient() {
                                   </button>
                                 </div>
                               );
-                            })}
-                          </div>
-                          {/* (Removed coverage and correctness secondary lines to declutter) */}
-                          {/* Per-deck 30-day trend chart: X=attempt index, Y=score_pct, blue raw + green SMA(5) */}
-                          <div className="mt-4 relative">
-                            <div className="absolute right-0 -top-8">
-                              <button onClick={() => setSmaOpen(true)} className="px-3 py-1 rounded-full bg-gray-100 text-sm text-gray-700 border border-gray-200 hover:bg-gray-200">What is SMA?</button>
+                              })}
                             </div>
-                            <DeckProgressChart
-                              deckId={Number(deck.deckId)}
-                              height={150}
-                              onPointClick={(attemptId, accPct) => openAttemptAccuracy(Number(deck.deckId), attemptId, accPct)}
-                            />
-                            {/* Recent attempts list with clickable accuracy */}
-                            {(() => {
-                              const idNum = Number(deck.deckId);
-                              const attempts = deckAttempts[idNum] || [];
-                              if (attempts.length === 0) return null;
-                              return (
-                                <div className="mt-4">
-                                  <div className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-1">Recent Attempts</div>
-                                  <ul className="space-y-1">
-                                    {attempts.map((a, idx) => (
-                                      <li key={a.id}>
-                                        <button
-                                          type="button"
-                                          onClick={() => openAttemptAccuracy(idNum, a.id, a.acc)}
-                                          className="w-full text-left px-2 py-1 rounded-md border border-gray-200 bg-gray-50 hover:bg-white hover:shadow-sm transition text-xs flex items-center justify-between"
-                                          aria-label={`View attempt ${a.id} accuracy details`}
-                                        >
-                                          <span className="truncate">{new Date(a.ended_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · {a.mode ?? 'quest'}</span>
-                                          <span className="font-semibold text-blue-600">{formatPercent1(a.acc)}</span>
-                                        </button>
-                                      </li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              );
-                            })()}
+                            {/* Right column: chart + attempts */}
+                            <div className="md:w-1/2 w-full relative">
+                              <div className="absolute right-0 -top-8 md:top-0 md:-right-0 md:translate-y-[-110%]">
+                                <button onClick={() => setSmaOpen(true)} className="px-3 py-1 rounded-full bg-gray-100 text-sm text-gray-700 border border-gray-200 hover:bg-gray-200">What is SMA?</button>
+                              </div>
+                              <DeckProgressChart
+                                deckId={Number(deck.deckId)}
+                                height={180}
+                                onPointClick={(attemptId, accPct) => openAttemptAccuracy(Number(deck.deckId), attemptId, accPct)}
+                              />
+                              {(() => {
+                                const idNum = Number(deck.deckId);
+                                const attempts = deckAttempts[idNum] || [];
+                                if (attempts.length === 0) return null;
+                                return (
+                                  <div className="mt-4">
+                                    <div className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-1">Recent Attempts</div>
+                                    <ul className="space-y-1">
+                                      {attempts.map((a) => (
+                                        <li key={a.id}>
+                                          <button
+                                            type="button"
+                                            onClick={() => openAttemptAccuracy(idNum, a.id, a.acc)}
+                                            className="w-full text-left px-2 py-1 rounded-md border border-gray-200 bg-gray-50 hover:bg-white hover:shadow-sm transition text-xs flex items-center justify-between"
+                                            aria-label={`View attempt ${a.id} accuracy details`}
+                                          >
+                                            <span className="truncate">{new Date(a.ended_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · {a.mode ?? 'quest'}</span>
+                                            <span className="font-semibold text-blue-600">{formatPercent1(a.acc)}</span>
+                                          </button>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                );
+                              })()}
+                            </div>
                           </div>
                           {/* Gentle banner if any non-Create mastery < 80 after updates (non-punitive) */}
                           {(() => {
@@ -980,9 +980,10 @@ export default function DashboardClient() {
                         </div>
                       </CollapsibleTrigger>
                       <CollapsibleContent>
-                        <div className="space-y-3 mt-4">
-                          {/* Render blooms in defined order (easiest -> hardest) */}
-                          {(BLOOM_LEVELS as BloomLevel[]).map((level) => {
+                        <div className="mt-4 flex flex-col md:flex-row gap-6">
+                          <div className="flex-1 md:w-1/2 space-y-3">
+                            {/* Render blooms in defined order (easiest -> hardest) */}
+                            {(BLOOM_LEVELS as BloomLevel[]).map((level) => {
                             const mastery = deck.bloomMastery[level];
                             if (!mastery) return null;
                             const percentage = mastery.total > 0 ? (mastery.correct / mastery.total) * 100 : 0;
@@ -1100,44 +1101,43 @@ export default function DashboardClient() {
                                 </button>
                               </div>
                             );
-                          })}
-                        </div>
-                        {/* (Removed coverage and correctness secondary lines to declutter) */}
-                        {/* Per-deck 30-day trend chart: X=attempt index, Y=score_pct, blue raw + green SMA(5) */}
-                        <div className="mt-4 relative">
-                          <div className="absolute right-0 -top-8">
-                            <button onClick={() => setSmaOpen(true)} className="px-3 py-1 rounded-full bg-gray-100 text-sm text-gray-700 border border-gray-200 hover:bg-gray-200">What is SMA?</button>
+                            })}
                           </div>
-                          <DeckProgressChart
-                            deckId={Number(deck.deckId)}
-                            height={150}
-                            onPointClick={(attemptId, accPct) => openAttemptAccuracy(Number(deck.deckId), attemptId, accPct)}
-                          />
-                          {(() => {
-                            const idNum = Number(deck.deckId);
-                            const attempts = deckAttempts[idNum] || [];
-                            if (attempts.length === 0) return null;
-                            return (
-                              <div className="mt-4">
-                                <div className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-1">Recent Attempts</div>
-                                <ul className="space-y-1">
-                                  {attempts.map((a) => (
-                                    <li key={a.id}>
-                                      <button
-                                        type="button"
-                                        onClick={() => openAttemptAccuracy(idNum, a.id, a.acc)}
-                                        className="w-full text-left px-2 py-1 rounded-md border border-gray-200 bg-gray-50 hover:bg-white hover:shadow-sm transition text-xs flex items-center justify-between"
-                                        aria-label={`View attempt ${a.id} accuracy details`}
-                                      >
-                                        <span className="truncate">{new Date(a.ended_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · {a.mode ?? 'quest'}</span>
-                                        <span className="font-semibold text-blue-600">{formatPercent1(a.acc)}</span>
-                                      </button>
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            );
-                          })()}
+                          <div className="md:w-1/2 w-full relative">
+                            <div className="absolute right-0 -top-8 md:top-0 md:translate-y-[-110%]">
+                              <button onClick={() => setSmaOpen(true)} className="px-3 py-1 rounded-full bg-gray-100 text-sm text-gray-700 border border-gray-200 hover:bg-gray-200">What is SMA?</button>
+                            </div>
+                            <DeckProgressChart
+                              deckId={Number(deck.deckId)}
+                              height={180}
+                              onPointClick={(attemptId, accPct) => openAttemptAccuracy(Number(deck.deckId), attemptId, accPct)}
+                            />
+                            {(() => {
+                              const idNum = Number(deck.deckId);
+                              const attempts = deckAttempts[idNum] || [];
+                              if (attempts.length === 0) return null;
+                              return (
+                                <div className="mt-4">
+                                  <div className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-1">Recent Attempts</div>
+                                  <ul className="space-y-1">
+                                    {attempts.map((a) => (
+                                      <li key={a.id}>
+                                        <button
+                                          type="button"
+                                          onClick={() => openAttemptAccuracy(idNum, a.id, a.acc)}
+                                          className="w-full text-left px-2 py-1 rounded-md border border-gray-200 bg-gray-50 hover:bg-white hover:shadow-sm transition text-xs flex items-center justify-between"
+                                          aria-label={`View attempt ${a.id} accuracy details`}
+                                        >
+                                          <span className="truncate">{new Date(a.ended_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · {a.mode ?? 'quest'}</span>
+                                          <span className="font-semibold text-blue-600">{formatPercent1(a.acc)}</span>
+                                        </button>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              );
+                            })()}
+                          </div>
                         </div>
                         {/* Gentle banner if any non-Create mastery < 80 after updates (non-punitive) */}
                         {(() => {

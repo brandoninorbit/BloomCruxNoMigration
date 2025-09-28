@@ -553,7 +553,7 @@ function DecksPage() {
 
   return (
     <GradientBackgroundWrapper>
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <div className="container mx-auto px-4 sm:px-8 xl:px-12 py-8 max-w-[1600px]">
       {/* accents */}
       <div
         aria-hidden
@@ -566,7 +566,7 @@ function DecksPage() {
 
       <div aria-hidden className="pointer-events-none fixed bottom-0 right-0 -z-10 w-1/2 h-1/2 bg-gradient-to-tr from-cyan-50 to-blue-100 opacity-20 blur-3xl" />
 
-  <div className="max-w-4xl mx-auto">
+  <div className="max-w-6xl xl:max-w-[1400px] mx-auto">
         <h2 className="text-3xl font-bold text-[#111418] mb-2">
           {(() => {
             if (!user) return "Welcome Back, Agent";

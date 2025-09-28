@@ -63,7 +63,7 @@ export default function DeckProgressChart({
         });
       }
       setData(arr);
-    } catch (err) {
+    } catch (err: unknown) {
       console.debug('DeckProgressChart fetch error', err);
     }
   }, [deckId]);
@@ -144,7 +144,7 @@ export default function DeckProgressChart({
                     style={!valid ? { display: 'none' } : undefined}
                     className={onPointClick && attemptId ? 'cursor-pointer' : ''}
                     aria-label={attemptId ? `Attempt ${attemptId} accuracy ${acc}%` : 'Attempt accuracy point'}
-                    onClick={(e) => {
+                    onClick={(e: React.MouseEvent<SVGCircleElement>) => {
                       if (!valid) return;
                       e.stopPropagation();
                       if (onPointClick && attemptId && typeof acc === 'number') {

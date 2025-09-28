@@ -106,7 +106,7 @@ beforeEach(() => {
 
 describe('Dashboard attempt interaction', () => {
   it('opens accuracy modal then reopens without refetching answers', async () => {
-    render(<DashboardClient />);
+  const { unmount } = render(<DashboardClient />);
     // Expand unorganized deck collapsible by clicking deck title
     const deckHeader = await screen.findByText('Bio Deck');
     fireEvent.click(deckHeader);
@@ -121,7 +121,16 @@ describe('Dashboard attempt interaction', () => {
     // Re-open
     fireEvent.click(attemptButton);
     await screen.findByText(/Mission Accuracy Details/i);
-    const answersCalls = fetchMock.mock.calls.filter(c => String(c[0]).includes('/api/quest/1/attempts/last-answers'));
-    expect(answersCalls.length).toBe(1);
+  const answersCalls = fetchMock.mock.calls.filter(c => String(c[0]).includes('/api/quest/1/attempts/last-answers'));
+  expect(answersCalls.length).toBe(1);
+  // Close modal at end to prevent lingering focus trap causing jsdom unhandled errors
+    const close2 = screen.getByRole('button', { name: /Close accuracy details/i });
+    fireEvent.click(close2);
+    // Wait for modal content to disappear (query returns null)
+    await waitFor(() => {
+      const stillOpen = screen.queryByText(/Mission Accuracy Details/i);
+      expect(stillOpen).toBeNull();
+    });
+    unmount();
   }, 8000);
 });
