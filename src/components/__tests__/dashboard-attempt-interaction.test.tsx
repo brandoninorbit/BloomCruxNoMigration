@@ -84,7 +84,6 @@ beforeAll(() => {
 });
 
 afterAll(() => {
-  // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
   delete (global as Record<string, unknown>).ResizeObserver;
 });
 

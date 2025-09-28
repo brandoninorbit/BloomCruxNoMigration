@@ -28,8 +28,16 @@ export function computeSMA(values: number[], k = 5): number[] {
   return out;
 }
 
-export default function DeckProgressChart({ deckId, height = 150 }: { deckId: number; height?: number }) {
-  const [data, setData] = useState<Array<{ idx: number; acc: number; ended_at: string }>>([]);
+export default function DeckProgressChart({
+  deckId,
+  height = 150,
+  onPointClick,
+}: {
+  deckId: number;
+  height?: number;
+  onPointClick?: (attemptId: number, accPct: number) => void;
+}) {
+  const [data, setData] = useState<Array<{ idx: number; acc: number; ended_at: string; id: number }>>([]);
 
   const fetchData = useCallback(async () => {
     try {
@@ -37,17 +45,22 @@ export default function DeckProgressChart({ deckId, height = 150 }: { deckId: nu
       const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
       const { data: rows } = await sb
         .from("user_deck_mission_attempts")
-        .select("score_pct, cards_seen, cards_correct, ended_at")
+        .select("id, score_pct, cards_seen, cards_correct, ended_at")
         .eq("deck_id", deckId)
         .gte("ended_at", cutoff)
         .order("ended_at", { ascending: true });
-      const arr: Array<{ idx: number; acc: number; ended_at: string }> = [];
-      type Row = { score_pct?: number | null; cards_seen?: number | null; cards_correct?: number | null; ended_at?: string | null };
+      const arr: Array<{ idx: number; acc: number; ended_at: string; id: number }> = [];
+      type Row = { id?: number | null; score_pct?: number | null; cards_seen?: number | null; cards_correct?: number | null; ended_at?: string | null };
       const rowsTyped = (rows ?? []) as Row[];
       for (let i = 0; i < rowsTyped.length; i++) {
         const r = rowsTyped[i];
         const acc = Number(r?.score_pct ?? 0);
-        arr.push({ idx: i + 1, acc: Math.max(0, Math.min(100, acc)), ended_at: r?.ended_at ?? new Date().toISOString() });
+        arr.push({
+          idx: i + 1,
+          acc: Math.max(0, Math.min(100, acc)),
+          ended_at: r?.ended_at ?? new Date().toISOString(),
+          id: Number(r?.id ?? 0),
+        });
       }
       setData(arr);
     } catch (err) {
@@ -80,7 +93,16 @@ export default function DeckProgressChart({ deckId, height = 150 }: { deckId: nu
 
   const sma = useMemo(() => computeSMA(data.map((d) => d.acc), 5), [data]);
 
-  const chartData = useMemo(() => data.map((d, i) => ({ name: String(d.idx), Accuracy: Number(d.acc.toFixed(1)), SMA: Number((sma[i] ?? 0).toFixed(1)) })), [data, sma]);
+  const chartData = useMemo(
+    () =>
+      data.map((d, i) => ({
+        name: String(d.idx),
+        Accuracy: Number(d.acc.toFixed(1)),
+        SMA: Number((sma[i] ?? 0).toFixed(1)),
+        attemptId: d.id,
+      })),
+    [data, sma]
+  );
 
   const h = Math.max(150, Number(height) || 150);
   return (
@@ -100,7 +122,39 @@ export default function DeckProgressChart({ deckId, height = 150 }: { deckId: nu
               labelFormatter={(label) => `Attempt ${label}`}
               wrapperStyle={{ pointerEvents: "none" }}
             />
-            <Line type="monotone" dataKey="Accuracy" stroke="#3b82f6" strokeWidth={2} dot={{ r: 2 }} />
+            <Line
+              type="monotone"
+              dataKey="Accuracy"
+              stroke="#3b82f6"
+              strokeWidth={2}
+              dot={(dotProps: { cx?: number; cy?: number; payload?: { attemptId?: number; Accuracy?: number } }) => {
+                const { cx, cy, payload } = dotProps;
+                const attemptId: number | undefined = payload?.attemptId;
+                const acc: number | undefined = payload?.Accuracy;
+                // Always return a circle element (even if coords invalid) to satisfy type; hide if invalid.
+                const valid = typeof cx === 'number' && typeof cy === 'number';
+                return (
+                  <circle
+                    cx={valid ? cx : 0}
+                    cy={valid ? cy : 0}
+                    r={3}
+                    fill="#3b82f6"
+                    stroke="#ffffff"
+                    strokeWidth={1}
+                    style={!valid ? { display: 'none' } : undefined}
+                    className={onPointClick && attemptId ? 'cursor-pointer' : ''}
+                    aria-label={attemptId ? `Attempt ${attemptId} accuracy ${acc}%` : 'Attempt accuracy point'}
+                    onClick={(e) => {
+                      if (!valid) return;
+                      e.stopPropagation();
+                      if (onPointClick && attemptId && typeof acc === 'number') {
+                        onPointClick(attemptId, acc);
+                      }
+                    }}
+                  />
+                );
+              }}
+            />
             <Line type="monotone" dataKey="SMA" stroke="#10b981" strokeWidth={2} dot={false} />
           </RLineChart>
         </ResponsiveContainer>

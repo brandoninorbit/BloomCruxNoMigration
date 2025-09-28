@@ -855,30 +855,17 @@ export default function DashboardClient() {
                               );
                             })}
                           </div>
-                          {/* Secondary lines: show Correctness counts and Coverage percent (from mastery) */}
-                          <div className="mt-2 space-y-1">
-                            {(BLOOM_LEVELS as BloomLevel[]).map((level) => {
-                              const agg = deck.bloomAttempts?.[level];
-                              const match = masteryRows.find((r) => String(r.deck_id) === deck.deckId && String(r.bloom_level) === level);
-                              const coverage = Math.max(0, Math.min(1, Number(match?.coverage ?? 0)));
-                              const coveragePct = coverage * 100;
-                              return (
-                                <div key={`ct-${level}`} className="flex items-center text-xs text-gray-600">
-                                  <span className="w-24" />
-                                  {agg && (
-                                    <span className="ml-0.5 mr-3">Correct: {Math.max(0, Math.round(agg.correct))} / Seen: {Math.max(0, Math.round(agg.total))}</span>
-                                  )}
-                                  <span className="ml-0.5">Coverage: {formatPercent1(coveragePct)}</span>
-                                </div>
-                              );
-                            })}
-                          </div>
+                          {/* (Removed coverage and correctness secondary lines to declutter) */}
                           {/* Per-deck 30-day trend chart: X=attempt index, Y=score_pct, blue raw + green SMA(5) */}
                           <div className="mt-4 relative">
                             <div className="absolute right-0 -top-8">
                               <button onClick={() => setSmaOpen(true)} className="px-3 py-1 rounded-full bg-gray-100 text-sm text-gray-700 border border-gray-200 hover:bg-gray-200">What is SMA?</button>
                             </div>
-                            <DeckProgressChart deckId={Number(deck.deckId)} height={150} />
+                            <DeckProgressChart
+                              deckId={Number(deck.deckId)}
+                              height={150}
+                              onPointClick={(attemptId, accPct) => openAttemptAccuracy(Number(deck.deckId), attemptId, accPct)}
+                            />
                             {/* Recent attempts list with clickable accuracy */}
                             {(() => {
                               const idNum = Number(deck.deckId);
@@ -1115,30 +1102,17 @@ export default function DashboardClient() {
                             );
                           })}
                         </div>
-                        {/* Secondary lines: show Correctness counts and Coverage percent (from mastery) */}
-                        <div className="mt-2 space-y-1">
-                          {(BLOOM_LEVELS as BloomLevel[]).map((level) => {
-                            const agg = deck.bloomAttempts?.[level];
-                            const match = masteryRows.find((r) => String(r.deck_id) === deck.deckId && String(r.bloom_level) === level);
-                            const coverage = Math.max(0, Math.min(1, Number(match?.coverage ?? 0)));
-                            const coveragePct = coverage * 100;
-                            return (
-                              <div key={`ct-${level}`} className="flex items-center text-xs text-gray-600">
-                                <span className="w-24" />
-                                {agg && (
-                                  <span className="ml-0.5 mr-3">Correct: {Math.max(0, Math.round(agg.correct))} / Seen: {Math.max(0, Math.round(agg.total))}</span>
-                                )}
-                                <span className="ml-0.5">Coverage: {formatPercent1(coveragePct)}</span>
-                              </div>
-                            );
-                          })}
-                        </div>
+                        {/* (Removed coverage and correctness secondary lines to declutter) */}
                         {/* Per-deck 30-day trend chart: X=attempt index, Y=score_pct, blue raw + green SMA(5) */}
                         <div className="mt-4 relative">
                           <div className="absolute right-0 -top-8">
                             <button onClick={() => setSmaOpen(true)} className="px-3 py-1 rounded-full bg-gray-100 text-sm text-gray-700 border border-gray-200 hover:bg-gray-200">What is SMA?</button>
                           </div>
-                          <DeckProgressChart deckId={Number(deck.deckId)} height={150} />
+                          <DeckProgressChart
+                            deckId={Number(deck.deckId)}
+                            height={150}
+                            onPointClick={(attemptId, accPct) => openAttemptAccuracy(Number(deck.deckId), attemptId, accPct)}
+                          />
                           {(() => {
                             const idNum = Number(deck.deckId);
                             const attempts = deckAttempts[idNum] || [];
@@ -1202,32 +1176,7 @@ export default function DashboardClient() {
           </div>
         </section>
 
-        <section>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold text-gray-900">
-              Progress Over Time
-            </h2>
-            {/* Fallback visible help button so "What is SMA?" is reachable on all layouts */}
-            <div className="ml-4">
-              <button
-                onClick={() => setSmaOpen(true)}
-                className="inline-flex items-center px-3 py-1 rounded-full bg-gray-100 text-sm text-gray-700 border border-gray-200 hover:bg-gray-200"
-                aria-label="What is SMA? Open help"
-              >
-                What is SMA?
-              </button>
-            </div>
-          </div>
-          <p className="text-gray-600 mb-6">
-            Your last 30 days of mission accuracy. Values are floats; axis labels show percent.
-          </p>
-          <div className="bg-white p-6 rounded-2xl shadow-sm h-64 relative">
-            <div className="absolute right-4 top-4">
-              <button onClick={() => setSmaOpen(true)} className="px-3 py-1 rounded-full bg-gray-100 text-sm text-gray-700 border border-gray-200 hover:bg-gray-200">What is SMA?</button>
-            </div>
-            <DashboardProgressChart showSMAOnly={true} />
-          </div>
-        </section>
+  {/* Removed legacy aggregate "Progress Over Time" chart to reclaim vertical space */}
         <Dialog open={smaOpen} onOpenChange={setSmaOpen}>
           <DialogContent className="bg-white">
             <DialogHeader>
