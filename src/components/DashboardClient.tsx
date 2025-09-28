@@ -766,11 +766,9 @@ export default function DashboardClient() {
                                       {/* Shimmering segment beyond 80% */}
                                       {percentage > 80 && (
                                         <div
-                                          className="h-2.5 rounded-full absolute top-0 transition-all duration-700 ease-out overflow-hidden"
+                                          className={`h-2.5 rounded-full absolute top-0 transition-all duration-700 ease-out overflow-hidden prestige-segment prestige-${level.toLowerCase()}`}
                                           style={{ left: '80%', width: `${Math.min(percentage - 80, 20)}%`, background: grad }}
-                                        >
-                                          <div className="shimmer-ribbon absolute inset-0" />
-                                        </div>
+                                        />
                                       )}
                                     </div>
 
@@ -1023,11 +1021,9 @@ export default function DashboardClient() {
                                     {/* Shimmering segment beyond 80% */}
                                     {percentage > 80 && (
                                       <div
-                                        className="h-2.5 rounded-full absolute top-0 transition-all duration-700 ease-out overflow-hidden"
+                                        className={`h-2.5 rounded-full absolute top-0 transition-all duration-700 ease-out overflow-hidden prestige-segment prestige-${level.toLowerCase()}`}
                                         style={{ left: '80%', width: `${Math.min(percentage - 80, 20)}%`, background: grad }}
-                                      >
-                                        <div className="shimmer-ribbon absolute inset-0" />
-                                      </div>
+                                      />
                                     )}
                                   </div>
 

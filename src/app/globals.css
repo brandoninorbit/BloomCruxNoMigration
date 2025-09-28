@@ -136,4 +136,44 @@
   /* Bloom mastery shimmer (applies to portion beyond 80%) */
   @keyframes shimmer-move {0%{background-position:0 0}100%{background-position:200% 0}}
   .shimmer-ribbon{background-image:linear-gradient(110deg,rgba(255,255,255,0) 0%,rgba(255,255,255,0.35) 40%,rgba(255,255,255,0) 55%,rgba(255,255,255,0.35) 70%,rgba(255,255,255,0) 85%);background-size:200% 100%;animation:shimmer-move 4s linear infinite;mix-blend-mode:plus-lighter;pointer-events:none;}
+  /* --- Bloom Prestige Zone Effects (beyond 80%) --- */
+  .prestige-segment{position:absolute;inset:0;}
+  /* Remember: keep subtle shimmer */
+  .prestige-remember::after{content:"";position:absolute;inset:0;@supports not (mix-blend-mode:plus-lighter){opacity:.6};background-image:linear-gradient(110deg,rgba(255,255,255,0) 0%,rgba(255,255,255,.4) 45%,rgba(255,255,255,0) 60%,rgba(255,255,255,.35) 75%,rgba(255,255,255,0) 90%);background-size:220% 100%;animation:shimmer-move 5s linear infinite;pointer-events:none;}
+  /* Understand: flowing gradient wave (approx sine) */
+  .prestige-understand::after{content:"";position:absolute;inset:0;background:
+    radial-gradient(circle at 10% 60%,rgba(255,255,255,.35) 0 18%,rgba(255,255,255,0) 55%),
+    radial-gradient(circle at 45% 40%,rgba(255,255,255,.25) 0 20%,rgba(255,255,255,0) 58%),
+    radial-gradient(circle at 80% 55%,rgba(255,255,255,.28) 0 18%,rgba(255,255,255,0) 55%);
+    background-size:180% 140%;background-position:0 0;animation:understand-wave 9s linear infinite;mix-blend-mode:overlay;filter:blur(.5px);}
+  @keyframes understand-wave{0%{background-position:0 0}100%{background-position:200% 0}}
+  /* Apply: glowing edge + ripple inward */
+  .prestige-apply{box-shadow:inset 0 0 0 1px rgba(255,255,255,.2);}
+  .prestige-apply::before{content:"";position:absolute;top:0;bottom:0;left:0;width:4px;background:linear-gradient(90deg,rgba(255,255,255,.9),rgba(255,255,255,0));filter:blur(1px);opacity:.9;animation:apply-glow 2.8s ease-in-out infinite;}
+  .prestige-apply::after{content:"";position:absolute;inset:0;background:radial-gradient(circle at 0 50%,rgba(255,255,255,.45),rgba(255,255,255,0) 70%);transform:scaleX(.85);transform-origin:left center;animation:apply-ripple 3.6s ease-out infinite;mix-blend-mode:screen;}
+  @keyframes apply-glow{0%,100%{opacity:.9}50%{opacity:.4}}
+  @keyframes apply-ripple{0%{transform:scaleX(.7);opacity:.55}70%{transform:scaleX(1.15);opacity:0}100%{transform:scaleX(1.15);opacity:0}}
+  /* Analyze: crackling lightning */
+  .prestige-analyze::before,.prestige-analyze::after{content:"";position:absolute;inset:0;pointer-events:none;}
+  .prestige-analyze::before{background:
+      repeating-linear-gradient(75deg,rgba(255,255,255,.9) 0 2px,rgba(255,255,255,0) 2px 7px),
+      repeating-linear-gradient(145deg,rgba(255,255,255,.6) 0 1px,rgba(255,255,255,0) 1px 5px);
+    background-size:220% 220%;mix-blend-mode:plus-lighter;animation:analyze-crackle 1.4s steps(6) infinite;opacity:.65;filter:blur(.6px) contrast(1.2);}
+  .prestige-analyze::after{background:radial-gradient(circle at 30% 40%,rgba(255,255,255,.35),rgba(255,255,255,0) 60%),radial-gradient(circle at 70% 65%,rgba(255,255,255,.25),rgba(255,255,255,0) 55%);background-size:200% 200%;animation:analyze-fade 3.2s linear infinite;mix-blend-mode:screen;}
+  @keyframes analyze-crackle{0%{background-position:0 0}100%{background-position:180% 160%}}
+  @keyframes analyze-fade{0%,100%{opacity:.9}50%{opacity:.35}}
+  /* Evaluate: heat shimmer */
+  .prestige-evaluate::before{content:"";position:absolute;inset:-4% 0 -4% 0;background:linear-gradient(90deg,rgba(255,255,255,.4),rgba(255,255,255,0) 35%,rgba(255,255,255,.35) 55%,rgba(255,255,255,0) 80%);background-size:160% 100%;animation:evaluate-heat 5.5s linear infinite;filter:blur(3px) saturate(1.15);mix-blend-mode:screen;}
+  @keyframes evaluate-heat{0%{background-position:0 0;transform:skewX(0deg)}50%{background-position:140% 0;transform:skewX(3deg)}100%{background-position:0 0;transform:skewX(0deg)}}
+  /* Create: aurora + sparks */
+  .prestige-create{background:linear-gradient(100deg,#1dd6ff,#20ffd5,#6a5cff,#20ffd5,#1dd6ff) !important;background-size:400% 200%;animation:create-aurora 10s ease-in-out infinite alternate;position:relative;}
+  .prestige-create::before{content:"";position:absolute;inset:0;background:radial-gradient(ellipse at 30% 50%,rgba(255,255,255,.35),rgba(255,255,255,0) 60%),radial-gradient(ellipse at 70% 40%,rgba(255,255,255,.28),rgba(255,255,255,0) 65%);mix-blend-mode:overlay;animation:create-veil 14s linear infinite;}
+  .prestige-create::after{content:"";position:absolute;inset:0;animation:create-sparks 6s linear infinite;background:transparent;mix-blend-mode:screen;}
+  @keyframes create-aurora{0%{background-position:0 0;filter:hue-rotate(0)}50%{background-position:80% 50%;filter:hue-rotate(25deg)}100%{background-position:0 100%;filter:hue-rotate(-15deg)}}
+  @keyframes create-veil{0%{opacity:.9;transform:translateX(0)}50%{opacity:.6;transform:translateX(-6%)}100%{opacity:.9;transform:translateX(0)}}
+  @keyframes create-sparks{0%,20%,100%{box-shadow:none}25%{box-shadow:0 0 4px 2px rgba(255,255,255,.9),12px -3px 6px 1px rgba(255,255,255,.55),-14px 2px 5px 1px rgba(255,255,255,.5)}55%{box-shadow:4px 2px 5px 1px rgba(255,255,255,.75),-10px -4px 6px 1px rgba(255,255,255,.45)}75%{box-shadow:0 0 5px 2px rgba(255,255,255,.85),16px 0 8px 2px rgba(255,255,255,.5)}}
+  /* Reduced motion: disable animations */
+  @media (prefers-reduced-motion:reduce){
+    .prestige-remember::after,.prestige-understand::after,.prestige-apply::before,.prestige-apply::after,.prestige-analyze::before,.prestige-analyze::after,.prestige-evaluate::before,.prestige-create,.prestige-create::before,.prestige-create::after{animation:none!important}
+  }
 }
