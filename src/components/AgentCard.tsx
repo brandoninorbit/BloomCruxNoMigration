@@ -1,5 +1,5 @@
 'use client';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 
 import Image from 'next/image';
 import { getNextUnlockForLevel } from '@/lib/unlocks';
@@ -72,14 +72,26 @@ export default function AgentCard({
   // Centralized next unlock
   const next = getNextUnlockForLevel(level);
 
+  const BASE_W = 319;
+  const BASE_H = 344;
+  const [scale, setScale] = useState(1);
+  useEffect(() => {
+    const calc = () => {
+      if (typeof window === 'undefined') return;
+      const s = Math.min(1, window.innerWidth / 1920);
+      setScale(Number(s.toFixed(4)));
+    };
+    calc();
+    window.addEventListener('resize', calc);
+    return () => window.removeEventListener('resize', calc);
+  }, []);
+
+  const w = Math.max(140, BASE_W * scale); // floor to avoid disappearing
+  const h = Math.max(150, BASE_H * scale);
+
   return (
     <Card
-      // Responsive scaling: base size 319x344 at >=1920px; scales down proportionally below.
-      // width = 319 * (vw/1920) (capped at 319) ; same for height.
-      style={{
-        width: 'clamp(160px, calc(319px * (100vw / 1920)), 319px)',
-        height: 'clamp(172px, calc(344px * (100vw / 1920)), 344px)',
-      }}
+      style={{ width: w, height: h }}
       className={cn(
         'transition will-change-transform bg-white relative overflow-hidden',
         'hover:-translate-y-1 hover:scale-[1.01] hover:shadow-xl',

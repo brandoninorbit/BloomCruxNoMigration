@@ -757,11 +757,21 @@ export default function DashboardClient() {
 
                                   <div className="relative w-full">
                                     {/* progress bar background */}
-                                    <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
+                                    <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden relative">
+                                      {/* Base segment up to 80% (flat, solid) */}
                                       <div
-                                        className="h-2.5 rounded-full"
-                                        style={{ width: `${percentage}%`, background: grad }}
+                                        className="h-2.5 rounded-full transition-all duration-700 ease-out"
+                                        style={{ width: `${Math.min(percentage, 80)}%`, background: grad }}
                                       />
+                                      {/* Shimmering segment beyond 80% */}
+                                      {percentage > 80 && (
+                                        <div
+                                          className="h-2.5 rounded-full absolute top-0 transition-all duration-700 ease-out overflow-hidden"
+                                          style={{ left: '80%', width: `${Math.min(percentage - 80, 20)}%`, background: grad }}
+                                        >
+                                          <div className="shimmer-ribbon absolute inset-0" />
+                                        </div>
+                                      )}
                                     </div>
 
                                     {/* GoldMedal badge sticks onto left/top of the progress bar when mastered */}
@@ -1004,11 +1014,21 @@ export default function DashboardClient() {
 
                                 <div className="relative w-full">
                                   {/* progress bar background */}
-                                  <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
+                                  <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden relative">
+                                    {/* Base segment up to 80% (flat, solid) */}
                                     <div
-                                      className="h-2.5 rounded-full"
-                                      style={{ width: `${percentage}%`, background: grad }}
+                                      className="h-2.5 rounded-full transition-all duration-700 ease-out"
+                                      style={{ width: `${Math.min(percentage, 80)}%`, background: grad }}
                                     />
+                                    {/* Shimmering segment beyond 80% */}
+                                    {percentage > 80 && (
+                                      <div
+                                        className="h-2.5 rounded-full absolute top-0 transition-all duration-700 ease-out overflow-hidden"
+                                        style={{ left: '80%', width: `${Math.min(percentage - 80, 20)}%`, background: grad }}
+                                      >
+                                        <div className="shimmer-ribbon absolute inset-0" />
+                                      </div>
+                                    )}
                                   </div>
 
                                   {/* GoldMedal badge sticks onto left/top of the progress bar when mastered */}

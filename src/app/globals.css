@@ -133,4 +133,7 @@
     50%{transform:scale(1.05);box-shadow:0 0 20px 8px var(--accent-color), inset 0 0 30px 12px color-mix(in srgb,var(--accent-color),#fff 20%)}
   }
   .animate-pulse-glow{animation:pulse-glow 3s infinite ease-in-out}
+  /* Bloom mastery shimmer (applies to portion beyond 80%) */
+  @keyframes shimmer-move {0%{background-position:0 0}100%{background-position:200% 0}}
+  .shimmer-ribbon{background-image:linear-gradient(110deg,rgba(255,255,255,0) 0%,rgba(255,255,255,0.35) 40%,rgba(255,255,255,0) 55%,rgba(255,255,255,0.35) 70%,rgba(255,255,255,0) 85%);background-size:200% 100%;animation:shimmer-move 4s linear infinite;mix-blend-mode:plus-lighter;pointer-events:none;}
 }
