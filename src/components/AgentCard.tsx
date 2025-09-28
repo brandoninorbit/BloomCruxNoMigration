@@ -74,8 +74,14 @@ export default function AgentCard({
 
   return (
     <Card
+      // Responsive scaling: base size 319x344 at >=1920px; scales down proportionally below.
+      // width = 319 * (vw/1920) (capped at 319) ; same for height.
+      style={{
+        width: 'clamp(160px, calc(319px * (100vw / 1920)), 319px)',
+        height: 'clamp(172px, calc(344px * (100vw / 1920)), 344px)',
+      }}
       className={cn(
-        'w-full aspect-[7/11] lg:max-w-sm transition will-change-transform bg-white relative overflow-hidden',
+        'transition will-change-transform bg-white relative overflow-hidden',
         'hover:-translate-y-1 hover:scale-[1.01] hover:shadow-xl',
         className
       )}
