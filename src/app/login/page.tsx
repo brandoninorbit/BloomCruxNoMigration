@@ -8,7 +8,7 @@ import EmailAuthForm from "@/components/auth/EmailAuthForm";
 
 function GoogleLoginButton() {
   const searchParams = useSearchParams();
-  const redirect = searchParams?.get("redirect") || "/dashboard";
+  const redirect = searchParams?.get("redirect") || "/"; // default to home
   const handleGoogleLogin = async () => {
   const qs = new URLSearchParams({ redirect }).toString();
   window.location.assign(`/api/auth/signin/google?${qs}`);
@@ -24,13 +24,14 @@ function GoogleLoginButton() {
 }
 
 function LoginContent() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirect = searchParams?.get("redirect") || "/dashboard";
+  const redirect = searchParams?.get("redirect") || "/"; // default to home
   useEffect(() => {
-    if (user) router.replace(redirect);
-  }, [user, redirect, router]);
+    if (!loading && user) router.replace(redirect);
+  }, [user, loading, redirect, router]);
+  if (loading) return null; // avoid flicker
   return (
     <>
       <h1 className="text-2xl font-bold mb-6 text-gray-900 text-center">Sign in</h1>

@@ -50,7 +50,16 @@ export async function recordMissionAttempt(params: {
   const answersSanitized = Array.isArray(params.answers)
     ? params.answers
         .filter(a => a && typeof a.cardId === 'number')
-        .map(a => ({ cardId: Number(a.cardId), correct: (typeof a.correct === 'number' ? Math.max(0, Math.min(1, a.correct)) : (a.correct ? 1 : 0)) }))
+        .map(a => {
+          const base = {
+            cardId: Number(a.cardId),
+            correct: (typeof a.correct === 'number' ? Math.max(0, Math.min(1, a.correct)) : (a.correct ? 1 : 0)),
+          } as { cardId: number; correct: number; response?: unknown };
+          if (a && typeof a === 'object' && 'response' in (a as Record<string, unknown>)) {
+            base.response = (a as Record<string, unknown>).response;
+          }
+          return base;
+        })
     : undefined;
 
   const basePayload: Record<string, unknown> = {

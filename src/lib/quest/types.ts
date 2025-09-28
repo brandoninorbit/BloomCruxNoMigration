@@ -19,7 +19,7 @@ export type MissionState = {
   sequenceSeed: string; // RNG seed or UUID to reshuffle deterministically
   cardOrder: number[]; // card IDs in order for this mission
   // `correct` may be boolean (legacy) or a fractional number 0..1 (preferred)
-  answered: Array<{ cardId: number; correct: boolean | number }>; // session answers
+  answered: Array<{ cardId: number; correct: boolean | number; response?: unknown }>; // session answers with optional raw user response
   correctCount: number;
   startedAt: string; // ISO
   resumedAt?: string; // ISO

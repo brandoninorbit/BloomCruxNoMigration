@@ -8,7 +8,7 @@ export default function EmailAuthForm() {
   const supabase = getSupabaseClient();
   const router = useRouter();
   const sp = useSearchParams();
-  const redirect = sp?.get("redirect") || "/decks";
+  const redirect = sp?.get("redirect") || "/"; // go home by default
 
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
@@ -21,9 +21,17 @@ export default function EmailAuthForm() {
   async function onSignIn() {
     setBusy(true); setErr(null); setMsg(null);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      setBusy(false);
+      setErr(error.message || "Sign in failed");
+      return;
+    }
+    try {
+      // Touch session endpoint so server cookies line up for immediate SSR usage
+      await fetch('/api/auth/session', { cache: 'no-store' });
+    } catch {}
     setBusy(false);
-    if (error) { setErr(error.message || "Sign in failed"); return; }
-    router.push(redirect);
+    router.replace(redirect);
   }
 
   async function onSignUp() {

@@ -11,7 +11,7 @@ interface CardMetaLite { id: number; [k: string]: unknown }
  * Strong points: cards answered correctly (correct >= 0.65 fraction OR boolean true)
  * Cards can appear in neither group if partially correct but < 0.65 (future nuance) – currently treated as weak if < 0.65.
  */
-export type MissionAnswer = { cardId: number; correct: boolean | number };
+export type MissionAnswer = { cardId: number; correct: boolean | number; response?: unknown };
 
 export interface AccuracyDetailsModalProps {
   open: boolean;
@@ -86,10 +86,30 @@ export const AccuracyDetailsModal: React.FC<AccuracyDetailsModalProps> = (props:
                         || (meta && typeof meta.answer === 'string' && meta.answer)
                         || suggested
                         || undefined;
+                      const userResp = a.response;
+                      let respText: string | undefined;
+                      if (userResp != null) {
+                        if (typeof userResp === 'string') respText = userResp;
+                        else if (Array.isArray(userResp)) respText = userResp.map(r => typeof r === 'string' ? r : JSON.stringify(r)).join(', ');
+                        else if (typeof userResp === 'object') {
+                          const o = userResp as Record<string, unknown>;
+                          if (typeof o.filledText === 'string') respText = o.filledText;
+                          else if (typeof o.choice === 'string') respText = o.choice;
+                          else if (Array.isArray(o.perBlank)) respText = (o.perBlank as unknown[]).map((x: unknown) => {
+                            if (x && typeof x === 'object' && 'text' in (x as Record<string, unknown>) && typeof (x as Record<string, unknown>).text === 'string') return (x as Record<string, string>).text;
+                            if (typeof x === 'string') return x;
+                            return '';
+                          }).filter(Boolean).join(' ');
+                          else respText = JSON.stringify(o);
+                        }
+                      }
                       return (
-                        <li key={a.cardId} className="px-3 py-2 rounded-md bg-red-50 border border-red-100 flex items-start gap-2">
-                          <span className="mt-0.5 inline-flex h-2 w-2 rounded-full bg-red-500" />
-                          <div className="flex-1"><p className="text-red-700 font-medium">{label}</p>{back ? <p className="text-xs text-red-700/70 line-clamp-2">{back}</p> : null}</div>
+                        <li key={a.cardId} className="px-3 py-2 rounded-md bg-red-50 border border-red-100 flex flex-col gap-1">
+                          <div className="flex items-start gap-2">
+                            <span className="mt-0.5 inline-flex h-2 w-2 rounded-full bg-red-500" />
+                            <div className="flex-1"><p className="text-red-700 font-medium">{label}</p>{back ? <p className="text-xs text-red-700/70 line-clamp-2">{back}</p> : null}</div>
+                          </div>
+                          {respText ? <div className="pl-4 text-[11px] text-red-700/80"><span className="font-semibold">Your answer:</span> {respText}</div> : null}
                         </li>
                       );
                     })}
@@ -114,10 +134,30 @@ export const AccuracyDetailsModal: React.FC<AccuracyDetailsModalProps> = (props:
                         || (meta && typeof meta.answer === 'string' && meta.answer)
                         || suggested
                         || undefined;
+                      const userResp = a.response;
+                      let respText: string | undefined;
+                      if (userResp != null) {
+                        if (typeof userResp === 'string') respText = userResp;
+                        else if (Array.isArray(userResp)) respText = userResp.map(r => typeof r === 'string' ? r : JSON.stringify(r)).join(', ');
+                        else if (typeof userResp === 'object') {
+                          const o = userResp as Record<string, unknown>;
+                          if (typeof o.filledText === 'string') respText = o.filledText;
+                          else if (typeof o.choice === 'string') respText = o.choice;
+                          else if (Array.isArray(o.perBlank)) respText = (o.perBlank as unknown[]).map((x: unknown) => {
+                            if (x && typeof x === 'object' && 'text' in (x as Record<string, unknown>) && typeof (x as Record<string, unknown>).text === 'string') return (x as Record<string, string>).text;
+                            if (typeof x === 'string') return x;
+                            return '';
+                          }).filter(Boolean).join(' ');
+                          else respText = JSON.stringify(o);
+                        }
+                      }
                       return (
-                        <li key={a.cardId} className="px-3 py-2 rounded-md bg-emerald-50 border border-emerald-100 flex items-start gap-2">
-                          <span className="mt-0.5 inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-                          <div className="flex-1"><p className="text-emerald-700 font-medium">{label}</p>{back ? <p className="text-xs text-emerald-700/70 line-clamp-2">{back}</p> : null}</div>
+                        <li key={a.cardId} className="px-3 py-2 rounded-md bg-emerald-50 border border-emerald-100 flex flex-col gap-1">
+                          <div className="flex items-start gap-2">
+                            <span className="mt-0.5 inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                            <div className="flex-1"><p className="text-emerald-700 font-medium">{label}</p>{back ? <p className="text-xs text-emerald-700/70 line-clamp-2">{back}</p> : null}</div>
+                          </div>
+                          {respText ? <div className="pl-4 text-[11px] text-emerald-700/80"><span className="font-semibold">Your answer:</span> {respText}</div> : null}
                         </li>
                       );
                     })}

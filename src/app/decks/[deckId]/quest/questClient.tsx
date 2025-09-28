@@ -141,7 +141,7 @@ export default function QuestClient({ deckId }: { deckId: number }) {
     pendingRef.current = null;
 
     // Update mission state with recorded answer
-    const next = recordAnswer(mission, p.cardId, p.correct);
+  const next = recordAnswer(mission, p.cardId, p.correct, p.payload);
     setMission(next);
     await upsertMission(deckId, next);
 
@@ -256,6 +256,8 @@ export default function QuestClient({ deckId }: { deckId: number }) {
             started_at: startedIsoRef.current ?? next.startedAt,
             ended_at: new Date().toISOString(),
             breakdown,
+            // Persist per-card answers so mission-complete accuracy modal can show details
+            answers: next.answered.map(a => ({ cardId: a.cardId, correct: a.correct, response: a.response })),
           }),
         });
         if (resp.ok) {

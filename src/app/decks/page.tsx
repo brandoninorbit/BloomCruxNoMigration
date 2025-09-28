@@ -462,20 +462,29 @@ function DecksPage() {
 
   // DELETE DECK
   const handleDeleteDeck = useCallback(async (deckId: number) => {
-    try {
-      if (user && !showMock) {
-        // Delete from Supabase, scoped to current user
-        await supabase.from("decks").delete().eq("id", deckId).eq("user_id", user.id);
-        // Refresh decks list
-        await fetchUserData();
+    // Optimistic removal for snappy UI
+    setDecks(prev => prev.filter(d => d.id === deckId ? false : true));
+    setMasteryByDeck(prev => {
+      const clone = { ...prev };
+      delete clone[deckId];
+      return clone;
+    });
+
+    if (user && !showMock) {
+      // Attempt remote delete; capture errors and revert if needed
+      const { error } = await supabase
+        .from("decks")
+        .delete()
+        .eq("id", deckId); // RLS scopes to user; no need for explicit user_id filter
+
+      if (error) {
+        console.warn('[handleDeleteDeck] supabase delete error:', error.message || error);
+        // Revert optimistic update on failure
+        try { await fetchUserData(); } catch {}
       } else {
-        // Mock path: remove locally
-        setDecks((prev) => prev.filter((d) => d.id !== deckId));
+        // Re-sync to pick up any server side cascades (e.g., triggers updating aggregates)
+        try { await fetchUserData(); } catch {}
       }
-    } catch (e) {
-      // No-op; could surface a toast in future; avoid server overlay error spam
-      const msg = (e && typeof e === 'object' && 'message' in e) ? (e as { message?: string }).message : String(e);
-      console.warn('delete deck error:', msg);
     }
   }, [user, showMock, fetchUserData]);
 

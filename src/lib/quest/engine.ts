@@ -214,16 +214,16 @@ export function toNumericCorrect(v: boolean | number): number {
   return v ? 1 : 0;
 }
 
-export function recordAnswer(state: MissionState, cardId: number, correct: boolean | number): MissionState {
+export function recordAnswer(state: MissionState, cardId: number, correct: boolean | number, response?: unknown): MissionState {
   if (!state.cardOrder.includes(cardId)) return state;
   const exists = state.answered.find((a) => a.cardId === cardId);
   if (exists) {
     // update existing
-    const updated = state.answered.map((a) => (a.cardId === cardId ? { cardId, correct } : a));
+    const updated = state.answered.map((a) => (a.cardId === cardId ? { cardId, correct, response: response ?? a.response } : a));
     const correctCount = updated.reduce((s, a) => s + toNumericCorrect(a.correct), 0);
     return { ...state, answered: updated, correctCount };
   }
-  const answered = [...state.answered, { cardId, correct }];
+  const answered = [...state.answered, { cardId, correct, response }];
   const correctCount = answered.reduce((s, a) => s + toNumericCorrect(a.correct), 0);
   return { ...state, answered, correctCount };
 }

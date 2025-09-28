@@ -253,17 +253,13 @@ export default function FillBlankStudy({ stem, blanks, wordBank, explanation, su
     const nextOverride: Record<string | number, "right" | "wrong" | undefined> = {};
     for (const b of blanks) {
       const val = placements[b.id] ?? "";
-      const isTyped = !wordBank || !wordBank.includes(val); // typed if not in word bank
-      if (isTyped && (b.mode === "free" || b.mode === "either")) {
-        // For typed blanks, don't auto-grade, set to undefined for self-check
-        nextPer[b.id] = true; // assume correct initially
-        nextOverride[b.id] = undefined;
-      } else {
-        // Auto-grade for bank or dragged items
-        const good = b.answers.some((a) => normalize(a, b.caseSensitive, b.ignorePunct) === normalize(val, b.caseSensitive, b.ignorePunct));
-        nextPer[b.id] = good;
-        nextOverride[b.id] = good ? "right" : "wrong";
-      }
+  // Always attempt auto-grade (even for free/either) so user gets immediate feedback.
+  // Trim/normalize based on per-blank settings.
+  const good = val.length > 0 && b.answers.some((a) => normalize(a, b.caseSensitive, b.ignorePunct) === normalize(val, b.caseSensitive, b.ignorePunct));
+  nextPer[b.id] = good;
+  // Leave override undefined so the "I was right / I was wrong" buttons appear for all blanks,
+  // allowing user to correct auto-grader (e.g., synonyms, alternate phrasing).
+  nextOverride[b.id] = undefined;
     }
     setPerBlank(nextPer);
     setPerBlankOverride(nextOverride);

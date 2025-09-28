@@ -26,7 +26,7 @@ export async function fetchMission(deckId: number, level: DeckBloomLevel, missio
   u.searchParams.set("missionIndex", String(missionIndex));
   const res = await fetch(u.toString(), { cache: "no-store" });
   if (!res.ok) return null;
-  const data: { found?: boolean; mission?: { sequence_seed: string; card_order: unknown[]; answered?: { cardId: number; correct: boolean | number }[]; started_at: string; resumed_at?: string | null } } = await res.json();
+  const data: { found?: boolean; mission?: { sequence_seed: string; card_order: unknown[]; answered?: { cardId: number; correct: boolean | number; response?: unknown }[]; started_at: string; resumed_at?: string | null } } = await res.json();
   if (!data?.found || !data.mission) return null;
   const m = data.mission;
   const state: MissionState = {
