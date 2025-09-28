@@ -11,11 +11,11 @@ describe('AccuracyDetailsModal', () => {
     { cardId: 2, correct: 0, response: 'NADH' },
     { cardId: 3, correct: 0.7, response: 'Glucose' },
   ];
-  const cards = {
+  const cards: Record<number, { id: number; question: string }> = {
     1: { id: 1, question: 'Energy currency?' },
     2: { id: 2, question: 'Electron carrier?' },
     3: { id: 3, question: 'Input to glycolysis?' }
-  } as any;
+  };
 
   it('renders weak and strong sections with counts', () => {
     render(<AccuracyDetailsModal open onClose={() => {}} answers={answers} cardsById={cards} accuracyPercent={66.6} />);

@@ -9,9 +9,10 @@ vi.mock('@/app/providers/AuthProvider', () => ({
 }));
 
 // Stub charts & heavy components
+interface StubProps { [k: string]: unknown }
 vi.mock('recharts', () => ({
-  ResponsiveContainer: (p: any) => <div data-testid="rc" {...p} />,
-  LineChart: (p: any) => <div data-testid="lc" {...p} />,
+  ResponsiveContainer: (p: StubProps) => <div data-testid="rc" {...p} />,
+  LineChart: (p: StubProps) => <div data-testid="lc" {...p} />,
   Line: () => null,
   XAxis: () => null,
   YAxis: () => null,
@@ -23,8 +24,17 @@ vi.mock('../DeckProgressChart', () => ({ __esModule: true, default: () => <div d
 vi.mock('@/components/decks/DeckProgressChart', () => ({ __esModule: true, default: () => <div data-testid="deck-chart" /> }));
 vi.mock('../DashboardProgressChart', () => ({ __esModule: true, default: () => <div data-testid="dashboard-chart" /> }));
 
-function chain(returnData: any) {
-  const api = {
+interface MockApi<T> {
+  data: T;
+  order: () => MockApi<T>;
+  gte: () => MockApi<T>;
+  eq: () => MockApi<T>;
+  in: () => MockApi<T>;
+  select: () => MockApi<T>;
+  limit: () => MockApi<T>;
+}
+function chain<T>(returnData: T) {
+  const api: MockApi<T> = {
     data: returnData,
     order: () => api,
     gte: () => api,
@@ -62,11 +72,11 @@ vi.mock('@/lib/cardsRepo', () => ({
 
 // Mock fetch for answers API
 const fetchMock = vi.fn();
-(global as any).fetch = fetchMock;
+(global as unknown as Record<string, unknown>).fetch = fetchMock;
 
 beforeAll(() => {
   // Minimal ResizeObserver stub
-  (global as any).ResizeObserver = class {
+  (global as unknown as Record<string, unknown>).ResizeObserver = class {
     observe() {}
     unobserve() {}
     disconnect() {}
@@ -74,7 +84,8 @@ beforeAll(() => {
 });
 
 afterAll(() => {
-  delete (global as any).ResizeObserver;
+  // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+  delete (global as Record<string, unknown>).ResizeObserver;
 });
 
 beforeEach(() => {

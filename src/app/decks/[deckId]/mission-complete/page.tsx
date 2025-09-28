@@ -1,5 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// Temporary: rely on shimmed JSX types; remove this disable once React types resolve normally.
+// Mission Complete page
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
