@@ -232,7 +232,7 @@
   .prestige-segment[data-bloom-level="Create"]{--prestige-color:var(--bloom-create);--sparkle-opacity:1.15}
   /* Sparkle dots only within prestige zone (80%+) now ONLY on ::before so ::after can shimmer */
   /* secondary confined dot layer — kept for variety but smaller opacity */
-  .prestige-segment::before{content:"";position:absolute;top:-10%;bottom:-10%;left:0;right:0;pointer-events:none;mix-blend-mode:plus-lighter;background-image:radial-gradient(circle var(--dot-size,3px) at 50% 50%, var(--sparkle-color) 100%, transparent 101%);background-size:var(--sparkle-gap-x, 36px) var(--sparkle-gap-y,18px);opacity:calc(var(--sparkle-opacity) * .9);filter:drop-shadow(0 0 2px var(--sparkle-color));animation:sparkle-fade 4.2s linear infinite}
+  .prestige-segment::before{content:"";position:absolute;top:-10%;bottom:-10%;left:0;right:0;pointer-events:none;mix-blend-mode:plus-lighter;background-image:radial-gradient(circle var(--dot-size,3px) at 50% 50%, var(--sparkle-color) 100%, transparent 101%);background-size:var(--sparkle-gap-x, 36px) var(--sparkle-gap-y,18px);opacity:calc(var(--sparkle-opacity) * .9);filter:drop-shadow(0 0 2px var(--sparkle-color));animation:sparkle-fade 14s linear infinite}
   @keyframes sparkle-fade{0%,100%{opacity:0}12%{opacity:var(--sparkle-opacity)}35%{opacity:calc(var(--sparkle-opacity)*.35)}55%{opacity:calc(var(--sparkle-opacity)*.9)}75%{opacity:calc(var(--sparkle-opacity)*.4)}}
   @media (prefers-reduced-motion:reduce){.prestige-segment::before{animation:none;opacity:.15}}
   /* Dedicated shimmer layer */
@@ -242,7 +242,7 @@
   .prestige-segment.prestige-apply::after,
   .prestige-segment.prestige-analyze::after,
   .prestige-segment.prestige-evaluate::after,
-  .prestige-segment.prestige-create::after{content:"";position:absolute;inset:0;pointer-events:none;mix-blend-mode:plus-lighter;animation:prestige-shimmer-move 3.6s linear infinite;background-image:
+  .prestige-segment.prestige-create::after{content:"";position:absolute;inset:0;pointer-events:none;mix-blend-mode:plus-lighter;animation:prestige-shimmer-move 12s linear infinite;background-image:
     linear-gradient(100deg,rgba(255,255,255,0) 0%,rgba(255,255,255,.55) 10%,rgba(255,255,255,0) 18%,rgba(255,255,255,.55) 26%,rgba(255,255,255,0) 34%,rgba(255,255,255,.55) 42%,rgba(255,255,255,0) 50%,rgba(255,255,255,.55) 58%,rgba(255,255,255,0) 66%,rgba(255,255,255,.55) 74%,rgba(255,255,255,0) 82%,rgba(255,255,255,.55) 90%,rgba(255,255,255,0) 100%);
     background-size:300% 100%;opacity:.85;}
   @media (prefers-reduced-motion:reduce){.prestige-segment.prestige-remember::after,.prestige-segment.prestige-understand::after,.prestige-segment.prestige-apply::after,.prestige-segment.prestige-analyze::after,.prestige-segment.prestige-evaluate::after,.prestige-segment.prestige-create::after{animation:none}}

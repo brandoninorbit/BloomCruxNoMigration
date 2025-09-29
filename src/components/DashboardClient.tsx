@@ -771,15 +771,16 @@ export default function DashboardClient() {
                                     <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden relative">
                                       {/* Base segment up to 80% (flat, solid) */}
                                       <div
-                                        className="h-2.5 rounded-full transition-all duration-700 ease-out"
-                                        style={{ width: `${Math.min(percentage, 80)}%`, background: grad }}
+                                        className="h-2.5 rounded-full"
+                                        style={{ transition: 'all 2500ms ease-out', width: `${Math.min(percentage, 80)}%`, background: grad }}
                                       />
                                       {/* Shimmering segment beyond 80% */}
                                       {percentage > 80 && (
                                                                               <div
-                                                                                className={`h-2.5 rounded-full absolute top-0 transition-all duration-700 ease-out prestige-segment prestige-${level.toLowerCase()}`}
+                                                                                className={`h-2.5 rounded-full absolute top-0 prestige-segment prestige-${level.toLowerCase()}`}
                                                                                 data-bloom-level={level}
                                                                                 style={{
+                                                                                  transition: 'all 2500ms ease-out',
                                                                                   left: '80%',
                                                                                   width: `${Math.min(percentage - 80, 20)}%`,
                                                                                   background: grad,
@@ -1040,15 +1041,16 @@ export default function DashboardClient() {
                                   <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden relative">
                                     {/* Base segment up to 80% (flat, solid) */}
                                     <div
-                                      className="h-2.5 rounded-full transition-all duration-700 ease-out"
-                                      style={{ width: `${Math.min(percentage, 80)}%`, background: grad }}
+                                      className="h-2.5 rounded-full"
+                                      style={{ transition: 'all 2500ms ease-out', width: `${Math.min(percentage, 80)}%`, background: grad }}
                                     />
                                     {/* Shimmering segment beyond 80% */}
                                     {percentage > 80 && (
                                                                           <div
-                                                                            className={`h-2.5 rounded-full absolute top-0 transition-all duration-700 ease-out prestige-segment prestige-${level.toLowerCase()}`}
+                                                                            className={`h-2.5 rounded-full absolute top-0 prestige-segment prestige-${level.toLowerCase()}`}
                                                                             data-bloom-level={level}
                                                                             style={{
+                                                                              transition: 'all 2500ms ease-out',
                                                                               left: '80%',
                                                                               width: `${Math.min(percentage - 80, 20)}%`,
                                                                               background: grad
