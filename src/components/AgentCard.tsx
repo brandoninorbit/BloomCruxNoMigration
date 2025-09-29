@@ -1,3 +1,4 @@
+
 'use client';
 import React, { useEffect, useState } from 'react';
 
@@ -60,6 +61,19 @@ export type AgentCardProps = {
   tokens: number;
   avatarUrl?: string | null;
   className?: string;
+  /**
+   * Visual density / sizing variant for internal content only (card outer size logic unchanged)
+   * - 'dashboard' => compact (smaller avatar & text)
+   * - 'default'   => current sizing (backwards compatible)
+   * - 'study'     => slightly larger emphasis variant
+   */
+  variant?: 'dashboard' | 'default' | 'study';
+  /**
+   * Multiplies the base width (and derived height) allowing contexts (e.g., mission-complete)
+   * to enlarge the physical card while keeping internal density variant-driven.
+   * 1 = default. Safe range ~0.8 - 1.6.
+   */
+  outerScale?: number;
 };
 
 export default function AgentCard({
@@ -68,6 +82,8 @@ export default function AgentCard({
   tokens,
   avatarUrl,
   className,
+  variant = 'default',
+  outerScale = 1,
 }: AgentCardProps) {
   // Centralized next unlock
   const next = getNextUnlockForLevel(level);
@@ -88,12 +104,59 @@ export default function AgentCard({
   }, []);
 
   // Maintain original aspect ratio strictly. Width scales with viewport, height derives.
-  const w = Math.max(200, BASE_W * scale);
+  const w = Math.max(200, BASE_W * outerScale * scale);
   const h = Math.round(w * RATIO);
+
+  // Variant-driven internal sizing classes (only typography / spacing / avatar & badge sizes)
+  const VARIANTS = {
+    dashboard: {
+      padding: 'p-3',
+      avatar: 'h-12 w-12',
+      title: 'text-lg',
+      subtitle: 'text-[11px]',
+      tokensText: 'text-base',
+      tokenIconWrapper: 'h-4 w-4',
+      badgeOuter: 'h-7 w-7',
+      badgeIcon: 'text-[14px]',
+      badgesGap: 'gap-2',
+      badgeLabel: 'text-[11px]',
+      unlockLabel: 'text-[10px]',
+      unlockValue: 'text-xs',
+    },
+    default: {
+      padding: 'p-4',
+      avatar: 'h-16 w-16',
+      title: 'text-xl',
+      subtitle: 'text-sm',
+      tokensText: 'text-lg',
+      tokenIconWrapper: 'h-5 w-5',
+      badgeOuter: 'h-8 w-8',
+      badgeIcon: 'text-base',
+      badgesGap: 'gap-3',
+      badgeLabel: 'text-sm',
+      unlockLabel: 'text-xs',
+      unlockValue: 'text-sm',
+    },
+    study: {
+      padding: 'p-5',
+      avatar: 'h-20 w-20',
+      title: 'text-2xl',
+      subtitle: 'text-base',
+      tokensText: 'text-xl',
+      tokenIconWrapper: 'h-6 w-6',
+      badgeOuter: 'h-10 w-10',
+      badgeIcon: 'text-lg',
+      badgesGap: 'gap-4',
+      badgeLabel: 'text-sm',
+      unlockLabel: 'text-sm',
+      unlockValue: 'text-base',
+    },
+  } as const;
+  const V = VARIANTS[variant] || VARIANTS.default;
 
   return (
     <Card
-  style={{ width: w, height: h, aspectRatio: '5 / 7' }}
+      style={{ width: w, height: h, aspectRatio: '5 / 7' }}
       className={cn(
         'transition will-change-transform bg-white relative overflow-hidden',
         'hover:-translate-y-1 hover:scale-[1.01] hover:shadow-xl',
@@ -105,11 +168,11 @@ export default function AgentCard({
         - Removed space-y-*
         - Added justify-around for dynamic vertical spacing
       */}
-      <div className="absolute inset-0 flex flex-col items-center justify-around p-4 text-center">
+  <div className={cn('absolute inset-0 flex flex-col items-center justify-around text-center', V.padding)}>
         
         {/* Header Section */}
         <div>
-          <div className="relative mx-auto mb-2 h-16 w-16 overflow-hidden rounded-full bg-gray-200">
+          <div className={cn('relative mx-auto mb-2 overflow-hidden rounded-full bg-gray-200', V.avatar)}>
             <Image
               src={avatarUrl || AVATAR_PLACEHOLDER}
               alt={`${displayName || 'Agent'} avatar`}
@@ -120,43 +183,43 @@ export default function AgentCard({
               priority
             />
           </div>
-          <CardTitle>{displayName}</CardTitle>
-          <CardDescription>Commander Level {level}</CardDescription>
+          <CardTitle className={V.title}>{displayName}</CardTitle>
+          <CardDescription className={V.subtitle}>Commander Level {level}</CardDescription>
         </div>
 
         {/* Tokens */}
-        <div className="flex items-center justify-center gap-2 text-lg">
-          <span className="h-5 w-5 text-blue-500"><TokenIcon /></span>
-          <span className="font-semibold">{tokens}</span>
+        <div className={cn('flex items-center justify-center gap-2', V.tokensText)}>
+          <span className={cn('text-blue-500 inline-flex items-center justify-center', V.tokenIconWrapper)}><TokenIcon /></span>
+          <span className={cn('font-semibold', V.tokensText)}>{tokens}</span>
         </div>
 
         {/* Badges Section */}
         <div className="space-y-2">
-          <div className="font-medium text-muted-foreground text-sm">Badges Unlocked</div>
-          <div className="flex items-center justify-center gap-3">
-            <div className="grid h-8 w-8 place-items-center rounded-full bg-gray-200">
-              <span className="h-5 w-5 text-yellow-500"><Trophy /></span>
+          <div className={cn('font-medium text-muted-foreground', V.badgeLabel)}>Badges Unlocked</div>
+          <div className={cn('flex items-center justify-center', V.badgesGap)}>
+            <div className={cn('grid place-items-center rounded-full bg-gray-200', V.badgeOuter)}>
+              <span className={cn('text-yellow-500', V.badgeIcon)}><Trophy /></span>
             </div>
-            <div className="grid h-8 w-8 place-items-center rounded-full bg-gray-200">
-              <span className="h-5 w-5 text-gray-400"><Star /></span>
+            <div className={cn('grid place-items-center rounded-full bg-gray-200', V.badgeOuter)}>
+              <span className={cn('text-gray-400', V.badgeIcon)}><Star /></span>
             </div>
-            <div className="grid h-8 w-8 place-items-center rounded-full bg-gray-200">
-              <span className="h-5 w-5 text-gray-400"><Star /></span>
+            <div className={cn('grid place-items-center rounded-full bg-gray-200', V.badgeOuter)}>
+              <span className={cn('text-gray-400', V.badgeIcon)}><Star /></span>
             </div>
           </div>
         </div>
 
         {/* Next Unlock Section (text-only, no icon) */}
         <div className="space-y-1">
-          <div className="text-xs text-muted-foreground">Next unlock</div>
-      {next ? (
-            <div className="text-sm">
-        <span className="font-semibold">Lvl {next.level}</span>
+          <div className={cn('text-muted-foreground', V.unlockLabel)}>Next unlock</div>
+          {next ? (
+            <div className={cn(V.unlockValue)}>
+              <span className="font-semibold">Lvl {next.level}</span>
               <span className="mx-1">—</span>
-        <span className="text-muted-foreground">{next.name}</span>
+              <span className="text-muted-foreground">{next.name}</span>
             </div>
           ) : (
-            <div className="text-sm text-muted-foreground">No upcoming unlocks</div>
+            <div className={cn('text-muted-foreground', V.unlockValue)}>No upcoming unlocks</div>
           )}
         </div>
       </div>

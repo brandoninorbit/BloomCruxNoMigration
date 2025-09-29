@@ -1,7 +1,9 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { MinimalUserLike } from "@/lib/userProfile";
 import AgentCard from "@/components/AgentCard";
+import { resolveUserDisplay } from "@/lib/userProfile";
 import { getSupabaseClient } from "@/lib/supabase/browserClient";
 
 type MissionSummary = {
@@ -17,10 +19,44 @@ type MissionSummary = {
 };
 
 export default function MissionCompleteDevPage() {
+  const fitRef = useRef<HTMLDivElement | null>(null);
+  const [scale, setScale] = useState(1);
+
+  useLayoutEffect(() => {
+    function recompute() {
+      const el = fitRef.current;
+      if (!el) return;
+      const viewportH = window.innerHeight;
+      // Allow a little breathing room
+      const margin = 24; // px
+      const contentH = el.scrollHeight; // natural (unscaled) height
+      const nextScale = Math.min(1, (viewportH - margin * 2) / contentH);
+      setScale(Number(nextScale.toFixed(3)));
+    }
+    recompute();
+    const r = () => recompute();
+    window.addEventListener('resize', r);
+    // Recompute after fonts/images settle
+    const t = setTimeout(recompute, 120);
+    return () => { window.removeEventListener('resize', r); clearTimeout(t); };
+  }, []);
+
   return (
-    <main className="min-h-screen bg-[var(--background-color)] text-[var(--text-primary)] antialiased">
-      <div className="relative flex flex-col items-center justify-center p-4 lg:p-8">
-        <div className="w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8 items-stretch">
+    <main className="min-h-screen bg-[var(--background-color)] text-[var(--text-primary)] antialiased overflow-hidden flex flex-col items-center">
+      <div className="relative w-full flex flex-col items-center p-4 lg:p-6" style={{ flex: '0 0 auto' }}>
+        <div
+          ref={fitRef}
+          style={{
+            // Primary: CSS zoom shrinks layout box so page height reduces
+            // Fallback: transform for browsers without zoom support
+            zoom: scale < 1 ? scale : 1,
+            transform: scale < 1 ? `scale(${scale})` : undefined,
+            transformOrigin: 'top center',
+            width: '100%',
+          }}
+          className="w-full max-w-5xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch"
+          data-scale={scale}
+        >
 
           {/* Left column: Real AgentCard, stretched to match panel height */}
           <LeftAgentCard />
@@ -42,15 +78,18 @@ function LeftAgentCard() {
 
   useEffect(() => { void loadSummary().then(setSummary); }, []);
 
+  const { firstName, avatarUrl } = resolveUserDisplay(summary?.user ? ({ email: undefined, user_metadata: { full_name: summary.user.name, avatar_url: summary.user.avatarUrl } } as MinimalUserLike) : null);
   return (
     <div className="lg:col-span-1 flex justify-center lg:justify-start">
-      <div className="w-full h-full">
+      <div className="w-full h-full flex items-stretch">
         <AgentCard
-          displayName={summary?.user?.name || "Agent"}
+          displayName={firstName}
           level={summary?.commanderLevel ?? 1}
           tokens={Math.max(0, Math.round(summary?.tokensEarned ?? 0))}
-          avatarUrl={summary?.user?.avatarUrl}
+          avatarUrl={avatarUrl}
           className="h-full aspect-auto lg:max-w-none"
+          variant="study"
+          outerScale={1.2}
         />
       </div>
     </div>
@@ -69,8 +108,8 @@ function MissionPanel() {
   ]), [summary]);
 
   return (
-    <section className="lg:col-span-2 bg-[var(--secondary-color)]/90 backdrop-blur-sm rounded-xl p-6 md:p-8 shadow-sm border border-slate-200 relative h-full">
-      <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+  <section className="lg:col-span-2 bg-[var(--secondary-color)]/90 backdrop-blur-sm rounded-xl p-5 md:p-6 shadow-sm border border-slate-200 relative h-full flex flex-col">
+  <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-3">
         <div>
           <p className="text-sm font-semibold uppercase tracking-widest text-[var(--primary-color)]">Mission Complete</p>
           <p className="text-[var(--text-secondary)] text-lg">
@@ -93,8 +132,8 @@ function MissionPanel() {
       </header>
 
       {/* Seal */}
-      <div className="flex flex-col items-center text-center my-8 md:my-12">
-        <div className="relative w-36 h-36 mb-6">
+      <div className="flex flex-col items-center text-center my-6 md:my-8">
+        <div className="relative w-28 h-28 mb-4 md:w-32 md:h-32 md:mb-5">
           <div className="absolute inset-0 rounded-full border-2 border-[var(--primary-color)]/20 animate-rotate-slow" />
           <div className="absolute inset-2 rounded-full border-2 border-[var(--primary-color)]/30 animate-rotate-slow" style={{ animationDirection: "reverse" }} />
           <div className="w-full h-full flex items-center justify-center animate-pulse-glow rounded-full bg-white">
@@ -103,12 +142,12 @@ function MissionPanel() {
             </svg>
           </div>
         </div>
-        <h1 className="text-4xl font-bold">Agent, mission accomplished.</h1>
-        <p className="text-lg text-[var(--text-secondary)] mt-2">You have successfully completed your objective.</p>
+  <h1 className="text-3xl md:text-[2rem] font-bold leading-tight">Agent, mission accomplished.</h1>
+  <p className="text-base md:text-lg text-[var(--text-secondary)] mt-2 max-w-md">You have successfully completed your objective.</p>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         {stats.map(({ k, v, c }) => (
           <div
             key={k}
@@ -125,7 +164,7 @@ function MissionPanel() {
       </div>
 
       {/* Actions */}
-      <div className="flex flex-col sm:flex-row justify-center gap-4">
+  <div className="mt-auto flex flex-col sm:flex-row justify-center gap-3 pt-2">
         <button
           type="button"
           className="bg-white text-[var(--text-primary)] border border-slate-300 rounded-lg px-6 py-3 font-semibold hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-300 focus:ring-offset-2 focus:ring-offset-white transition-all duration-200"

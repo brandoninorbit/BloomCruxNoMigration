@@ -135,6 +135,7 @@ export default function DeckProgressChart({
                 const valid = typeof cx === 'number' && typeof cy === 'number';
                 return (
                   <circle
+                    key={attemptId ?? `acc-dot-${payload?.attemptId}-${cx}-${cy}`}
                     cx={valid ? cx : 0}
                     cy={valid ? cy : 0}
                     r={3}

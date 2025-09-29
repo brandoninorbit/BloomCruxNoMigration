@@ -42,3 +42,4 @@ next-env.d.ts
 
 # piny
 /public/_piny
+.env*.local

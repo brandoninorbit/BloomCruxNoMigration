@@ -2,7 +2,10 @@
 @import "tailwindcss";
 /* tailwindcss-animate plugin can be added via Tailwind config; removed here to avoid editor parse errors */
 
-/* ---- shadcn-style tokens you already use ---- */
+/* ---- shadcn-style tokens you already use    background-image:
+    linear-gradient(90deg,color-mix(in srgb,var(--prestige-color),#fff 25%) 0%,color-mix(in srgb,var(--prestige-color),#000 15%) 100%),
+    linear-gradient(105deg,color-mix(in srgb,var(--prestige-color),#fff 90%) 0%,color-mix(in srgb,var(--prestige-color),#fff 98%) 20%,color-mix(in srgb,var(--prestige-color),#fff 92%) 38%,color-mix(in srgb,var(--prestige-color),#fff 96%) 56%,color-mix(in srgb,var(--prestige-color),#fff 91%) 72%,color-mix(in srgb,var(--prestige-color),#fff 94%) 86%,color-mix(in srgb,var(--prestige-color),#fff 90%) 100%),
+    linear-gradient(115deg,color-mix(in srgb,var(--prestige-color),#fff 85%) 0%,color-mix(in srgb,var(--prestige-color),#fff 95%) 45%,color-mix(in srgb,var(--prestige-color),#fff 85%) 70%);- */
 @layer base {
   :root {
     --background: 0 0% 98%;
@@ -181,3 +184,72 @@
     .prestige-remember::after,.prestige-understand::after,.prestige-apply::before,.prestige-apply::after,.prestige-analyze::before,.prestige-analyze::after,.prestige-evaluate::before,.prestige-create,.prestige-create::before,.prestige-create::after{animation:none!important}
   }
 }
+
+/* -------------------------------------------------- */
+/* Bloom Prestige Sparkle System (global additive)    */
+/* Each prestige bar wrapper can opt‑in by adding a   */
+/* data-bloom-level attribute (Remember..Create).     */
+/* Sparkles float slightly OUTSIDE the bar bounds.    */
+/* Higher levels = more particles + multi layers.     */
+/* -------------------------------------------------- */
+@layer utilities {
+  .bloom-prestige-wrapper{position:relative;} /* wrapper retained for layout but no longer renders sparkles */
+  /* Reintroduce masked sparkle layer here so it's not clipped by the bar background.
+     Mask shows only between 80% and the --prestige-fill value set inline by React. */
+  .bloom-prestige-wrapper::before{
+    content:"";position:absolute;left:-6%;right:-6%;top:-40%;bottom:-40%;pointer-events:none;z-index:3;
+    --dot: var(--dot-size, 3px); --gap-x: var(--gap-x, 36px); --gap-y: var(--gap-y, 18px);
+    /* tiled tiny squares (use very small circle to read as dot) */
+    background-image:
+      radial-gradient(circle var(--dot) at 50% 50%, var(--sparkle-color) 100%, transparent 101%);
+    background-size: var(--gap-x) var(--gap-y);
+    opacity:var(--sparkle-opacity, .32);mix-blend-mode:screen;filter:drop-shadow(0 0 2px color-mix(in srgb,var(--prestige-color,#fff),#fff 30%));
+    animation: wrapper-sparkle-flicker 5.2s linear infinite;
+    /* mask between 80% and provided fill (soft extend) — use smoother stop with small gradient ramp */
+    -webkit-mask-image: linear-gradient(to right, rgba(0,0,0,0) 0 calc(78%), rgba(0,0,0,.9) calc(80%), rgba(0,0,0,1) calc(80%) calc(var(--prestige-fill, 100%)), rgba(0,0,0,.0) calc(var(--prestige-fill, 100%)) 100%);
+    mask-image: linear-gradient(to right, rgba(0,0,0,0) 0 calc(78%), rgba(0,0,0,.9) calc(80%), rgba(0,0,0,1) calc(80%) calc(var(--prestige-fill, 100%)), rgba(0,0,0,.0) calc(var(--prestige-fill, 100%)) 100%);
+  }
+  /* Fallback sparkle element (used when mask-image isn't supported) */
+  .sparkle-fallback{position:absolute;left:0;top:-40%;bottom:-40%;pointer-events:none;z-index:3;mix-blend-mode:screen;overflow:hidden}
+  .sparkle-fallback .dots{position:absolute;left:0;top:0;bottom:0;right:0;background-image:radial-gradient(circle var(--dot-size,3px) at 50% 50%, var(--sparkle-color) 100%, transparent 101%);background-size:var(--sparkle-gap-x,36px) var(--sparkle-gap-y,18px);opacity:var(--sparkle-opacity,.32);filter:drop-shadow(0 0 2px color-mix(in srgb,var(--prestige-color,#fff),#fff 30%));animation:wrapper-sparkle-flicker 5.2s linear infinite}
+  /* Show fallback only when mask-image is NOT supported */
+  @supports not (mask-image: linear-gradient(black, black)){
+    .bloom-prestige-wrapper::before{display:none}
+    .sparkle-fallback{display:block}
+  }
+  /* Hide fallback when mask supported */
+  @supports (mask-image: linear-gradient(black, black)){
+    .sparkle-fallback{display:none}
+  }
+  @keyframes wrapper-sparkle-flicker{0%,100%{opacity:0}8%{opacity:calc(var(--sparkle-opacity, .32) * .15)}30%{opacity:calc(var(--sparkle-opacity, .32) * .7)}55%{opacity:calc(var(--sparkle-opacity, .32) * 1)}80%{opacity:calc(var(--sparkle-opacity, .32) * .4)}}
+  /* Prestige segment color variables */
+  .prestige-segment{--prestige-color:var(--bloom-remember);--sparkle-opacity:.45;--sparkle-color:color-mix(in srgb,var(--prestige-color),#fff 40%);} 
+  .prestige-segment[data-bloom-level="Remember"]{--prestige-color:var(--bloom-remember);--sparkle-opacity:.40}
+  .prestige-segment[data-bloom-level="Understand"]{--prestige-color:var(--bloom-understand);--sparkle-opacity:.55}
+  .prestige-segment[data-bloom-level="Apply"]{--prestige-color:var(--bloom-apply);--sparkle-opacity:.70}
+  .prestige-segment[data-bloom-level="Analyze"]{--prestige-color:var(--bloom-analyze);--sparkle-opacity:.85}
+  .prestige-segment[data-bloom-level="Evaluate"]{--prestige-color:var(--bloom-evaluate);--sparkle-opacity:1.0}
+  .prestige-segment[data-bloom-level="Create"]{--prestige-color:var(--bloom-create);--sparkle-opacity:1.15}
+  /* Sparkle dots only within prestige zone (80%+) now ONLY on ::before so ::after can shimmer */
+  /* secondary confined dot layer — kept for variety but smaller opacity */
+  .prestige-segment::before{content:"";position:absolute;top:-10%;bottom:-10%;left:0;right:0;pointer-events:none;mix-blend-mode:plus-lighter;background-image:radial-gradient(circle var(--dot-size,3px) at 50% 50%, var(--sparkle-color) 100%, transparent 101%);background-size:var(--sparkle-gap-x, 36px) var(--sparkle-gap-y,18px);opacity:calc(var(--sparkle-opacity) * .9);filter:drop-shadow(0 0 2px var(--sparkle-color));animation:sparkle-fade 4.2s linear infinite}
+  @keyframes sparkle-fade{0%,100%{opacity:0}12%{opacity:var(--sparkle-opacity)}35%{opacity:calc(var(--sparkle-opacity)*.35)}55%{opacity:calc(var(--sparkle-opacity)*.9)}75%{opacity:calc(var(--sparkle-opacity)*.4)}}
+  @media (prefers-reduced-motion:reduce){.prestige-segment::before{animation:none;opacity:.15}}
+  /* Dedicated shimmer layer */
+  @keyframes prestige-shimmer-move {0%{background-position:0 0,0 0}50%{background-position:130% 0,150% 0}100%{background-position:260% 0,300% 0}}
+  .prestige-segment.prestige-remember::after,
+  .prestige-segment.prestige-understand::after,
+  .prestige-segment.prestige-apply::after,
+  .prestige-segment.prestige-analyze::after,
+  .prestige-segment.prestige-evaluate::after,
+  .prestige-segment.prestige-create::after{content:"";position:absolute;inset:0;pointer-events:none;mix-blend-mode:plus-lighter;animation:prestige-shimmer-move 3.6s linear infinite;background-image:
+    linear-gradient(100deg,rgba(255,255,255,0) 0%,rgba(255,255,255,.55) 10%,rgba(255,255,255,0) 18%,rgba(255,255,255,.55) 26%,rgba(255,255,255,0) 34%,rgba(255,255,255,.55) 42%,rgba(255,255,255,0) 50%,rgba(255,255,255,.55) 58%,rgba(255,255,255,0) 66%,rgba(255,255,255,.55) 74%,rgba(255,255,255,0) 82%,rgba(255,255,255,.55) 90%,rgba(255,255,255,0) 100%);
+    background-size:300% 100%;opacity:.85;}
+  @media (prefers-reduced-motion:reduce){.prestige-segment.prestige-remember::after,.prestige-segment.prestige-understand::after,.prestige-segment.prestige-apply::after,.prestige-segment.prestige-analyze::after,.prestige-segment.prestige-evaluate::after,.prestige-segment.prestige-create::after{animation:none}}
+  /* Remove earlier forced unified shimmer gradients – using pure overlay streaks now */
+  .prestige-understand::before,.prestige-apply::before,.prestige-analyze::before,.prestige-evaluate::before,.prestige-create::before{display:none!important}
+}
+
+/* Final override to also apply shimmer to remember via shared selector (ensures consistency) */
+/* (prestige-remember::after shimmer handled via combined selector above) */
+

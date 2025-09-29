@@ -32,6 +32,7 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { cn, formatPercent1 } from "@/lib/utils";
 import AgentCard from "./AgentCard";
+import { resolveUserDisplay } from "@/lib/userProfile";
 import { getSupabaseClient } from "@/lib/supabase/browserClient";
 import {
   LineChart as RLineChart,
@@ -644,14 +645,14 @@ export default function DashboardClient() {
               </div>
               <div className="flex items-center justify-center">
                 {(() => {
-                  const first = (user?.user_metadata?.full_name || "").trim().split(/\s+/)[0] || (user?.email?.split("@")[0] ?? userSettings.displayName);
-                  const avatar = (user?.user_metadata?.avatar_url as string | undefined) || (user?.user_metadata?.picture as string | undefined) || undefined;
+          const { firstName: first, avatarUrl: avatar } = resolveUserDisplay(user);
                   return (
                     <AgentCard
                       displayName={first}
                       level={globalProgress.level}
                       tokens={userSettings.tokens}
-                      avatarUrl={avatar}
+            avatarUrl={avatar}
+                      variant="dashboard"
                     />
                   );
                 })()}
@@ -755,7 +756,17 @@ export default function DashboardClient() {
                                     {level}
                                   </span>
 
-                                  <div className="relative w-full">
+                                  <div
+                                    className="relative w-full bloom-prestige-wrapper"
+                                    data-bloom-level={level}
+                                    style={{
+                                      // prestige fill: clamp to [80%, percentage + 3%] for soft edge
+                                      ['--prestige-fill' as any]: `${Math.min(100, Math.max(80, percentage + 3))}%`,
+                                      // control dot spacing slightly by level difficulty (harder = denser -> smaller gap)
+                                      ['--gap-x' as any]: level === 'Remember' ? '40px' : level === 'Understand' ? '36px' : level === 'Apply' ? '32px' : level === 'Analyze' ? '28px' : level === 'Evaluate' ? '24px' : '20px',
+                                      ['--gap-y' as any]: '18px',
+                                    }}
+                                  >
                                     {/* progress bar background */}
                                     <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden relative">
                                       {/* Base segment up to 80% (flat, solid) */}
@@ -765,10 +776,24 @@ export default function DashboardClient() {
                                       />
                                       {/* Shimmering segment beyond 80% */}
                                       {percentage > 80 && (
-                                        <div
-                                          className={`h-2.5 rounded-full absolute top-0 transition-all duration-700 ease-out overflow-hidden prestige-segment prestige-${level.toLowerCase()}`}
-                                          style={{ left: '80%', width: `${Math.min(percentage - 80, 20)}%`, background: grad }}
-                                        />
+                                                                              <div
+                                                                                className={`h-2.5 rounded-full absolute top-0 transition-all duration-700 ease-out prestige-segment prestige-${level.toLowerCase()}`}
+                                                                                data-bloom-level={level}
+                                                                                style={{
+                                                                                  left: '80%',
+                                                                                  width: `${Math.min(percentage - 80, 20)}%`,
+                                                                                  background: grad,
+                                                                                  position: 'absolute'
+                                                                                }}
+                                                                              >
+                                                                                <div style={{position:'absolute',inset:0,background:grad}} aria-hidden />
+                                                                              </div>
+                                      )}
+                                      {/* Fallback sparkle element (visible when browser lacks mask support) */}
+                                      {percentage > 80 && (
+                                        <div className="sparkle-fallback" aria-hidden>
+                                          <div className="dots" />
+                                        </div>
                                       )}
                                     </div>
 
@@ -1010,7 +1035,7 @@ export default function DashboardClient() {
                                   {level}
                                 </span>
 
-                                <div className="relative w-full">
+                                <div className="relative w-full bloom-prestige-wrapper" data-bloom-level={level}>
                                   {/* progress bar background */}
                                   <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden relative">
                                     {/* Base segment up to 80% (flat, solid) */}
@@ -1020,10 +1045,17 @@ export default function DashboardClient() {
                                     />
                                     {/* Shimmering segment beyond 80% */}
                                     {percentage > 80 && (
-                                      <div
-                                        className={`h-2.5 rounded-full absolute top-0 transition-all duration-700 ease-out overflow-hidden prestige-segment prestige-${level.toLowerCase()}`}
-                                        style={{ left: '80%', width: `${Math.min(percentage - 80, 20)}%`, background: grad }}
-                                      />
+                                                                          <div
+                                                                            className={`h-2.5 rounded-full absolute top-0 transition-all duration-700 ease-out prestige-segment prestige-${level.toLowerCase()}`}
+                                                                            data-bloom-level={level}
+                                                                            style={{
+                                                                              left: '80%',
+                                                                              width: `${Math.min(percentage - 80, 20)}%`,
+                                                                              background: grad
+                                                                            }}
+                                                                          >
+                                                                            <div style={{position:'absolute',inset:0,background:grad}} aria-hidden />
+                                                                          </div>
                                     )}
                                   </div>
 

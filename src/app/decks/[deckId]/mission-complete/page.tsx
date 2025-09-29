@@ -1,11 +1,13 @@
 // Mission Complete page
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef, useLayoutEffect } from "react";
 import { playLevelUpSound } from "@/lib/audio";
 import { formatPercent1 } from "@/lib/utils";
 import { useParams, useSearchParams } from "next/navigation";
 import AgentCard from "@/components/AgentCard";
+import { resolveUserDisplay } from "@/lib/userProfile";
+import type { MinimalUserLike } from "@/lib/userProfile";
 import { XP_MODEL } from "@/lib/xp";
 import { getSupabaseClient } from "@/lib/supabase/browserClient";
 import { BLOOM_LEVELS } from "@/types/card-catalog";
@@ -43,10 +45,39 @@ export default function MissionCompleteProdPage() {
   const pct = sp?.get("pct");
   const level = sp?.get("level");
 
+  const fitRef = useRef<HTMLDivElement | null>(null);
+  const [scale, setScale] = useState(1);
+  useLayoutEffect(() => {
+    function recompute() {
+      const el = fitRef.current;
+      if (!el) return;
+      const viewportH = window.innerHeight;
+      const margin = 24;
+      const contentH = el.scrollHeight;
+      const nextScale = Math.min(1, (viewportH - margin * 2) / contentH);
+      setScale(Number(nextScale.toFixed(3)));
+    }
+    recompute();
+    const r = () => recompute();
+    window.addEventListener('resize', r);
+    const t = setTimeout(recompute, 120);
+    return () => { window.removeEventListener('resize', r); clearTimeout(t); };
+  }, []);
+
   return (
-    <main className="min-h-screen bg-[var(--background-color)] text-[var(--text-primary)] antialiased">
-      <div className="relative flex flex-col items-center justify-center p-4 lg:p-8">
-        <div className="w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8 items-stretch">
+    <main className="min-h-screen bg-[var(--background-color)] text-[var(--text-primary)] antialiased overflow-hidden flex flex-col items-center">
+      <div className="relative w-full flex flex-col items-center p-4 lg:p-6" style={{ flex: '0 0 auto' }}>
+        <div
+          ref={fitRef}
+          style={{
+            zoom: scale < 1 ? scale : 1,
+            transform: scale < 1 ? `scale(${scale})` : undefined,
+            transformOrigin: 'top center',
+            width: '100%',
+          }}
+          className="w-full max-w-5xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch"
+          data-scale={scale}
+        >
           <LeftAgentCard deckId={deckId} />
           <MissionPanel deckId={deckId} mode={mode ?? null} unlockedParam={unlocked} pctParam={pct} levelParam={level} />
         </div>
@@ -96,29 +127,19 @@ function LevelUpMasteryResult({ deckId, level }: { deckId: number | null; level:
 function LeftAgentCard({ deckId }: { deckId: number | null }) {
   const [summary, setSummary] = useState<MissionSummary | null>(null);
   useEffect(() => { if (deckId !== null) void loadSummary(deckId, null).then(setSummary); }, [deckId]);
-  const fullName = summary?.user?.name || "Agent";
-  const firstName = useMemo(() => {
-    try {
-      const n = String(fullName);
-      // handle names with spaces or underscores; if email-like, take part before dot/plus
-      if (n.includes(" ")) return n.split(" ")[0] || n;
-      if (n.includes("_")) return n.split("_")[0] || n;
-      if (n.includes("@")) {
-        const local = n.split("@")[0] || n;
-        return (local.split(".")[0] || local.split("+")[0] || local) || n;
-      }
-      return n;
-    } catch { return fullName; }
-  }, [fullName]);
+  const userLike = summary?.user ? ({ email: undefined, user_metadata: { full_name: summary.user.name, avatar_url: summary.user.avatarUrl } } as MinimalUserLike) : undefined;
+  const { firstName, avatarUrl } = resolveUserDisplay(userLike);
   return (
     <div className="lg:col-span-1 flex justify-center lg:justify-start">
-      <div className="w-full h-full">
+      <div className="w-full h-full flex items-stretch">
         <AgentCard
           displayName={firstName}
           level={summary?.commanderLevel ?? 1}
           tokens={Math.max(0, Math.round(summary?.tokensBalance ?? 0))}
-          avatarUrl={summary?.user?.avatarUrl}
+          avatarUrl={avatarUrl}
           className="h-full aspect-auto lg:max-w-none"
+          variant="study"
+          outerScale={1.2}
         />
       </div>
     </div>
@@ -197,7 +218,7 @@ function MissionPanel({ deckId, mode, unlockedParam, pctParam, levelParam }: { d
           const cards = await cardsRepo.listByDeck(deckId);
           const map: Record<number, SimpleCardMeta> = {};
           for (const c of cards) {
-            const anyCard = c as unknown as SimpleCardMeta;
+            const anyCard = c as Partial<SimpleCardMeta>;
             map[c.id] = { id: c.id, front: anyCard.front, back: anyCard.back, question: anyCard.question, prompt: anyCard.prompt, name: anyCard.name, explanation: anyCard.explanation, answer: anyCard.answer, suggestedAnswer: anyCard.suggestedAnswer };
           }
           setCardsById(map);
@@ -227,7 +248,7 @@ function MissionPanel({ deckId, mode, unlockedParam, pctParam, levelParam }: { d
               if (ignore) return;
               const map: Record<number, SimpleCardMeta> = {};
               for (const c of cards) {
-                const anyCard = c as unknown as SimpleCardMeta;
+                const anyCard = c as Partial<SimpleCardMeta>;
                 map[c.id] = { id: c.id, front: anyCard.front, back: anyCard.back, question: anyCard.question, prompt: anyCard.prompt, name: anyCard.name, explanation: anyCard.explanation, answer: anyCard.answer, suggestedAnswer: anyCard.suggestedAnswer };
               }
               setCardsById(map);
@@ -240,8 +261,8 @@ function MissionPanel({ deckId, mode, unlockedParam, pctParam, levelParam }: { d
   }, [accuracyOpen, deckId, answers, cardsById]);
 
   return (
-    <section className="lg:col-span-2 bg-[var(--secondary-color)]/90 backdrop-blur-sm rounded-xl p-6 md:p-8 shadow-sm border border-slate-200 relative h-full">
-    <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+    <section className="lg:col-span-2 bg-[var(--secondary-color)]/90 backdrop-blur-sm rounded-xl p-5 md:p-6 shadow-sm border border-slate-200 relative h-full flex flex-col">
+    <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-3">
         <div>
       <p className="text-sm font-semibold uppercase tracking-widest text-[var(--primary-color)]">Mission Complete</p>
       <p className="text-[var(--text-secondary)] text-lg">{summary?.modeLabel || (typeof summary?.modeLabel === "string" ? summary.modeLabel : "Quest")} — {summary?.deckTitle || "Your Latest Deck"}</p>
@@ -253,8 +274,8 @@ function MissionPanel({ deckId, mode, unlockedParam, pctParam, levelParam }: { d
           <p className="text-xs text-center mt-1 text-[var(--text-secondary)]">100% Complete</p>
         </div>
       </header>
-  <div className="flex flex-col items-center text-center my-8 md:my-12">
-        <div className="relative w-36 h-36 mb-6">
+  <div className="flex flex-col items-center text-center my-6 md:my-8">
+        <div className="relative w-28 h-28 mb-4 md:w-32 md:h-32 md:mb-5">
           <div className="absolute inset-0 rounded-full border-2 border-[var(--primary-color)]/20 animate-rotate-slow" />
           <div className="absolute inset-2 rounded-full border-2 border-[var(--primary-color)]/30 animate-rotate-slow" style={{ animationDirection: "reverse" }} />
           <div className="w-full h-full flex items-center justify-center animate-pulse-glow rounded-full bg-white">
@@ -263,8 +284,8 @@ function MissionPanel({ deckId, mode, unlockedParam, pctParam, levelParam }: { d
             </svg>
           </div>
         </div>
-        <h1 className="text-4xl font-bold">Agent, mission accomplished.</h1>
-        <p className="text-lg text-[var(--text-secondary)] mt-2">You have successfully completed your objective.</p>
+  <h1 className="text-3xl md:text-[2rem] font-bold leading-tight">Agent, mission accomplished.</h1>
+  <p className="text-base md:text-lg text-[var(--text-secondary)] mt-2 max-w-md">You have successfully completed your objective.</p>
         {leveledUp && (
           <div className="mt-4 max-w-xl w-full rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-900 px-4 py-3 text-sm">
             <div className="font-semibold">Commander level up {Math.max(1, Number(summary?.commanderLevelPrev ?? (summary?.commanderLevel ?? 1) - 1))} → {Number(summary?.commanderLevel ?? 1)}</div>
@@ -300,7 +321,7 @@ function MissionPanel({ deckId, mode, unlockedParam, pctParam, levelParam }: { d
           return null;
         })() : null;
       })()}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         {stats.map(({ k, v, c, interactive }) => {
           const clickable = !!interactive;
           return (
@@ -327,7 +348,7 @@ function MissionPanel({ deckId, mode, unlockedParam, pctParam, levelParam }: { d
         accuracyPercent={summary?.accuracyPercent}
       />
 
-      <div className="flex flex-col sm:flex-row justify-center gap-4">
+  <div className="mt-auto flex flex-col sm:flex-row justify-center gap-3 pt-2">
         {(() => {
           const sp = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
           const mode = sp?.get("mode") || null;
