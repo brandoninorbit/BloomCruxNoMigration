@@ -73,7 +73,8 @@ export async function recordMissionAttempt(params: {
     ended_at: params.endedAt ?? new Date().toISOString(),
     mode: modeSafe,
     breakdown: params.breakdown ? (params.breakdown as unknown as object) : null,
-    answers_json: answersSanitized ? JSON.stringify(answersSanitized) : null,
+  // Store as native JSON (jsonb) NOT stringified; legacy rows were stringified which broke retrieval
+  answers_json: answersSanitized ? (answersSanitized as unknown) : null,
   } as const;
   const withContentVersion: Record<string, unknown> = (Number.isFinite(params.contentVersion as number))
     ? { ...basePayload, content_version: params.contentVersion as number }

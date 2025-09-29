@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { playLevelUpSound } from "@/lib/audio";
 import { formatPercent1 } from "@/lib/utils";
 import { useParams, useSearchParams } from "next/navigation";
 import AgentCard from "@/components/AgentCard";
@@ -139,6 +140,7 @@ function MissionPanel({ deckId, mode, unlockedParam, pctParam, levelParam }: { d
   ]), [summary]);
 
   const leveledUp = (summary?.commanderLevelPrev ?? summary?.commanderLevel ?? 0) < (summary?.commanderLevel ?? 0);
+  useEffect(() => { if (leveledUp) playLevelUpSound(); }, [leveledUp]);
   // Compute unlocks newly gained this level-up using central catalog
   const unlocks: string[] = useMemo(() => {
     const prev = Number(summary?.commanderLevelPrev ?? (Number(summary?.commanderLevel ?? 0) - 1));

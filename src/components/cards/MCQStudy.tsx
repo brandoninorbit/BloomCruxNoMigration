@@ -1,5 +1,6 @@
 "use client";
 import React, { useEffect, useState } from "react";
+import { playCorrectSound } from "@/lib/audio";
 
 export type MCQOption = { key: "A" | "B" | "C" | "D"; text: string };
 
@@ -29,10 +30,11 @@ export default function MCQStudy({ prompt, options, answerKey, explanation, subm
   }, [prompt, answerKey]);
   const handleCheck = () => {
     if (!chosen) return;
-    const correct = chosen === answerKey;
+  const correct = chosen === answerKey;
     setChecked(true);
     const responseMs = Date.now() - startRef.current;
     onAnswer({ correct, chosen, mode: "auto", responseMs, confidence, guessed });
+  if (correct) playCorrectSound();
   };
   return (
     <div className="w-full max-w-3xl">

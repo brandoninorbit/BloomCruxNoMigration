@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { playCorrectSound } from "@/lib/audio";
 import { DndContext, DragEndEvent, PointerSensor, KeyboardSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { arrayMove, SortableContext, verticalListSortingStrategy, useSortable, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -62,10 +63,11 @@ export default function SequencingStudy({ prompt, steps, onAnswer, onContinue }:
     const allCorrect = wrongIndexes.length === 0;
   // Save the user's attempt so we can restore it later
   attemptRef.current = items;
-    setResult({ allCorrect, wrongIndexes });
+  setResult({ allCorrect, wrongIndexes });
     setChecked(true);
   const responseMs = Date.now() - startRef.current;
   onAnswer({ allCorrect, wrongIndexes, order: items.map((i) => i.label), responseMs, confidence, guessed });
+  if (allCorrect) playCorrectSound();
   };
 
   function Row({ item, index }: { item: Item; index: number }) {

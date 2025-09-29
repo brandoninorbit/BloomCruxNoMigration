@@ -1,5 +1,6 @@
 "use client";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { playCorrectSound, triggerDeferredCorrect } from "@/lib/audio";
 import { DndContext, DragEndEvent, PointerSensor, useDroppable, useDraggable, useSensor, useSensors, rectIntersection } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 
@@ -67,6 +68,7 @@ function BlankSlot({
   checked,
   override,
   onOverride,
+  onConfirmRight,
   correctAnswer,
   showCorrect,
 }: {
@@ -83,6 +85,7 @@ function BlankSlot({
   checked?: boolean;
   override?: "right" | "wrong";
   onOverride?: (ov: "right" | "wrong") => void;
+  onConfirmRight?: () => void;
   correctAnswer?: string;
   showCorrect?: boolean;
 }) {
@@ -131,7 +134,7 @@ function BlankSlot({
           <button
             type="button"
             className="px-1 py-0.5 rounded text-xs border border-green-500 text-green-600 hover:bg-green-50"
-            onClick={() => onOverride("right")}
+      onClick={() => { onOverride("right"); onConfirmRight?.(); }}
           >
             I was right
           </button>
@@ -268,6 +271,10 @@ export default function FillBlankStudy({ stem, blanks, wordBank, explanation, su
     const allCorrect = Object.values(nextPer).every(Boolean);
     const responseMs = Date.now() - startRef.current;
     onAnswer({ perBlank: nextPer, allCorrect, filledText: buildFilledText(), mode: "auto", responseMs, confidence, guessed });
+    if (allCorrect) {
+      // Defer playback until user confirms any overrides ("I was right").
+      playCorrectSound({ defer: true });
+    }
   };
 
   return (
@@ -306,6 +313,12 @@ export default function FillBlankStudy({ stem, blanks, wordBank, explanation, su
                     checked={checked}
                     override={perBlankOverride[id]}
                     onOverride={(ov) => setPerBlankOverride((prev) => ({ ...prev, [id]: ov }))}
+                    onConfirmRight={() => {
+                      // After user confirms one blank, if all blanks are correct (taking overrides) play.
+                      const updated = { ...perBlank, [id]: true };
+                      const nowAll = Object.values(updated).every(Boolean);
+                      if (nowAll) triggerDeferredCorrect();
+                    }}
                     correctAnswer={correctMap[id]}
                     showCorrect={showCorrect}
                   />

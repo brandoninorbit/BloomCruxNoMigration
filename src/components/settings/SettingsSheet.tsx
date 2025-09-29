@@ -1,10 +1,12 @@
 "use client";
 import React from "react";
+import { getSupabaseClient } from '@/lib/supabase/browserClient';
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Settings as SettingsIcon } from "lucide-react";
+import { Settings as SettingsIcon, Volume2, VolumeX } from "lucide-react";
+import { getAudioPrefs, saveAudioPrefs } from "@/lib/audio";
 import { SunriseCover, DeckCoverDeepSpace, DeckCoverNightMission, DeckCoverAgentStealth, DeckCoverRainforest, DeckCoverDesertStorm } from '@/components/DeckCovers';
 import { AvatarFrameNeonGlow } from '@/components/AvatarFrames';
 import { supabaseRepo } from '@/lib/repo/supabaseRepo';
@@ -12,6 +14,20 @@ import { fetchWithAuth } from '@/lib/supabase/fetchWithAuth';
 import { UNLOCKS } from '@/lib/unlocks';
 
 export default function SettingsSheet() {
+  const [signedIn, setSignedIn] = React.useState<boolean | null>(null);
+  React.useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const supabase = getSupabaseClient();
+        const { data } = await supabase.auth.getUser();
+        if (!active) return;
+        setSignedIn(!!data?.user);
+      } catch { setSignedIn(false); }
+    })();
+    return () => { active = false; };
+  }, []);
+  if (signedIn === false) return null; // hide entirely when signed out
   const [avatarFrame, setAvatarFrame] = React.useState<string>("unlock");
   const [neonPurchased, setNeonPurchased] = React.useState<boolean>(false);
   const [value, setValue] = React.useState<string>("");
@@ -22,6 +38,11 @@ export default function SettingsSheet() {
   const [rainPurchased, setRainPurchased] = React.useState<boolean>(false);
   const [desertPurchased, setDesertPurchased] = React.useState<boolean>(false);
   const [commanderLevel, setCommanderLevel] = React.useState<number>(0);
+  // Audio prefs
+  const [audioGlobal, setAudioGlobal] = React.useState(1);
+  const [audioCorrect, setAudioCorrect] = React.useState(1);
+  const [audioLevelUp, setAudioLevelUp] = React.useState(1);
+  const [audioMuted, setAudioMuted] = React.useState(false);
   // loading state intentionally omitted for brevity
 
   React.useEffect(() => {
@@ -45,7 +66,7 @@ export default function SettingsSheet() {
       } catch {}
     };
 
-    (async () => {
+  (async () => {
       try {
         const def = await supabaseRepo.getUserDefaultCover();
         const avatarDef = await supabaseRepo.getUserDefaultAvatarFrame();
@@ -78,7 +99,13 @@ export default function SettingsSheet() {
         /* ignore */
       }
       // Always re-check neon purchased via API
-      await checkNeonPurchased();
+  await checkNeonPurchased();
+  // Load audio prefs
+  const prefs = getAudioPrefs();
+  setAudioGlobal(prefs.globalVolume);
+  setAudioCorrect(prefs.correctVolume);
+  setAudioLevelUp(prefs.levelupVolume);
+  setAudioMuted(prefs.muted);
     })();
 
     const onFocus = () => { checkNeonPurchased().catch(() => {}); };
@@ -131,6 +158,8 @@ export default function SettingsSheet() {
     return unlock.level === (commanderLevel + 1);
   };
 
+  // Optionally delay render until auth checked to avoid flicker
+  if (signedIn === null) return null;
   return (
     <Sheet>
       <SheetTrigger asChild>
@@ -267,6 +296,45 @@ export default function SettingsSheet() {
                   </div>
                 </section>
 
+            <section className="mb-10">
+              <h2 className="text-base font-semibold text-slate-800">Audio</h2>
+              <p className="text-sm text-slate-500">Set feedback & level-up sound levels.</p>
+              <Separator className="my-4" />
+              <div className="space-y-6 max-w-md">
+                {/* Global Volume */}
+                <div>
+                  <Label htmlFor="audio-global" className="flex items-center justify-between">Global Volume
+                    <button type="button" aria-label={audioMuted ? 'Unmute' : 'Mute'} onClick={() => { const next = !audioMuted; setAudioMuted(next); saveAudioPrefs({ muted: next }); }} className="ml-4 rounded p-2 border hover:bg-slate-50">
+                      {audioMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                    </button>
+                  </Label>
+                  <div className="flex items-center gap-3 mt-2">
+                    <input id="audio-global" type="range" min={0} max={100} value={Math.round(audioGlobal*100)} onChange={(e) => { const v = Number(e.target.value)/100; setAudioGlobal(v); saveAudioPrefs({ globalVolume: v }); }} className="flex-1" />
+                    <span className="w-10 text-right text-xs tabular-nums">{Math.round(audioGlobal*100)}%</span>
+                  </div>
+                </div>
+                {/* Correct Answer Volume */}
+                <div>
+                  <Label htmlFor="audio-correct" className="flex items-center justify-between">Correct Answer</Label>
+                  <div className="flex items-center gap-3 mt-2">
+                    <input id="audio-correct" type="range" min={0} max={100} value={Math.round(audioCorrect*100)} onChange={(e) => { const v = Number(e.target.value)/100; setAudioCorrect(v); saveAudioPrefs({ correctVolume: v }); }} className="flex-1" />
+                    <button type="button" className="text-xs px-2 py-1 rounded border hover:bg-slate-50" onClick={() => { // test sound
+                      const a = new Audio('/audio/correct-356013.mp3'); a.volume = audioMuted ? 0 : audioCorrect*audioGlobal; a.play().catch(()=>{});
+                    }}>Test</button>
+                    <span className="w-10 text-right text-xs tabular-nums">{Math.round(audioCorrect*100)}%</span>
+                  </div>
+                </div>
+                {/* Level Up Volume */}
+                <div>
+                  <Label htmlFor="audio-levelup" className="flex items-center justify-between">Level Up</Label>
+                  <div className="flex items-center gap-3 mt-2">
+                    <input id="audio-levelup" type="range" min={0} max={100} value={Math.round(audioLevelUp*100)} onChange={(e) => { const v = Number(e.target.value)/100; setAudioLevelUp(v); saveAudioPrefs({ levelupVolume: v }); }} className="flex-1" />
+                    <button type="button" className="text-xs px-2 py-1 rounded border hover:bg-slate-50" onClick={() => { const a = new Audio('/audio/level-up-47165.mp3'); a.volume = audioMuted ? 0 : audioLevelUp*audioGlobal; a.play().catch(()=>{}); }}>Test</button>
+                    <span className="w-10 text-right text-xs tabular-nums">{Math.round(audioLevelUp*100)}%</span>
+                  </div>
+                </div>
+              </div>
+            </section>
             {/* Future settings sections go here */}
           </div>
         </div>

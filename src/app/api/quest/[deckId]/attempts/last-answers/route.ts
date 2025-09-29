@@ -30,7 +30,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ deck
     attemptId = latest.id;
     // If answers_json already present, return quickly without detail join.
     if (latest.answers_json) {
-      return NextResponse.json({ found: true, attemptId, answers: latest.answers_json });
+      let payload: unknown = latest.answers_json;
+      if (typeof payload === 'string') {
+        try { payload = JSON.parse(payload); } catch { /* leave as string */ }
+      }
+      return NextResponse.json({ found: true, attemptId, answers: payload });
     }
   }
 
@@ -53,6 +57,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ deck
   if (!attemptRow) return NextResponse.json({ found: false });
 
   let answers = attemptRow.answers_json as unknown;
+  if (typeof answers === 'string') {
+    try { answers = JSON.parse(answers); } catch {}
+  }
   if ((!answers || (Array.isArray(answers) && answers.length === 0)) && Array.isArray(detailRows)) {
     answers = detailRows.map(r => ({ cardId: r.card_id, correct: r.correct_fraction }));
   }

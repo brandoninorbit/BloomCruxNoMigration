@@ -267,4 +267,41 @@ export const supabaseRepo = {
     if (error) return 1;
     return Number(data?.commander_level ?? 1);
   },
+  // Get audio prefs json (if any)
+  async getAudioPrefs(): Promise<Record<string, unknown> | null> {
+    const supabase = getSupabaseClient();
+    const { data: userData } = await supabase.auth.getUser();
+    const uid = userData?.user?.id;
+    if (!uid) return null;
+    const { data, error } = await supabase
+      .from('user_settings')
+      .select('audio_prefs')
+      .eq('user_id', uid)
+      .maybeSingle();
+    if (error) return null;
+    return (data?.audio_prefs as Record<string, unknown> | null) ?? null;
+  },
+  // Merge & upsert audio prefs
+  async saveAudioPrefs(partial: Record<string, unknown>): Promise<void> {
+    const supabase = getSupabaseClient();
+    const { data: userData, error: uerr } = await supabase.auth.getUser();
+    if (uerr || !userData?.user) return; // silently ignore if signed out
+    const uid = userData.user.id;
+    // Fetch existing to merge
+    let existing: Record<string, unknown> | null = null;
+    try {
+      const { data } = await supabase
+        .from('user_settings')
+        .select('audio_prefs')
+        .eq('user_id', uid)
+        .maybeSingle();
+      existing = (data?.audio_prefs as Record<string, unknown> | null) ?? null;
+    } catch {}
+    const merged = { ...(existing || {}), ...partial };
+    const payload = { user_id: uid, audio_prefs: merged };
+    const { error } = await supabase
+      .from('user_settings')
+      .upsert([payload], { onConflict: 'user_id' });
+    if (error) throw error;
+  },
 };
