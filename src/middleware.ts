@@ -51,6 +51,12 @@ export async function middleware(req: NextRequest) {
   const hasSession = !!session?.user;
 
   if (!hasSession) {
+    // Fallback: if auth cookies are present, allow pass-through so client can hydrate session.
+    const hasAuthCookies = req.cookies.getAll().some(c => /sb[-_].*token/i.test(c.name));
+    if (hasAuthCookies) {
+      res.headers.set('x-bloomcrux-guard', 'pass:cookie-present-no-session');
+      return res;
+    }
     // Allow explicit public pages even when logged out
     if (isPublic || pathname === '/') return res; // root is public
     // Root or protected -> redirect to /about with redirect hint
