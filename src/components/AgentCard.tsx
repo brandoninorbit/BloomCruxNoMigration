@@ -75,7 +75,6 @@ export default function AgentCard({
   // Enforce a 5:7 (width:height) ratio exactly (width:height = 5:7 => h = w * 7/5 = 1.4w)
   const RATIO = 7 / 5; // height / width
   const BASE_W = 300; // base width reference (tweakable)
-  const BASE_H = Math.round(BASE_W * RATIO);
   const [scale, setScale] = useState(1);
   useEffect(() => {
     const calc = () => {

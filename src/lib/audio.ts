@@ -21,7 +21,7 @@ type AudioPrefs = {
 
 let cachedPrefs: AudioPrefs | null = null;
 let lastFetchTs = 0;
-let saveDebounce: any = null;
+let saveDebounce: ReturnType<typeof setTimeout> | null = null;
 
 function defaults(): AudioPrefs { return { globalVolume: 1, correctVolume: 1, levelupVolume: 1, muted: false }; }
 
@@ -51,7 +51,7 @@ async function fetchRemotePrefsIfStale() {
     const remote = await supabaseRepo.getAudioPrefs();
     if (remote && typeof remote === 'object') {
       const base = loadPrefs();
-      const merged = { ...base, ...remote } as any;
+      const merged: Partial<AudioPrefs> & Record<string, unknown> = { ...base, ...remote };
       const final: AudioPrefs = {
         globalVolume: clamp01(merged.globalVolume ?? 1),
         correctVolume: clamp01(merged.correctVolume ?? 1),
@@ -70,7 +70,7 @@ async function fetchRemotePrefsIfStale() {
   } catch { /* ignore */ }
 }
 
-function clamp01(n: any) { const x = Number(n); return Number.isFinite(x) ? Math.min(1, Math.max(0, x)) : 1; }
+function clamp01(n: unknown) { const x = Number(n); return Number.isFinite(x) ? Math.min(1, Math.max(0, x)) : 1; }
 
 export function saveAudioPrefs(partial: Partial<AudioPrefs>) {
   if (typeof window === 'undefined') return;

@@ -14,7 +14,9 @@ import { fetchWithAuth } from '@/lib/supabase/fetchWithAuth';
 import { UNLOCKS } from '@/lib/unlocks';
 
 export default function SettingsSheet() {
+  // Track auth state; start unknown so we can delay rendering until known
   const [signedIn, setSignedIn] = React.useState<boolean | null>(null);
+  const [authChecked, setAuthChecked] = React.useState(false);
   React.useEffect(() => {
     let active = true;
     (async () => {
@@ -23,11 +25,15 @@ export default function SettingsSheet() {
         const { data } = await supabase.auth.getUser();
         if (!active) return;
         setSignedIn(!!data?.user);
-      } catch { setSignedIn(false); }
+      } catch {
+        if (!active) return;
+        setSignedIn(false);
+      } finally {
+        if (active) setAuthChecked(true);
+      }
     })();
     return () => { active = false; };
   }, []);
-  if (signedIn === false) return null; // hide entirely when signed out
   const [avatarFrame, setAvatarFrame] = React.useState<string>("unlock");
   const [neonPurchased, setNeonPurchased] = React.useState<boolean>(false);
   const [value, setValue] = React.useState<string>("");
@@ -158,8 +164,9 @@ export default function SettingsSheet() {
     return unlock.level === (commanderLevel + 1);
   };
 
-  // Optionally delay render until auth checked to avoid flicker
-  if (signedIn === null) return null;
+  // Only render sheet trigger if user is signed in; otherwise render nothing
+  if (authChecked && !signedIn) return null;
+  if (!authChecked) return null;
   return (
     <Sheet>
       <SheetTrigger asChild>
