@@ -201,6 +201,7 @@ export default function DashboardClient() {
   const [folders, setFolders] = useState<FolderUI[]>([]);
   const [userTokens, setUserTokens] = useState<number>(0);
   const [commanderXpTotal, setCommanderXpTotal] = useState<number>(0);
+  const [loading, setLoading] = useState(true);
   const [attemptsHistory, setAttemptsHistory] = useState<Array<{ at: string; acc: number }>>([]);
   const [explainerOpen, setExplainerOpen] = useState<{ deckId: number; level: BloomLevel } | null>(null);
   const [explainerData, setExplainerData] = useState<{
@@ -226,13 +227,15 @@ export default function DashboardClient() {
     (async () => {
       if (!user || showExample) {
         setRealDecks([]);
+        setLoading(false);
         return;
       }
+      setLoading(true);
       try {
   const supabase = getSupabaseClient();
-  // Fetch user's decks, quest xp, and recent attempts (last 90 days) in parallel
-  const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
-  const [{ data: decks }, { data: foldersData }, { data: mastery }, { data: quest }, { data: attempts }] = await Promise.all([
+  // Fetch user's decks, quest xp, and recent attempts (last 30 days) in parallel
+  const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const [{ data: decks }, { data: foldersData }, { data: mastery }, { data: quest }, { data: attempts }, walletRes] = await Promise.all([
           supabase.from("decks").select("id, title, folder_id").order("created_at", { ascending: false }),
           supabase.from("folders").select("id, name, color").order("created_at", { ascending: false }),
     // Keep mastery in case we need a fallback for decks with zero attempts in window
@@ -249,6 +252,7 @@ export default function DashboardClient() {
             .select("id, deck_id, bloom_level, score_pct, cards_seen, cards_correct, ended_at, mode, breakdown")
             .gte("ended_at", cutoff)
             .order("ended_at", { ascending: false }),
+          fetch(`/api/economy/wallet`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
         ]);
 
         if (cancelled) return;
@@ -393,20 +397,18 @@ export default function DashboardClient() {
 
         setRealDecks(Object.values(byDeck));
 
-        // Load wallet tokens and commander XP from server API
-        try {
-          const wallet = await fetch(`/api/economy/wallet`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
-          if (wallet) {
-            const tokens = Math.max(0, Number(wallet.tokens ?? 0));
-            const cxp = Math.max(0, Number(wallet.commander_xp ?? 0));
-            setUserTokens(Math.round(tokens));
-            setCommanderXpTotal(cxp);
-          }
-        } catch {}
+        if (walletRes) {
+          const tokens = Math.max(0, Number(walletRes.tokens ?? 0));
+          const cxp = Math.max(0, Number(walletRes.commander_xp ?? 0));
+          setUserTokens(Math.round(tokens));
+          setCommanderXpTotal(cxp);
+        }
+        setLoading(false);
       } catch (err) {
         // Silent fail to avoid blocking dashboard
         setRealDecks([]);
-        // console.warn('[Dashboard] mastery load error:', err);
+        console.warn('[Dashboard] mastery load error:', err);
+        setLoading(false);
       }
     })();
     return () => {
@@ -668,6 +670,12 @@ export default function DashboardClient() {
           <p className="text-gray-600 mb-6">
             Select a deck to continue your training.
           </p>
+          {loading ? (
+            <div className="flex justify-center items-center py-12">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
+              <span className="ml-3 text-gray-600">Loading deck data...</span>
+            </div>
+          ) : (
           <div className="space-y-6">
             {/* Display folders with their decks */}
             {folders.map((folder) => {
@@ -822,8 +830,8 @@ export default function DashboardClient() {
                                       try {
                                         setExplainerOpen({ deckId: Number(deck.deckId), level });
                                         const sb = getSupabaseClient();
-                                        const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
-                                        // Fetch attempts for this deck over 90 days (quest + non-quest), parse breakdown per bloom
+                                        const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+                                        // Fetch attempts for this deck over 30 days (quest + non-quest), parse breakdown per bloom
                                         const { data: attempts } = await sb
                                           .from("user_deck_mission_attempts")
                                           .select("bloom_level, score_pct, cards_seen, cards_correct, ended_at, mode, breakdown")
@@ -1085,8 +1093,8 @@ export default function DashboardClient() {
                                     try {
                                       setExplainerOpen({ deckId: Number(deck.deckId), level });
                                       const sb = getSupabaseClient();
-                                      const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
-                                      // Fetch attempts for this deck over 90 days (quest + non-quest), parse breakdown per bloom
+                                      const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+                                      // Fetch attempts for this deck over 30 days (quest + non-quest), parse breakdown per bloom
                                       const { data: attempts } = await sb
                                         .from("user_deck_mission_attempts")
                                         .select("bloom_level, score_pct, cards_seen, cards_correct, ended_at, mode, breakdown")
@@ -1224,6 +1232,7 @@ export default function DashboardClient() {
               </div>
             )}
           </div>
+          )}
         </section>
 
   {/* Removed legacy aggregate "Progress Over Time" chart to reclaim vertical space */}
