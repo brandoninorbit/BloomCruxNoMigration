@@ -10,7 +10,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ provider
   const origin = url.origin;
 
   // Collect cookies to set on the eventual redirect response
-  const jar: Array<{ name: string; value: string; options?: Partial<import('cookie').CookieSerializeOptions> }> = [];
+  const jar: Array<{ name: string; value: string; options?: { secure?: boolean; httpOnly?: boolean; sameSite?: 'strict' | 'lax' | 'none' } }> = [];
   const store = await cookies();
 
   const supabase = createServerClient(
@@ -24,8 +24,15 @@ export async function GET(req: Request, { params }: { params: Promise<{ provider
         setAll(cookiesToSet) {
           for (const c of cookiesToSet) {
             const dev = process.env.NODE_ENV !== "production";
-            const opts = { ...(c.options ?? {}), secure: !dev };
-            jar.push({ name: c.name, value: c.value, options: opts });
+            const originalOptions = c.options ?? {};
+            const filteredOptions = {
+              secure: !dev,
+              httpOnly: originalOptions.httpOnly,
+              sameSite: typeof originalOptions.sameSite === 'string' 
+                ? originalOptions.sameSite as 'strict' | 'lax' | 'none'
+                : undefined
+            };
+            jar.push({ name: c.name, value: c.value, options: filteredOptions });
           }
         },
       },
@@ -43,11 +50,15 @@ export async function GET(req: Request, { params }: { params: Promise<{ provider
   if (error || !data?.url) {
     // Fall back to login on failure
     const fallback = NextResponse.redirect(new URL(`/login?reason=oauth_start_failed`, origin));
-    for (const c of jar) fallback.cookies.set({ name: c.name, value: c.value, ...(c.options ?? {}) });
+    for (const c of jar) {
+      fallback.cookies.set({ name: c.name, value: c.value, ...(c.options ?? {}) });
+    }
     return fallback;
   }
 
   const res = NextResponse.redirect(data.url);
-  for (const c of jar) res.cookies.set({ name: c.name, value: c.value, ...(c.options ?? {}) });
+  for (const c of jar) {
+    res.cookies.set({ name: c.name, value: c.value, ...(c.options ?? {}) });
+  }
   return res;
 }
