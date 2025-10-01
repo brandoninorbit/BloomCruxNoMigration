@@ -47,6 +47,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dec
   if (cards_correct > cards_seen) cards_correct = cards_seen;
   if (!bloom_level || Number.isNaN(score_pct)) return NextResponse.json({ error: "invalid payload" }, { status: 400 });
 
+  console.log('🎯 Complete API received:', {
+    userId: session.user.id,
+    deckId,
+    bloom_level,
+    score_pct,
+    cards_seen,
+    cards_correct,
+    mode,
+    answersCount: answers?.length || 0,
+    hasBreakdown: !!breakdown
+  });
+
   // Insert attempt
   // Try to snapshot current contentVersion for this level
   let contentVersion: number | undefined = undefined;
@@ -76,6 +88,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dec
     breakdown,
   answers,
   });
+  console.log('📊 recordMissionAttempt result:', attempt);
   if (!attempt.ok) return NextResponse.json({ error: attempt.error }, { status: 500 });
 
   // Update per_bloom aggregates for counters and averages first, then mark cleared/unlock idempotently.

@@ -260,9 +260,25 @@ export default function QuestClient({ deckId }: { deckId: number }) {
             answers: next.answered.map(a => ({ cardId: a.cardId, correct: a.correct, response: a.response })),
           }),
         });
+        console.log('🎯 Mission complete API call:', {
+          status: resp.status,
+          url: `/api/quest/${deckId}/complete`,
+          payload: {
+            mode: "quest",
+            bloom_level: next.bloomLevel,
+            score_pct: percent,
+            cards_seen: total,
+            cards_correct: Math.round(correct),
+            answersCount: next.answered.length
+          }
+        });
         if (resp.ok) {
           const j = await resp.json().catch(() => null);
+          console.log('✅ Mission complete response:', j);
           if (j && typeof j.unlocked !== "undefined") q.set("unlocked", j.unlocked ? "1" : "0");
+        } else {
+          const errorText = await resp.text().catch(() => 'Failed to read error');
+          console.error('❌ Mission complete failed:', resp.status, resp.statusText, errorText);
         }
       } catch {}
       // Persist progress snapshot too (non-blocking)

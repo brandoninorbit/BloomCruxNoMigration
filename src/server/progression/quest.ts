@@ -21,6 +21,17 @@ export async function recordMissionAttempt(params: {
   breakdown?: Record<string, { scorePct: number; cardsSeen: number; cardsCorrect: number }>; // per-bloom summary
   answers?: Array<{ cardId: number; correct: boolean | number }>; // optional raw per-card answers for persistence
 }): Promise<{ ok: true; attemptId?: number } | { ok: false; error: string }> {
+  console.log('🔄 recordMissionAttempt called with:', {
+    userId: params.userId,
+    deckId: params.deckId,
+    bloomLevel: params.bloomLevel,
+    scorePct: params.scorePct,
+    cardsSeen: params.cardsSeen,
+    cardsCorrect: params.cardsCorrect,
+    mode: params.mode,
+    answersCount: params.answers?.length || 0
+  });
+
   // Sanitize inputs and recompute aggregates if breakdown provided
   const MAX_ATTEMPTS_PER_MISSION = 500;
   let seenAgg = Math.max(0, Math.floor(Number(params.cardsSeen) || 0));
@@ -109,6 +120,12 @@ export async function recordMissionAttempt(params: {
           .insert(p)
           .select("id")
           .maybeSingle();
+        console.log('💾 Database insert attempt:', { 
+          error: error?.message, 
+          success: !error, 
+          attemptId: data?.id,
+          table: 'user_deck_mission_attempts'
+        });
         if (!error) {
           const attemptId = (data as { id: number } | null | undefined)?.id;
           // If we captured answers and have attempt id, insert detail rows (best-effort; ignore failures)
@@ -123,9 +140,17 @@ export async function recordMissionAttempt(params: {
                 correct_fraction: ans.correct,
               }));
               if (rows.length > 0) {
-                await client.from('user_deck_mission_card_answers').insert(rows);
+                const cardResult = await client.from('user_deck_mission_card_answers').insert(rows);
+                console.log('📝 Card answers insert:', { 
+                  error: cardResult.error?.message, 
+                  success: !cardResult.error, 
+                  rowCount: rows.length,
+                  table: 'user_deck_mission_card_answers'
+                });
               }
-            } catch {}
+            } catch (cardError) {
+              console.error('❌ Card answers insert failed:', cardError);
+            }
           }
           return { ok: true, attemptId };
         }
