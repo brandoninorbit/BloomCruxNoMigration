@@ -39,7 +39,8 @@ export function DeckCardShell({
   const [textColor, setTextColor] = React.useState('text-gray-800');
   // Debug instrumentation (enable by setting window.__DECK_HOVER_DEBUG = true in console or NEXT_PUBLIC_DECK_HOVER_DEBUG=1)
   const debugRef = React.useRef<{ pre?: DOMRect; post?: DOMRect }>({});
-  const isDebug = (typeof window !== 'undefined' && (window as any)?.__DECK_HOVER_DEBUG) || process.env.NEXT_PUBLIC_DECK_HOVER_DEBUG === '1';
+  // Typed access to the debug flag on window without using `any`
+  const isDebug = (typeof window !== 'undefined' && (window as unknown as { __DECK_HOVER_DEBUG?: boolean }).__DECK_HOVER_DEBUG) || process.env.NEXT_PUBLIC_DECK_HOVER_DEBUG === '1';
   const [preTop, setPreTop] = React.useState<number | null>(null);
   const [delta, setDelta] = React.useState<number | null>(null);
   // Additional instrumentation for the transformed <article> itself (wrapper isn't transformed)
@@ -108,8 +109,7 @@ export function DeckCardShell({
               if (debugRef.current.pre) {
                 const d = post.top - debugRef.current.pre.top; // positive means moved down
                 setDelta(d);
-                // eslint-disable-next-line no-console
-                let articleInfo: any = {};
+                let articleInfo: Record<string, unknown> = {};
                 const articleEl = cardRef.current.querySelector('article');
                 if (articleEl) {
                   const aPost = articleEl.getBoundingClientRect();
