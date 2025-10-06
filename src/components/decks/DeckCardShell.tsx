@@ -37,6 +37,14 @@ export function DeckCardShell({
   const [isHovered, setIsHovered] = React.useState(false);
   const cardRef = React.useRef<HTMLDivElement>(null);
   const [textColor, setTextColor] = React.useState('text-gray-800');
+  // Debug instrumentation (enable by setting window.__DECK_HOVER_DEBUG = true in console or NEXT_PUBLIC_DECK_HOVER_DEBUG=1)
+  const debugRef = React.useRef<{ pre?: DOMRect; post?: DOMRect }>({});
+  const isDebug = (typeof window !== 'undefined' && (window as any)?.__DECK_HOVER_DEBUG) || process.env.NEXT_PUBLIC_DECK_HOVER_DEBUG === '1';
+  const [preTop, setPreTop] = React.useState<number | null>(null);
+  const [delta, setDelta] = React.useState<number | null>(null);
+  // Additional instrumentation for the transformed <article> itself (wrapper isn't transformed)
+  const articlePreTopRef = React.useRef<number | null>(null);
+  const [articleDelta, setArticleDelta] = React.useState<number | null>(null);
 
   // Calculate optimal text color based on background
   React.useEffect(() => {
@@ -78,20 +86,78 @@ export function DeckCardShell({
   return (
     <div
       ref={cardRef}
-      className={"group [perspective:1000px] cursor-pointer relative " + (className ?? "")}
+      className={"group [perspective:1000px] cursor-pointer relative will-change-transform " + (className ?? "")}
       onClick={onClick}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+      onMouseEnter={() => {
+        if (cardRef.current && isDebug) {
+          const rect = cardRef.current.getBoundingClientRect();
+            debugRef.current.pre = rect; setPreTop(rect.top);
+          // Measure article separately (it's the element that actually gets transformed)
+          const articleEl = cardRef.current.querySelector('article');
+          if (articleEl) {
+            const aRect = articleEl.getBoundingClientRect();
+            articlePreTopRef.current = aRect.top;
+          }
+        }
+        setIsHovered(true);
+        if (isDebug) {
+          requestAnimationFrame(() => {
+            if (cardRef.current) {
+              const post = cardRef.current.getBoundingClientRect();
+              debugRef.current.post = post;
+              if (debugRef.current.pre) {
+                const d = post.top - debugRef.current.pre.top; // positive means moved down
+                setDelta(d);
+                // eslint-disable-next-line no-console
+                let articleInfo: any = {};
+                const articleEl = cardRef.current.querySelector('article');
+                if (articleEl) {
+                  const aPost = articleEl.getBoundingClientRect();
+                  const aDelta = articlePreTopRef.current != null ? aPost.top - articlePreTopRef.current : 0;
+                  setArticleDelta(aDelta);
+                  const cs = window.getComputedStyle(articleEl);
+                  articleInfo = {
+                    articlePreTop: articlePreTopRef.current,
+                    articlePostTop: aPost.top,
+                    articleDelta: aDelta,
+                    articleOffsetTop: (articleEl as HTMLElement).offsetTop,
+                    articleMarginTop: cs.marginTop,
+                    articleTransform: cs.transform,
+                  };
+                }
+                console.log('[DeckHoverDebug]', { title, hasDescription: !!description, preTop: debugRef.current.pre.top, postTop: post.top, delta: d, ...articleInfo });
+              }
+            }
+          });
+        }
+      }}
+      onMouseLeave={() => { setIsHovered(false); if (isDebug) { setDelta(null); setArticleDelta(null); articlePreTopRef.current = null; } }}
       data-level={level}
     >
-      {/* Hover Modal */}
-      {description && isHovered && (
-        <div className={`absolute top-0 left-0 right-0 z-50 w-full h-auto bg-white/20 backdrop-blur-xl rounded-lg shadow-xl border border-white/30 px-3 pt-3 pb-5 text-sm overflow-hidden transform -translate-y-full -mt-6 ${textColor}`}>
-          <p className="overflow-hidden text-ellipsis" style={{ display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>{description}</p>
+      {isDebug && preTop !== null && (
+        <div className="pointer-events-none absolute inset-0">
+          <div
+            className="absolute left-0 right-0 h-px bg-red-500/70"
+            style={{ top: 0 }}
+          />
+          {/* Article top line (blue) - measures transformed element's top position relative to wrapper */}
+          {articlePreTopRef.current !== null && articleDelta !== null && cardRef.current && (() => {
+            const wrapperTop = preTop; // preTop is wrapper top before hover
+            const currentArticleTopViewport = (cardRef.current.querySelector('article') as HTMLElement | null)?.getBoundingClientRect().top;
+            if (currentArticleTopViewport != null) {
+              const offsetInside = currentArticleTopViewport - wrapperTop;
+              return <div className="absolute left-0 right-0 h-px bg-sky-500/80" style={{ top: offsetInside }} />;
+            }
+            return null;
+          })()}
+          {delta !== null && (
+            <div className="absolute left-1 top-1 text-[10px] bg-black/60 text-white px-1 rounded">
+              WrΔ:{delta.toFixed(2)}px{articleDelta !== null && <><br/>ArΔ:{articleDelta.toFixed(2)}px</>}
+            </div>
+          )}
         </div>
       )}
-
-      <article className="relative w-full aspect-[3/4] rounded-xl overflow-hidden shadow-[var(--shadow-soft)] bg-white/90 dark:bg-neutral-900/80 transition-all duration-500 group-hover:shadow-xl group-hover:-translate-y-2 [transform-style:preserve-3d] group-hover:[transform:rotateY(3deg)]">
+  <article className="relative w-full aspect-[3/4] rounded-xl overflow-hidden shadow-[var(--shadow-soft)] bg-white/90 dark:bg-neutral-900/80 transition-transform duration-300 group-hover:shadow-xl [transform-style:preserve-3d] group-hover:-translate-y-1 will-change-transform">
         {/* COVER layer (fills and is clipped by parent) */}
         {cover}
 
@@ -131,6 +197,22 @@ export function DeckCardShell({
           {footer ? <div className="pt-1">{footer}</div> : null}
         </div>
       </article>
+
+        {/* Hover Modal (placed after article so article remains first child for any global spacing rules) */}
+        {description && isHovered && (
+          <div
+            className={`deck-description-popover lg-specular lg-regular pointer-events-none absolute left-1/2 bottom-full -translate-x-1/2 -translate-y-[15px] z-50 w-[95%] max-w-[320px] h-auto rounded-[14px] shadow-lg px-3 pt-3 pb-4 text-[13px] overflow-hidden border ${textColor}
+              bg-white/75 dark:bg-neutral-900/75 backdrop-blur-xl border-white/30 dark:border-white/15`}
+            data-interactive="true"
+          >
+            <p
+              className="overflow-hidden text-ellipsis pointer-events-auto leading-snug"
+              style={{ display: '-webkit-box', WebkitLineClamp: 4, WebkitBoxOrient: 'vertical' }}
+            >
+              {description}
+            </p>
+          </div>
+        )}
     </div>
   );
 }

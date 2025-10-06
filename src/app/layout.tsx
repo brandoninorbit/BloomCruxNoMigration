@@ -5,6 +5,7 @@ import type { Metadata } from 'next';
 import { Inter, League_Spartan, Plus_Jakarta_Sans } from 'next/font/google';
 import localFont from 'next/font/local';
 import Nav from '@/components/Nav';
+import { headers } from 'next/headers';
 
 const inter = Inter({ subsets: ['latin'] });
 const uiFont = League_Spartan({
@@ -42,12 +43,21 @@ export const metadata: Metadata = {
 };
 
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // Server-side UA sniff (best-effort; falls back to non-mac). We keep this tiny & deterministic.
+  const h = await headers();
+  const ua = h.get('user-agent') || '';
+  const isMac = /Macintosh|Mac OS X|MacOS|Mac OS|Mac_PowerPC/.test(ua);
+  // We intentionally do NOT encode Windows specifically yet; future: platform-win / platform-linux.
+  const platformClass = isMac ? 'platform-mac' : 'platform-other';
+
   return (
-    <html lang="en" suppressHydrationWarning>
-  <body className={`${inter.className} ${uiFont.variable} ${contentFont.variable} ${navFont.variable}`}>
+    <html lang="en" suppressHydrationWarning className={platformClass}>
+      <body className={`${inter.className} ${uiFont.variable} ${contentFont.variable} ${navFont.variable}`}>
         <AuthProvider>
           <Nav />
+          {/* Spacer to offset fixed nav height (16 = h-16) */}
+          <div className="h-16" aria-hidden="true" />
           {children}
         </AuthProvider>
         {process.env.NODE_ENV === 'development' && process.env.PINY_VISUAL_SELECT === 'true' && (

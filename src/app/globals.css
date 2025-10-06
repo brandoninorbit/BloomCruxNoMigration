@@ -253,3 +253,127 @@
 /* Final override to also apply shimmer to remember via shared selector (ensures consistency) */
 /* (prestige-remember::after shimmer handled via combined selector above) */
 
+/* -------------------------------------------------- */
+/* macOS "Liquid Glass" opt-in styles                 */
+/* We scope to .platform-mac to avoid affecting Win   */
+/* or other platforms. This is an approximation using */
+/* public CSS primitives: translucency, layered noise, */
+/* subtle inner border, light bloom highlight.        */
+/* Elements can add .liquid-glass OR rely on hooks    */
+/* like .site-nav already tagged in React.            */
+/* -------------------------------------------------- */
+@layer utilities {
+  .platform-mac .liquid-glass, .platform-mac .site-nav {
+    /* Core translucent panel */
+    background: color-mix(in srgb, hsl(var(--background)) 65%, transparent);
+    backdrop-filter: saturate(180%) blur(22px);
+    -webkit-backdrop-filter: saturate(180%) blur(22px);
+    /* position intentionally not set here to allow fixed headers */
+  }
+  .platform-mac .liquid-glass::before, .platform-mac .site-nav::before {
+    /* Inner subtle linear highlight (top) + noise */
+    content: "";
+    position: absolute; inset: 0; pointer-events: none;
+    background:
+      linear-gradient(180deg,rgba(255,255,255,.55),rgba(255,255,255,0) 40%),
+      linear-gradient(0deg,rgba(255,255,255,.18),rgba(255,255,255,0) 55%),
+      /* tiny monochrome noise texture via data URI */
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='.18'/%3E%3C/svg%3E") center/160px 160px repeat;
+    mix-blend-mode: overlay;
+    border-radius: inherit;
+  }
+  .platform-mac .liquid-glass::after, .platform-mac .site-nav::after {
+    /* Inner hairline & outer soft ring */
+    content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: inherit;
+    box-shadow:
+      inset 0 0 0 0.5px rgba(255,255,255,.55),
+      inset 0 0 0 1px rgba(255,255,255,.25),
+      0 0 0 1px rgba(255,255,255,.08),
+      0 4px 24px -4px rgba(0,0,0,.25),
+      0 8px 48px -12px rgba(0,0,0,.35);
+    mask: linear-gradient(#000,#000) content-box, linear-gradient(#000,#000);
+    -webkit-mask: linear-gradient(#000,#000) content-box, linear-gradient(#000,#000);
+    -webkit-mask-composite: xor; mask-composite: exclude; /* cut out middle if we add padding */
+  }
+  /* Slight hover amplify for interactive glass items */
+  .platform-mac .liquid-glass[data-interactive="true"], .platform-mac .site-nav:hover {
+    transition: background .4s ease, box-shadow .4s ease;
+  }
+  .platform-mac .liquid-glass[data-interactive="true"]:hover {
+    background: color-mix(in srgb, hsl(var(--background)) 75%, transparent);
+    box-shadow: 0 4px 28px -6px rgba(0,0,0,.35), 0 8px 56px -10px rgba(0,0,0,.45);
+  }
+  @media (prefers-color-scheme: dark) {
+    .platform-mac .liquid-glass, .platform-mac .site-nav {
+      background: color-mix(in srgb, hsl(var(--background)) 35%, rgba(30,30,30,.35));
+    }
+    .platform-mac .liquid-glass::before, .platform-mac .site-nav::before {
+      background:
+        linear-gradient(180deg,rgba(255,255,255,.18),rgba(255,255,255,0) 45%),
+        linear-gradient(0deg,rgba(255,255,255,.10),rgba(255,255,255,0) 55%),
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='.22'/%3E%3C/svg%3E") center/160px 160px repeat;
+      mix-blend-mode: plus-lighter;
+    }
+  }
+  /* Utility class if we want to tag arbitrary panels via Tailwind @apply */
+  .platform-mac .glass-card { border-radius: 0.75rem; }
+}
+
+/* Ensure global nav remains fixed regardless of scroll container quirks */
+@layer utilities {
+  .site-nav { position: fixed; top: 0; left: 0; right: 0; }
+  /* Hardening: ensure no future utility overrides (tailwind ordering edge) */
+  header.site-nav { position: fixed !important; }
+}
+
+/* -------------------------------------------------- */
+/* Tailwind-agnostic Liquid Glass utility classes     */
+/* (scoped to mac platform so Windows/Linux unaffected) */
+/* -------------------------------------------------- */
+@layer utilities {
+  .platform-mac .lg-regular {
+    --lg-tint: rgba(255,255,255,0.06);
+    --lg-specular: rgba(255,255,255,0.35);
+    --lg-border: rgba(255,255,255,0.18);
+    background: linear-gradient(180deg, var(--lg-tint) 0%, rgba(255,255,255,0.02) 100%);
+    -webkit-backdrop-filter: saturate(140%) blur(16px);
+    backdrop-filter: saturate(140%) blur(16px);
+    border: 1px solid var(--lg-border);
+    box-shadow: inset 0 1px 0 var(--lg-specular), 0 1px 8px rgba(0,0,0,0.18);
+    border-radius: 16px;
+  }
+  .platform-mac .lg-clear {
+    --lg-tint: rgba(255,255,255,0.02);
+    --lg-specular: rgba(255,255,255,0.28);
+    --lg-border: rgba(255,255,255,0.14);
+    background: linear-gradient(180deg, var(--lg-tint) 0%, rgba(255,255,255,0) 100%);
+    -webkit-backdrop-filter: saturate(120%) blur(24px);
+    backdrop-filter: saturate(120%) blur(24px);
+    border: 1px solid var(--lg-border);
+    box-shadow: inset 0 1px 0 var(--lg-specular), 0 1px 8px rgba(0,0,0,0.15);
+    border-radius: 16px;
+  }
+  .platform-mac .lg-specular { position: relative; overflow: hidden; }
+  .platform-mac .lg-specular::after {
+    content: ""; position: absolute; inset: -200% -40%;
+    background: radial-gradient(120% 20% at 50% 0%, rgba(255,255,255,.25), rgba(255,255,255,0) 55%);
+    transform: translateY(65%); transition: transform 400ms ease; pointer-events: none;
+  }
+  .platform-mac .lg-specular:hover::after,
+  .platform-mac .lg-specular:focus-visible::after { transform: translateY(40%); }
+  /* Dark mode subtle tuning */
+  .platform-mac.dark .lg-regular, .dark .platform-mac .lg-regular { --lg-tint: rgba(40,40,40,0.55); background: linear-gradient(180deg, var(--lg-tint) 0%, rgba(40,40,40,0.25) 100%); }
+  .platform-mac.dark .lg-clear, .dark .platform-mac .lg-clear { --lg-tint: rgba(30,30,30,0.35); background: linear-gradient(180deg, var(--lg-tint) 0%, rgba(30,30,30,0.1) 100%); }
+  /* Reduced transparency fallback (non-standard MQ; gracefully ignored if unsupported) */
+  @media (prefers-reduced-transparency: reduce) {
+    .platform-mac .lg-regular, .platform-mac .lg-clear {
+      -webkit-backdrop-filter: none; backdrop-filter: none; background: rgba(240,240,240,.85); box-shadow: 0 1px 4px rgba(0,0,0,.15);
+    }
+    .platform-mac.dark .lg-regular, .platform-mac.dark .lg-clear { background: rgba(30,30,30,.85); }
+  }
+  /* Provide alternative accessibility hook using prefers-reduced-motion */
+  @media (prefers-reduced-motion: reduce) {
+    .platform-mac .lg-specular::after { transition: none; }
+  }
+}
+

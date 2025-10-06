@@ -19,7 +19,7 @@ export default function Nav() {
   const pathname = usePathname() ?? '/';
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-border bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+  <header className="site-nav fixed top-0 left-0 right-0 z-[200] w-full border-b border-border shadow-sm bg-[linear-gradient(to_bottom,rgba(255,255,255,0.78),rgba(255,255,255,0.55))] dark:bg-[linear-gradient(to_bottom,rgba(20,20,20,0.78),rgba(20,20,20,0.55))] backdrop-blur-xl supports-[backdrop-filter]:bg-background/50 lg-regular lg-specular">
   <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4">
         {/* Brand with logo */}
   <Link href="/" className="font-valid font-bold tracking-tight text-2xl md:text-3xl">
