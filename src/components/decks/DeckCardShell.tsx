@@ -201,8 +201,7 @@ export function DeckCardShell({
         {/* Hover Modal (placed after article so article remains first child for any global spacing rules) */}
         {description && isHovered && (
           <div
-            className={`deck-description-popover lg-specular lg-regular pointer-events-none absolute left-1/2 bottom-full -translate-x-1/2 -translate-y-[15px] z-50 w-[95%] max-w-[320px] h-auto rounded-[14px] shadow-lg px-3 pt-3 pb-4 text-[13px] overflow-hidden border ${textColor}
-              bg-white/75 dark:bg-neutral-900/75 backdrop-blur-xl border-white/30 dark:border-white/15`}
+            className={`deck-description-popover lg-ultra-clear lg-specular pointer-events-none absolute left-1/2 bottom-full -translate-x-1/2 -translate-y-[15px] z-50 w-[95%] max-w-[320px] h-auto px-3 pt-3 pb-4 text-[13px] overflow-hidden ${textColor}`}
             data-interactive="true"
           >
             <p

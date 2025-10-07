@@ -4,15 +4,39 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import Link from "next/link";
 import { forceSignOut } from "@/lib/auth/clientSignOut";
+import React from "react";
+import { supabaseRepo } from "@/lib/repo/supabaseRepo";
 
 export default function AvatarMenu() {
   const { user, loading: isLoading } = useAuth();
+  const [customAvatarUrl, setCustomAvatarUrl] = React.useState<string | null>(null);
   // Supabase client not needed here; forceSignOut handles both server and client
+
+  React.useEffect(() => {
+    let mounted = true;
+    if (user) {
+      supabaseRepo.getCustomAvatarUrl().then(url => {
+        if (mounted) setCustomAvatarUrl(url);
+      }).catch(() => {});
+      
+      // Listen for custom avatar updates
+      const handleAvatarUpdate = (ev: Event) => {
+        const detail = (ev as CustomEvent).detail;
+        setCustomAvatarUrl(detail?.avatarUrl || null);
+      };
+      window.addEventListener('profile:avatar-updated', handleAvatarUpdate as EventListener);
+      return () => {
+        mounted = false;
+        window.removeEventListener('profile:avatar-updated', handleAvatarUpdate as EventListener);
+      };
+    }
+  }, [user]);
 
   if (!user || isLoading) return null;
 
   const meta = (user.user_metadata ?? {}) as { avatar_url?: string; picture?: string; full_name?: string };
-  const avatarUrl = meta.avatar_url || meta.picture || undefined; // prefer provider image
+  // Prioritize: custom avatar > provider avatar_url > provider picture
+  const avatarUrl = customAvatarUrl || meta.avatar_url || meta.picture || undefined;
   const first = (meta.full_name || "")?.trim().split(/\s+/)[0] || (user.email?.split("@")[0] ?? "User");
   const displayName = first;
   const initial = (displayName?.[0] ?? "U").toUpperCase();

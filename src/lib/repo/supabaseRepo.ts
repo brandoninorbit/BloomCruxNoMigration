@@ -251,6 +251,38 @@ export const supabaseRepo = {
     if (error) throw error;
   },
 
+  // Get the user's custom avatar URL from user_settings
+  async getCustomAvatarUrl(): Promise<string | null> {
+    const supabase = getSupabaseClient();
+    const { data: userData } = await supabase.auth.getUser();
+    const uid = userData?.user?.id;
+    if (!uid) return null;
+
+    const { data, error } = await supabase
+      .from('user_settings')
+      .select('custom_avatar_url')
+      .eq('user_id', uid)
+      .maybeSingle();
+
+    if (error) return null;
+    return (data?.custom_avatar_url as string | null) ?? null;
+  },
+
+  // Set the user's custom avatar URL in user_settings (insert or update)
+  async setCustomAvatarUrl(avatarUrl: string | null): Promise<void> {
+    const supabase = getSupabaseClient();
+    const { data: userData, error: uerr } = await supabase.auth.getUser();
+    if (uerr || !userData?.user) throw new Error('Not signed in');
+    const uid = userData.user.id;
+
+    const payload = { user_id: uid, custom_avatar_url: avatarUrl };
+    const { error } = await supabase
+      .from('user_settings')
+      .upsert([payload], { onConflict: 'user_id' });
+
+    if (error) throw error;
+  },
+
   // Get the user's commander level from user_economy
   async getCommanderLevel(): Promise<number> {
     const supabase = getSupabaseClient();

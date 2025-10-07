@@ -5,18 +5,31 @@ import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle, SheetDescri
 import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Settings as SettingsIcon, Volume2, VolumeX } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Settings as SettingsIcon, Volume2, VolumeX, ChevronDown, Upload, X } from "lucide-react";
 import { getAudioPrefs, saveAudioPrefs } from "@/lib/audio";
 import { SunriseCover, DeckCoverDeepSpace, DeckCoverNightMission, DeckCoverAgentStealth, DeckCoverRainforest, DeckCoverDesertStorm } from '@/components/DeckCovers';
 import { AvatarFrameNeonGlow } from '@/components/AvatarFrames';
 import { supabaseRepo } from '@/lib/repo/supabaseRepo';
 import { fetchWithAuth } from '@/lib/supabase/fetchWithAuth';
 import { UNLOCKS } from '@/lib/unlocks';
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useAuth } from "@/app/providers/AuthProvider";
 
 export default function SettingsSheet() {
+  const { user } = useAuth();
   // Track auth state; start unknown so we can delay rendering until known
   const [signedIn, setSignedIn] = React.useState<boolean | null>(null);
   const [authChecked, setAuthChecked] = React.useState(false);
+  
+  // Collapsible section states
+  const [appearanceOpen, setAppearanceOpen] = React.useState(true);
+  const [accessibilityOpen, setAccessibilityOpen] = React.useState(false);
+
+  // Custom avatar
+  const [customAvatarUrl, setCustomAvatarUrl] = React.useState<string | null>(null);
+  const [avatarUploading, setAvatarUploading] = React.useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
   React.useEffect(() => {
     let active = true;
     (async () => {
@@ -76,6 +89,7 @@ export default function SettingsSheet() {
       try {
         const def = await supabaseRepo.getUserDefaultCover();
         const avatarDef = await supabaseRepo.getUserDefaultAvatarFrame();
+        const customAvatar = await supabaseRepo.getCustomAvatarUrl();
         const purchased = await supabaseRepo.hasPurchasedCover('Sunrise');
         const purchasedDeep = await supabaseRepo.hasPurchasedCover('DeepSpace');
         const purchasedNight = await supabaseRepo.hasPurchasedCover('NightMission');
@@ -94,6 +108,7 @@ export default function SettingsSheet() {
         if (!mounted) return;
         setValue(def ?? '__system_default');
         setAvatarFrame(avatarDef ?? '__system_default');
+        setCustomAvatarUrl(customAvatar);
         setSunrisePurchased(!!purchased);
         setDeepPurchased(!!purchasedDeep);
         setNightPurchased(!!purchasedNight);
@@ -153,6 +168,75 @@ export default function SettingsSheet() {
     }
   };
 
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type and size
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Image must be less than 5MB');
+      return;
+    }
+
+    setAvatarUploading(true);
+    try {
+      const supabase = getSupabaseClient();
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      if (!currentUser) throw new Error('Not authenticated');
+
+      // Upload to Supabase storage
+      const fileExt = file.name.split('.').pop();
+      const filePath = `${currentUser.id}/avatar.${fileExt}`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      // Get public URL
+      const { data } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath);
+
+      const avatarUrl = data.publicUrl;
+
+      // Save to user_settings
+      await supabaseRepo.setCustomAvatarUrl(avatarUrl);
+      setCustomAvatarUrl(avatarUrl);
+
+      // Notify other components
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('profile:avatar-updated', { detail: { avatarUrl } }));
+      }
+    } catch (error) {
+      console.error('Error uploading avatar:', error);
+      alert('Failed to upload avatar');
+    } finally {
+      setAvatarUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleDeleteAvatar = async () => {
+    try {
+      await supabaseRepo.setCustomAvatarUrl(null);
+      setCustomAvatarUrl(null);
+      
+      // Notify other components
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('profile:avatar-updated', { detail: { avatarUrl: null } }));
+      }
+    } catch (error) {
+      console.error('Error deleting avatar:', error);
+      alert('Failed to delete avatar');
+    }
+  };
+
   // Helper function to determine if a cosmetic should be shown in dropdown
   const shouldShowCosmetic = (cosmeticId: string, isPurchased: boolean): boolean => {
     if (isPurchased) return true; // Always show if purchased
@@ -178,9 +262,9 @@ export default function SettingsSheet() {
           <SettingsIcon className="h-5 w-5" />
         </button>
       </SheetTrigger>
-    <SheetContent side="right" className="w-full sm:max-w-full p-0 bg-white">
+    <SheetContent side="right" className="w-full sm:max-w-full p-0 bg-white rounded-[25px] mt-2">
         <div className="flex h-full flex-col">
-      <div className="sticky top-0 z-10 border-b bg-white px-6 py-4">
+      <div className="sticky top-0 z-10 border-b bg-white px-6 py-4 rounded-t-[25px]">
             <SheetHeader>
               <SheetTitle>Settings</SheetTitle>
               <SheetDescription>Manage your BloomCrux preferences.</SheetDescription>
@@ -188,161 +272,207 @@ export default function SettingsSheet() {
           </div>
 
           <div className="flex-1 overflow-y-auto px-6 py-6">
-            <section className="mb-8">
-              <h2 className="text-base font-semibold text-slate-800">Appearance</h2>
-              <p className="text-sm text-slate-500">Personalize how your profile looks across the app.</p>
-              <Separator className="my-4" />
-
-              <div className="grid gap-2 max-w-md">
-                <Label htmlFor="avatar-frame">Animated avatar frames</Label>
-                <Select value={avatarFrame} onValueChange={onChangeAvatarDefault}>
-                  <SelectTrigger id="avatar-frame" className="w-full">
-                    <SelectValue placeholder="Choose a frame" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__system_default">System default</SelectItem>
-                    {shouldShowCosmetic('NeonGlow', neonPurchased) && (
-                      neonPurchased ? (
-                        <SelectItem value="NeonGlow">Neon Glow</SelectItem>
-                      ) : (
-                        <SelectItem value="NeonGlow" disabled>Neon Glow (locked)</SelectItem>
-                      )
-                    )}
-                  </SelectContent>
-                </Select>
-                <div className="mt-2">
-                  {avatarFrame === 'NeonGlow' ? (
-                    <div className="w-24"><AvatarFrameNeonGlow sizeClass="w-24 h-24" /></div>
-                  ) : null}
-                  <div className="text-xs text-slate-400 mt-2">Debug: neonPurchased = {String(neonPurchased)}</div>
-                <p className="text-xs text-slate-500">
-                  Frames unlock with Commander Level and can be purchased in the Token Shop later.
-                </p>
-                </div>
-              </div>
-            </section>
-
-                <section className="mb-8">
-                  <h2 className="text-base font-semibold text-slate-800">Deck Covers</h2>
-                  <p className="text-sm text-slate-500">Choose a default deck cover applied to new and existing decks.</p>
-                  <Separator className="my-4" />
-                  <div className="grid gap-2 max-w-md">
-                        <Label htmlFor="deck-cover">Default Deck Cover</Label>
-                        <Select value={value ?? ''} onValueChange={onChangeDefault}>
-                          <SelectTrigger id="deck-cover" className="w-full">
-                            <SelectValue placeholder="System default" />
-                          </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__system_default">System default</SelectItem>
-                            {/* Sunrise only enabled if purchased or next unlock */}
-                            {shouldShowCosmetic('Sunrise', sunrisePurchased) && (
-                              sunrisePurchased ? (
-                                <SelectItem value="Sunrise">Sunrise</SelectItem>
-                              ) : (
-                                <SelectItem value="Sunrise" disabled>Sunrise (locked)</SelectItem>
-                              )
-                            )}
-                            {/* Deep Space only enabled if purchased or next unlock */}
-                            {shouldShowCosmetic('DeepSpace', deepPurchased) && (
-                              deepPurchased ? (
-                                <SelectItem value="DeepSpace">Deep Space</SelectItem>
-                              ) : (
-                                <SelectItem value="DeepSpace" disabled>Deep Space (locked)</SelectItem>
-                              )
-                            )}
-                            {/* Night Mission only enabled if purchased or next unlock */}
-                            {shouldShowCosmetic('NightMission', nightPurchased) && (
-                              nightPurchased ? (
-                                <SelectItem value="NightMission">Night Mission</SelectItem>
-                              ) : (
-                                <SelectItem value="NightMission" disabled>Night Mission (locked)</SelectItem>
-                              )
-                            )}
-                            {/* Agent Stealth only enabled if purchased or next unlock */}
-                            {shouldShowCosmetic('AgentStealth', stealthPurchased) && (
-                              stealthPurchased ? (
-                                <SelectItem value="AgentStealth">Agent Stealth</SelectItem>
-                              ) : (
-                                <SelectItem value="AgentStealth" disabled>Agent Stealth (locked)</SelectItem>
-                              )
-                            )}
-                            {/* Rainforest only enabled if purchased or next unlock */}
-                            {shouldShowCosmetic('Rainforest', rainPurchased) && (
-                              rainPurchased ? (
-                                <SelectItem value="Rainforest">Rainforest</SelectItem>
-                              ) : (
-                                <SelectItem value="Rainforest" disabled>Rainforest (locked)</SelectItem>
-                              )
-                            )}
-                            {/* Desert Storm only enabled if purchased or next unlock */}
-                            {shouldShowCosmetic('DesertStorm', desertPurchased) && (
-                              desertPurchased ? (
-                                <SelectItem value="DesertStorm">Desert Storm</SelectItem>
-                              ) : (
-                                <SelectItem value="DesertStorm" disabled>Desert Storm (locked)</SelectItem>
-                              )
-                            )}
-                          </SelectContent>
-                        </Select>
-                        <div className="mt-2">
-                          {value === 'Sunrise' ? (
-                            <div className="w-72"><SunriseCover /></div>
-              ) : value === 'DeepSpace' ? (
-                <div className="w-72"><DeckCoverDeepSpace /></div>
-              ) : value === 'NightMission' ? (
-                <div className="w-72"><DeckCoverNightMission /></div>
-              ) : value === 'AgentStealth' ? (
-                <div className="w-72"><DeckCoverAgentStealth /></div>
-              ) : value === 'Rainforest' ? (
-                <div className="w-72"><DeckCoverRainforest /></div>
-              ) : value === 'DesertStorm' ? (
-                <div className="w-72"><DeckCoverDesertStorm /></div>
-              ) : null}
-                        </div>
-                    <p className="text-xs text-slate-500">Covers unlock with Commander Level and may be purchased in the Token Shop.</p>
-                  </div>
-                </section>
-
-            <section className="mb-10">
-              <h2 className="text-base font-semibold text-slate-800">Audio</h2>
-              <p className="text-sm text-slate-500">Set feedback & level-up sound levels.</p>
-              <Separator className="my-4" />
-              <div className="space-y-6 max-w-md">
-                {/* Global Volume */}
+            {/* Appearance Section - Collapsible */}
+            <Collapsible open={appearanceOpen} onOpenChange={setAppearanceOpen}>
+              <CollapsibleTrigger className="flex w-full items-center justify-between py-2">
                 <div>
-                  <Label htmlFor="audio-global" className="flex items-center justify-between">Global Volume
-                    <button type="button" aria-label={audioMuted ? 'Unmute' : 'Mute'} onClick={() => { const next = !audioMuted; setAudioMuted(next); saveAudioPrefs({ muted: next }); }} className="ml-4 rounded p-2 border hover:bg-slate-50">
-                      {audioMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-                    </button>
-                  </Label>
-                  <div className="flex items-center gap-3 mt-2">
-                    <input id="audio-global" type="range" min={0} max={100} value={Math.round(audioGlobal*100)} onChange={(e) => { const v = Number(e.target.value)/100; setAudioGlobal(v); saveAudioPrefs({ globalVolume: v }); }} className="flex-1" />
-                    <span className="w-10 text-right text-xs tabular-nums">{Math.round(audioGlobal*100)}%</span>
+                  <h2 className="text-base font-semibold text-slate-800">Appearance</h2>
+                  <p className="text-sm text-slate-500">Personalize how your profile looks</p>
+                </div>
+                <ChevronDown className={`h-5 w-5 transition-transform ${appearanceOpen ? 'rotate-180' : ''}`} />
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <Separator className="my-4" />
+                
+                {/* Profile Picture Upload */}
+                <div className="mb-6">
+                  <Label className="text-sm font-medium">Profile Picture</Label>
+                  <p className="text-xs text-slate-500 mb-3">Upload a custom profile picture to override your email provider photo</p>
+                  <div className="flex items-center gap-4">
+                    <Avatar className="h-20 w-20">
+                      <AvatarImage src={customAvatarUrl || user?.user_metadata?.avatar_url || user?.user_metadata?.picture || undefined} />
+                      <AvatarFallback>{(user?.email?.[0] ?? 'U').toUpperCase()}</AvatarFallback>
+                    </Avatar>
+                    <div className="flex flex-col gap-2">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleAvatarUpload}
+                        className="hidden"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={avatarUploading}
+                        className="flex items-center gap-2 px-3 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <Upload className="h-4 w-4" />
+                        {avatarUploading ? 'Uploading...' : 'Upload Photo'}
+                      </button>
+                      {customAvatarUrl && (
+                        <button
+                          type="button"
+                          onClick={handleDeleteAvatar}
+                          className="flex items-center gap-2 px-3 py-2 text-sm border border-slate-300 text-slate-700 rounded-md hover:bg-slate-50"
+                        >
+                          <X className="h-4 w-4" />
+                          Remove Custom Photo
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-2">Maximum file size: 5MB. Supported formats: JPG, PNG, GIF</p>
+                </div>
+
+                {/* Avatar Frames */}
+                <div className="grid gap-2 max-w-md">
+                  <Label htmlFor="avatar-frame">Animated avatar frames</Label>
+                  <Select value={avatarFrame} onValueChange={onChangeAvatarDefault}>
+                    <SelectTrigger id="avatar-frame" className="w-full">
+                      <SelectValue placeholder="Choose a frame" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__system_default">System default</SelectItem>
+                      {shouldShowCosmetic('NeonGlow', neonPurchased) && (
+                        neonPurchased ? (
+                          <SelectItem value="NeonGlow">Neon Glow</SelectItem>
+                        ) : (
+                          <SelectItem value="NeonGlow" disabled>Neon Glow (locked)</SelectItem>
+                        )
+                      )}
+                    </SelectContent>
+                  </Select>
+                  <div className="mt-2">
+                    {avatarFrame === 'NeonGlow' ? (
+                      <div className="w-24"><AvatarFrameNeonGlow sizeClass="w-24 h-24" /></div>
+                    ) : null}
+                  <p className="text-xs text-slate-500">
+                    Frames unlock with Commander Level and can be purchased in the Token Shop later.
+                  </p>
                   </div>
                 </div>
-                {/* Correct Answer Volume */}
+
+                {/* Deck Covers */}
+                <Separator className="my-6" />
+                <div className="grid gap-2 max-w-md">
+                  <Label htmlFor="deck-cover" className="text-sm font-medium">Default Deck Cover</Label>
+                  <p className="text-xs text-slate-500 mb-2">Choose a default cover applied to your decks</p>
+                  <Select value={value ?? ''} onValueChange={onChangeDefault}>
+                    <SelectTrigger id="deck-cover" className="w-full">
+                      <SelectValue placeholder="System default" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__system_default">System default</SelectItem>
+                      {shouldShowCosmetic('Sunrise', sunrisePurchased) && (
+                        sunrisePurchased ? (
+                          <SelectItem value="Sunrise">Sunrise</SelectItem>
+                        ) : (
+                          <SelectItem value="Sunrise" disabled>Sunrise (locked)</SelectItem>
+                        )
+                      )}
+                      {shouldShowCosmetic('DeepSpace', deepPurchased) && (
+                        deepPurchased ? (
+                          <SelectItem value="DeepSpace">Deep Space</SelectItem>
+                        ) : (
+                          <SelectItem value="DeepSpace" disabled>Deep Space (locked)</SelectItem>
+                        )
+                      )}
+                      {shouldShowCosmetic('NightMission', nightPurchased) && (
+                        nightPurchased ? (
+                          <SelectItem value="NightMission">Night Mission</SelectItem>
+                        ) : (
+                          <SelectItem value="NightMission" disabled>Night Mission (locked)</SelectItem>
+                        )
+                      )}
+                      {shouldShowCosmetic('AgentStealth', stealthPurchased) && (
+                        stealthPurchased ? (
+                          <SelectItem value="AgentStealth">Agent Stealth</SelectItem>
+                        ) : (
+                          <SelectItem value="AgentStealth" disabled>Agent Stealth (locked)</SelectItem>
+                        )
+                      )}
+                      {shouldShowCosmetic('Rainforest', rainPurchased) && (
+                        rainPurchased ? (
+                          <SelectItem value="Rainforest">Rainforest</SelectItem>
+                        ) : (
+                          <SelectItem value="Rainforest" disabled>Rainforest (locked)</SelectItem>
+                        )
+                      )}
+                      {shouldShowCosmetic('DesertStorm', desertPurchased) && (
+                        desertPurchased ? (
+                          <SelectItem value="DesertStorm">Desert Storm</SelectItem>
+                        ) : (
+                          <SelectItem value="DesertStorm" disabled>Desert Storm (locked)</SelectItem>
+                        )
+                      )}
+                    </SelectContent>
+                  </Select>
+                  <div className="mt-2">
+                    {value === 'Sunrise' ? (
+                      <div className="w-72"><SunriseCover /></div>
+                    ) : value === 'DeepSpace' ? (
+                      <div className="w-72"><DeckCoverDeepSpace /></div>
+                    ) : value === 'NightMission' ? (
+                      <div className="w-72"><DeckCoverNightMission /></div>
+                    ) : value === 'AgentStealth' ? (
+                      <div className="w-72"><DeckCoverAgentStealth /></div>
+                    ) : value === 'Rainforest' ? (
+                      <div className="w-72"><DeckCoverRainforest /></div>
+                    ) : value === 'DesertStorm' ? (
+                      <div className="w-72"><DeckCoverDesertStorm /></div>
+                    ) : null}
+                  </div>
+                  <p className="text-xs text-slate-500">Covers unlock with Commander Level and may be purchased in the Token Shop.</p>
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+
+            {/* Accessibility Section - Collapsible (Audio moved here) */}
+            <Collapsible open={accessibilityOpen} onOpenChange={setAccessibilityOpen} className="mt-6 mb-10">
+              <CollapsibleTrigger className="flex w-full items-center justify-between py-2">
                 <div>
-                  <Label htmlFor="audio-correct" className="flex items-center justify-between">Correct Answer</Label>
-                  <div className="flex items-center gap-3 mt-2">
-                    <input id="audio-correct" type="range" min={0} max={100} value={Math.round(audioCorrect*100)} onChange={(e) => { const v = Number(e.target.value)/100; setAudioCorrect(v); saveAudioPrefs({ correctVolume: v }); }} className="flex-1" />
-                    <button type="button" className="text-xs px-2 py-1 rounded border hover:bg-slate-50" onClick={() => { // test sound
-                      const a = new Audio('/audio/correct-356013.mp3'); a.volume = audioMuted ? 0 : audioCorrect*audioGlobal; a.play().catch(()=>{});
-                    }}>Test</button>
-                    <span className="w-10 text-right text-xs tabular-nums">{Math.round(audioCorrect*100)}%</span>
+                  <h2 className="text-base font-semibold text-slate-800">Accessibility</h2>
+                  <p className="text-sm text-slate-500">Audio feedback and sound settings</p>
+                </div>
+                <ChevronDown className={`h-5 w-5 transition-transform ${accessibilityOpen ? 'rotate-180' : ''}`} />
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <Separator className="my-4" />
+                <div className="space-y-6 max-w-md">
+                  {/* Global Volume */}
+                  <div>
+                    <Label htmlFor="audio-global" className="flex items-center justify-between">Global Volume
+                      <button type="button" aria-label={audioMuted ? 'Unmute' : 'Mute'} onClick={() => { const next = !audioMuted; setAudioMuted(next); saveAudioPrefs({ muted: next }); }} className="ml-4 rounded p-2 border hover:bg-slate-50">
+                        {audioMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                      </button>
+                    </Label>
+                    <div className="flex items-center gap-3 mt-2">
+                      <input id="audio-global" type="range" min={0} max={100} value={Math.round(audioGlobal*100)} onChange={(e) => { const v = Number(e.target.value)/100; setAudioGlobal(v); saveAudioPrefs({ globalVolume: v }); }} className="flex-1" />
+                      <span className="w-10 text-right text-xs tabular-nums">{Math.round(audioGlobal*100)}%</span>
+                    </div>
+                  </div>
+                  {/* Correct Answer Volume */}
+                  <div>
+                    <Label htmlFor="audio-correct" className="flex items-center justify-between">Correct Answer</Label>
+                    <div className="flex items-center gap-3 mt-2">
+                      <input id="audio-correct" type="range" min={0} max={100} value={Math.round(audioCorrect*100)} onChange={(e) => { const v = Number(e.target.value)/100; setAudioCorrect(v); saveAudioPrefs({ correctVolume: v }); }} className="flex-1" />
+                      <button type="button" className="text-xs px-2 py-1 rounded border hover:bg-slate-50" onClick={() => { const a = new Audio('/audio/correct-356013.mp3'); a.volume = audioMuted ? 0 : audioCorrect*audioGlobal; a.play().catch(()=>{}); }}>Test</button>
+                      <span className="w-10 text-right text-xs tabular-nums">{Math.round(audioCorrect*100)}%</span>
+                    </div>
+                  </div>
+                  {/* Level Up Volume */}
+                  <div>
+                    <Label htmlFor="audio-levelup" className="flex items-center justify-between">Level Up</Label>
+                    <div className="flex items-center gap-3 mt-2">
+                      <input id="audio-levelup" type="range" min={0} max={100} value={Math.round(audioLevelUp*100)} onChange={(e) => { const v = Number(e.target.value)/100; setAudioLevelUp(v); saveAudioPrefs({ levelupVolume: v }); }} className="flex-1" />
+                      <button type="button" className="text-xs px-2 py-1 rounded border hover:bg-slate-50" onClick={() => { const a = new Audio('/audio/level-up-47165.mp3'); a.volume = audioMuted ? 0 : audioLevelUp*audioGlobal; a.play().catch(()=>{}); }}>Test</button>
+                      <span className="w-10 text-right text-xs tabular-nums">{Math.round(audioLevelUp*100)}%</span>
+                    </div>
                   </div>
                 </div>
-                {/* Level Up Volume */}
-                <div>
-                  <Label htmlFor="audio-levelup" className="flex items-center justify-between">Level Up</Label>
-                  <div className="flex items-center gap-3 mt-2">
-                    <input id="audio-levelup" type="range" min={0} max={100} value={Math.round(audioLevelUp*100)} onChange={(e) => { const v = Number(e.target.value)/100; setAudioLevelUp(v); saveAudioPrefs({ levelupVolume: v }); }} className="flex-1" />
-                    <button type="button" className="text-xs px-2 py-1 rounded border hover:bg-slate-50" onClick={() => { const a = new Audio('/audio/level-up-47165.mp3'); a.volume = audioMuted ? 0 : audioLevelUp*audioGlobal; a.play().catch(()=>{}); }}>Test</button>
-                    <span className="w-10 text-right text-xs tabular-nums">{Math.round(audioLevelUp*100)}%</span>
-                  </div>
-                </div>
-              </div>
-            </section>
-            {/* Future settings sections go here */}
+              </CollapsibleContent>
+            </Collapsible>
           </div>
         </div>
       </SheetContent>
