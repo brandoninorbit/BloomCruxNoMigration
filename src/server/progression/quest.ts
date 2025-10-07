@@ -19,8 +19,24 @@ export async function recordMissionAttempt(params: {
   contentVersion?: number;
   mode?: 'quest' | 'remix' | 'drill' | 'study' | 'starred';
   breakdown?: Record<string, { scorePct: number; cardsSeen: number; cardsCorrect: number }>; // per-bloom summary
-  answers?: Array<{ cardId: number; correct: boolean | number }>; // optional raw per-card answers for persistence
+  answers?: Array<{ cardId: number; correct: boolean | number; response?: unknown }>; // optional raw per-card answers for persistence (includes raw response & timing)
 }): Promise<{ ok: true; attemptId?: number } | { ok: false; error: string }> {
+  /*
+   * ⚠️ MISSION LOGGING CRITICAL PATH (Do Not Remove or Bypass)
+   * ------------------------------------------------------------------
+   * This function is the ONLY sanctioned write path for mission attempt
+   * persistence. It must:
+   *  1. Insert a row into user_deck_mission_attempts
+   *  2. Persist per-card accuracy to user_deck_mission_card_answers
+   *  3. (If present) persist coverage rows to user_mission_attempt_cards
+   *  4. Upsert user_card_stats for SRS / mastery analytics
+   *  5. Preserve answers_json snapshot (raw correctness + response payload)
+   * Any modifications here require explicit authorization & test updates:
+   *  - src/server/__tests__/recordMissionAttempt.test.ts
+   * Failing to follow this contract can silently break progression,
+   * coverage metrics, unlock logic, mastery AWA calculations, and XP audits.
+   * ------------------------------------------------------------------
+   */
   console.log('🔄 recordMissionAttempt called with:', {
     userId: params.userId,
     deckId: params.deckId,
@@ -62,13 +78,18 @@ export async function recordMissionAttempt(params: {
     ? params.answers
         .filter(a => a && typeof a.cardId === 'number')
         .map(a => {
+          // Normalize correctness into 0..1 numeric fraction for partial credit; legacy boolean supported.
+          const fraction = (typeof a.correct === 'number')
+            ? Math.max(0, Math.min(1, a.correct))
+            : (a.correct ? 1 : 0);
           const base = {
             cardId: Number(a.cardId),
-            correct: (typeof a.correct === 'number' ? Math.max(0, Math.min(1, a.correct)) : (a.correct ? 1 : 0)),
+            correct: fraction,
+            // Keep raw response payload if supplied for later analytics (e.g. chosen option, typed answer)
+            response: (a && typeof a === 'object' && 'response' in (a as Record<string, unknown>))
+              ? (a as Record<string, unknown>).response
+              : undefined,
           } as { cardId: number; correct: number; response?: unknown };
-          if (a && typeof a === 'object' && 'response' in (a as Record<string, unknown>)) {
-            base.response = (a as Record<string, unknown>).response;
-          }
           return base;
         })
     : undefined;
@@ -130,26 +151,117 @@ export async function recordMissionAttempt(params: {
           const attemptId = (data as { id: number } | null | undefined)?.id;
           // If we captured answers and have attempt id, insert detail rows (best-effort; ignore failures)
           if (attemptId && answersSanitized && answersSanitized.length > 0) {
+            // Persist to both granular per-attempt tables if available.
             try {
-              const rows = answersSanitized.slice(0, 5000).map(ans => ({
+              const capped = answersSanitized.slice(0, 5000);
+              const answersRows = capped.map(ans => ({
                 attempt_id: attemptId,
                 user_id: params.userId,
                 deck_id: params.deckId,
                 card_id: ans.cardId,
                 bloom_level: params.bloomLevel,
                 correct_fraction: ans.correct,
+                // answered_at default handled by DB
               }));
-              if (rows.length > 0) {
-                const cardResult = await client.from('user_deck_mission_card_answers').insert(rows);
-                console.log('📝 Card answers insert:', { 
-                  error: cardResult.error?.message, 
-                  success: !cardResult.error, 
-                  rowCount: rows.length,
+              if (answersRows.length > 0) {
+                const cardResult = await client.from('user_deck_mission_card_answers').insert(answersRows);
+                console.log('📝 Card answers insert:', {
+                  error: cardResult.error?.message,
+                  success: !cardResult.error,
+                  rowCount: answersRows.length,
                   table: 'user_deck_mission_card_answers'
                 });
               }
             } catch (cardError) {
-              console.error('❌ Card answers insert failed:', cardError);
+              console.error('❌ Card answers insert failed (user_deck_mission_card_answers):', cardError);
+            }
+            // Attempt secondary insert into coverage table introduced later (user_mission_attempt_cards).
+            try {
+              const coverageRows = answersSanitized.slice(0, 5000).map(ans => ({
+                attempt_id: attemptId,
+                user_id: params.userId,
+                deck_id: params.deckId,
+                bloom_level: params.bloomLevel,
+                card_id: ans.cardId,
+                correctness: ans.correct,
+                tries: 1,
+                duration_ms: (ans.response && typeof ans.response === 'object' && 'responseMs' in (ans.response as Record<string, unknown>) && typeof (ans.response as Record<string, unknown>).responseMs === 'number')
+                  ? Math.max(0, Math.floor((ans.response as Record<string, unknown>).responseMs as number))
+                  : null,
+                response: ans.response ?? null,
+              }));
+              if (coverageRows.length > 0) {
+                const coverageResult = await client.from('user_mission_attempt_cards').insert(coverageRows);
+                console.log('🗂 Coverage per-card insert:', {
+                  error: coverageResult.error?.message,
+                  success: !coverageResult.error,
+                  rowCount: coverageRows.length,
+                  table: 'user_mission_attempt_cards'
+                });
+              }
+            } catch (coverageErr) {
+              // Table may not exist in older environments; log at debug level only.
+              console.warn('⚠️ Coverage table insert skipped:', (coverageErr as Error)?.message);
+            }
+            // Update user_card_stats (simple SR-like increments) for retention/coverage if table exists.
+            try {
+              const cardIds = Array.from(new Set(answersSanitized.map(a => a.cardId)));
+              if (cardIds.length > 0) {
+                const existingRes = await client
+                  .from('user_card_stats')
+                  .select('card_id, attempts, correct, streak, ease, interval_days')
+                  .eq('user_id', params.userId)
+                  .eq('deck_id', params.deckId)
+                  .in('card_id', cardIds);
+                const existingRows: Array<{ card_id: number; attempts: number; correct: number; streak: number; ease: number; interval_days: number }> = (existingRes && typeof existingRes === 'object' && 'data' in existingRes
+                  ? ((existingRes as { data: Array<{ card_id: number; attempts: number; correct: number; streak: number; ease: number; interval_days: number }> | null }).data || [])
+                  : []);
+                const existingMap = new Map<number, { attempts: number; correct: number; streak: number; ease: number; interval_days: number }>();
+                for (const r of existingRows) {
+                  existingMap.set(Number(r.card_id), {
+                    attempts: Number(r.attempts ?? 0),
+                    correct: Number(r.correct ?? 0),
+                    streak: Number(r.streak ?? 0),
+                    ease: typeof r.ease === 'number' ? r.ease : 2.5,
+                    interval_days: Number(r.interval_days ?? 0)
+                  });
+                }
+                const now = Date.now();
+                const DAY_MS = 86400000;
+                const statsRows = answersSanitized.map(ans => {
+                  const prev = existingMap.get(ans.cardId) || { attempts: 0, correct: 0, streak: 0, ease: 2.5, interval_days: 0 };
+                  const success = ans.correct >= 0.65; // treat >=65% as a success (aligns with unlocking threshold)
+                  const attempts = prev.attempts + 1;
+                  const correct = prev.correct + (success ? 1 : 0);
+                  const streak = success ? (prev.streak + 1) : 0;
+                  // Basic ease adjustment: small reward/penalty
+                  let ease = prev.ease + (success ? 0.05 : -0.15);
+                  if (ease < 1.3) ease = 1.3;
+                  if (ease > 2.8) ease = 2.8;
+                  // Simple interval growth: double on success else reset
+                  const interval_days = success ? (prev.interval_days > 0 ? Math.min(prev.interval_days * 2, 180) : 1) : 0;
+                  const due_at = new Date(now + (interval_days * DAY_MS)).toISOString();
+                  return {
+                    user_id: params.userId,
+                    deck_id: params.deckId,
+                    card_id: ans.cardId,
+                    bloom_level: params.bloomLevel,
+                    attempts,
+                    correct,
+                    streak,
+                    ease,
+                    interval_days,
+                    due_at,
+                    updated_at: new Date().toISOString(),
+                  };
+                });
+                if (statsRows.length > 0) {
+                  const statsResult = await client.from('user_card_stats').upsert(statsRows, { onConflict: 'user_id,deck_id,card_id' });
+                  console.log('📈 user_card_stats upsert:', { error: statsResult.error?.message, success: !statsResult.error, rowCount: statsRows.length });
+                }
+              }
+            } catch (statsErr) {
+              console.warn('⚠️ user_card_stats update skipped:', (statsErr as Error)?.message);
             }
           }
           return { ok: true, attemptId };
@@ -166,31 +278,41 @@ export async function recordMissionAttempt(params: {
 
   // First: try with a session-bound server client (RLS must allow user_id = auth.uid())
   try {
-  const reqId = makeReqId('attempt');
-  info('recordMissionAttempt.start', { userId: params.userId, deckId: params.deckId, bloom: params.bloomLevel, scorePct: params.scorePct }, { reqId, userId: params.userId, deckId: params.deckId, bloom: params.bloomLevel });
-    type CookieAdapter = { get: (name: string) => { value: string } | undefined; set: (name: string, value: string, options?: Record<string, unknown>) => void };
-    const jar = cookies() as unknown as CookieAdapter;
+    // NOTE: Previous implementation attempted to forward Next.js cookies() live getters into
+    // Supabase client which triggered build-time "sync dynamic API" warnings in Next 15.
+    // For mission attempt writes we only need an authenticated session if present; otherwise
+    // an anon client will fail RLS and we fall back to admin client below. To avoid warnings
+    // we take a one-time snapshot of cookies (no live getters) and provide inert get/set
+    // functions so Next.js does not treat them as dynamic accessors.
+    const reqId = makeReqId('attempt');
+    info('recordMissionAttempt.start', { userId: params.userId, deckId: params.deckId, bloom: params.bloomLevel, scorePct: params.scorePct }, { reqId, userId: params.userId, deckId: params.deckId, bloom: params.bloomLevel });
+    let cookieSnapshot: Array<{ name: string; value: string }> = [];
+    try {
+      // cookies() in Next.js 15 can be sync or async (experimental). We duck-type for a Promise.
+      type CookieLike = { getAll: () => Array<{ name: string; value: string }>; };
+      const raw = cookies() as unknown as CookieLike | Promise<CookieLike>;
+      const jarResolved: CookieLike = (raw instanceof Promise) ? await raw : raw;
+      const all = jarResolved.getAll();
+      cookieSnapshot = all.map(c => ({ name: c.name, value: c.value }));
+    } catch { /* non-request context or not available */ }
     const sbUser = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
         cookies: {
           get(name: string) {
-            try { return jar.get(name)?.value; } catch { return undefined; }
+            const found = cookieSnapshot.find(c => c.name === name);
+            return found ? found.value : undefined;
           },
-          set(name: string, value: string, options?: Record<string, unknown>) {
-            try { jar.set(name, value, options); } catch {}
-          },
-          remove(name: string, options?: Record<string, unknown>) {
-            try { jar.set(name, '', { ...(options || {}), maxAge: 0 }); } catch {}
-          },
+          set() { /* no-op: mission attempt write does not need to mutate cookies */ },
+          remove() { /* no-op */ },
         },
         auth: { autoRefreshToken: false, detectSessionInUrl: false },
       }
     );
-  const res = await tryInsert(sbUser);
-  if (res.ok) return res;
-  return res;
+    const res = await tryInsert(sbUser);
+    if (res.ok) return res;
+    return res; // continue to admin fallback
   } catch {
     // Fall through to admin client as last resort
   }
