@@ -416,6 +416,13 @@ export default function DashboardClient() {
     };
   }, [user, showExample]);
 
+  // If a user logs in after initial render (hydration), automatically hide example data.
+  useEffect(() => {
+    if (user && showExample) {
+      setShowExample(false);
+    }
+  }, [user, showExample]);
+
   const progressToDisplay = useMemo<DeckProgress[]>(
     () => (showExample ? MOCK_DECK_PROGRESS : realDecks),
     [showExample, realDecks]
