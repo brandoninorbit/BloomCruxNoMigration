@@ -49,7 +49,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dec
   if (!bloom_level || Number.isNaN(score_pct)) return NextResponse.json({ error: "invalid payload" }, { status: 400 });
 
   console.log('🎯 Complete API received:', {
-    userId: session.user.id,
+    userId,
     deckId,
     bloom_level,
     score_pct,
