@@ -6,6 +6,9 @@ import { DEFAULT_QUEST_SETTINGS } from "@/lib/quest/types";
 import type { DeckBloomLevel } from "@/types/deck-cards";
 import { recomputeBloomMasteryForDeck } from "@/server/mastery/recompute";
 
+// Force Node.js runtime for server-side operations (required for service role key)
+export const runtime = 'nodejs';
+
 export async function POST(req: NextRequest, { params }: { params: Promise<{ deckId: string }> }) {
   const { deckId: deckIdStr } = await params;
   const deckId = Number(deckIdStr);

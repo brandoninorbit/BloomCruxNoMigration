@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseSession } from '@/app/supabase/session';
 import { supabaseAdmin } from '@/lib/supabase/server';
 
+// Force Node.js runtime for server-side operations (required for service role key)
+export const runtime = 'nodejs';
+
 // Returns per-card answers for a specific attempt id or the most recent quest attempt.
 export async function GET(req: NextRequest, { params }: { params: Promise<{ deckId: string }> }) {
   const { deckId } = await params;

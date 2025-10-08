@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { getSupabaseSession } from "@/app/supabase/session";
 
+// Force Node.js runtime for server-side operations (required for service role key)
+export const runtime = 'nodejs';
+
 // Query string expects bloomLevel and missionIndex
 export async function GET(req: NextRequest, { params }: { params: Promise<{ deckId: string }> }) {
   const { deckId: deckIdStr } = await params;

@@ -3,6 +3,9 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 import { getSupabaseSession } from "@/app/supabase/session";
 import { XP_MODEL, type BloomLevel } from "@/lib/xp";
 
+// Force Node.js runtime for server-side operations (required for service role key)
+export const runtime = 'nodejs';
+
 // Finalize a mission completion by minting commander XP and tokens to the user's wallet.
 // Body: { deckId: number, mode?: string, correct?: number, total?: number, percent?: number }
 // Policy: idempotent per matching (deckId, mode, correct, total) within a short window.

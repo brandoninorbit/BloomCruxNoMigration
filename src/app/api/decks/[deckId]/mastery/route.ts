@@ -3,6 +3,9 @@ import { getSupabaseSession } from "@/app/supabase/session";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import type { DeckBloomLevel } from "@/types/deck-cards";
 
+// Force Node.js runtime for server-side operations (required for service role key)
+export const runtime = 'nodejs';
+
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ deckId: string }> }) {
   const { deckId: deckIdStr } = await params;
   const deckId = Number(deckIdStr);

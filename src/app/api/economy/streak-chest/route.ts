@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { getSupabaseSession } from '@/app/supabase/session';
 
+// Force Node.js runtime for server-side operations (required for service role key)
+export const runtime = 'nodejs';
+
 export async function POST() {
   const session = await getSupabaseSession();
   if (!session?.user?.id) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });

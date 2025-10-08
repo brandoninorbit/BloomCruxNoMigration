@@ -4,6 +4,9 @@ import { getSupabaseSession } from "@/app/supabase/session";
 import type { CardMastery } from "@/types/mastery";
 import { struggleQueue } from "@/lib/reviewQueues";
 
+// Force Node.js runtime for server-side operations (required for service role key)
+export const runtime = 'nodejs';
+
 export async function GET() {
   // Prefer POST with explicit cardIds; GET not supported to avoid large query strings or schema coupling
   return NextResponse.json({ error: "Method not allowed" }, { status: 405 });

@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { getSupabaseSession } from "@/app/supabase/session";
 
+// Force Node.js runtime for server-side operations (required for service role key)
+export const runtime = 'nodejs';
+
 // POST to reset quest state for this deck and current user.
 // Body: { wipeXp?: boolean }
 export async function POST(req: NextRequest, { params }: { params: Promise<{ deckId: string }> }) {

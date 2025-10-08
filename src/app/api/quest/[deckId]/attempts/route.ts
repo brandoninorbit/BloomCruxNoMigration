@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseSession } from "@/app/supabase/session";
 import { supabaseAdmin } from "@/lib/supabase/server";
 
+// Force Node.js runtime for server-side operations (required for service role key)
+export const runtime = 'nodejs';
+
 function recomputeFromBreakdown(breakdown: unknown): { seen: number; correct: number } | null {
   try {
     if (!breakdown || typeof breakdown !== "object") return null;

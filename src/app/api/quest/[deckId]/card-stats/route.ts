@@ -3,6 +3,9 @@ import { getSupabaseSession } from "@/app/supabase/session";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { mergeCardStats } from './mergeCardStats';
 
+// Force Node.js runtime for server-side operations (required for service role key)
+export const runtime = 'nodejs';
+
 // Aggregated per-card performance stats API (Reintroduced 2025-10-07)
 // Returns merged SRS + mission-derived correctness metrics.
 // NOTE: This route intentionally exposes read-only aggregated data to power mastery & analytics UIs.

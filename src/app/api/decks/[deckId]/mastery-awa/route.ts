@@ -4,6 +4,9 @@ import type { DeckBloomLevel } from "@/types/deck-cards";
 import { getAttemptWeightedAccuracy } from "@/server/mastery/updateBloomMastery";
 import { supabaseAdmin } from "@/lib/supabase/server";
 
+// Force Node.js runtime for server-side operations (required for service role key)
+export const runtime = 'nodejs';
+
 export async function GET(req: NextRequest, { params }: { params: Promise<{ deckId: string }> }) {
   const { deckId: deckIdStr } = await params;
   const deckId = Number(deckIdStr);
