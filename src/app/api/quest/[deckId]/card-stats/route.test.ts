@@ -12,7 +12,8 @@ vi.mock('@/lib/supabase/server', () => ({
 }));
 
 // Module under test (import AFTER mocks so they apply to module dependency graph)
-import { GET, mergeCardStats } from './route';
+import { GET } from './route';
+import { mergeCardStats } from './mergeCardStats';
 
 // Helpers to get typed mocks
 import * as SessionMod from '@/app/supabase/session';
@@ -23,20 +24,6 @@ const supabaseAdminMock = ServerMod.supabaseAdmin as unknown as ReturnType<typeo
 
 interface StatsRow { card_id: number; attempts: number; correct: number; streak: number; ease: number; interval_days: number; due_at: string | null }
 interface AnswerRow { card_id: number; correct_fraction: number | null; answered_at: string | null }
-
-function makeQueryBuilder<T>(data: T[]) {
-  let eqCalls = 0;
-  return {
-    select() { return this; },
-    eq() {
-      eqCalls += 1;
-      if (eqCalls >= 2) {
-        return Promise.resolve({ data, error: null });
-      }
-      return this;
-    },
-  };
-}
 
 describe('GET /api/quest/[deckId]/card-stats', () => {
   beforeEach(() => {
@@ -50,8 +37,8 @@ describe('GET /api/quest/[deckId]/card-stats', () => {
     // params is a Promise per route signature
     const res = await GET(req, { params: Promise.resolve({ deckId: '42' }) });
     expect(res.status).toBe(401);
-    const body: any = await res.json();
-    expect(body.error).toMatch(/unauthorized/i);
+  const body = (await res.json()) as { error?: string };
+  expect(body.error).toMatch(/unauthorized/i);
   });
 
   it('aggregates stats + answers (pure mergeCardStats)', () => {
@@ -64,7 +51,10 @@ describe('GET /api/quest/[deckId]/card-stats', () => {
       { card_id: 10, correct_fraction: 0, answered_at: new Date(Date.now() + 1000).toISOString() },
       { card_id: 11, correct_fraction: 0.5, answered_at: now },
     ];
-    const merged = mergeCardStats(statsRows as any, answerRows as any);
+    const merged = mergeCardStats(
+      statsRows as Array<{ card_id: number; attempts: number; correct: number; streak: number; ease: number; interval_days: number; due_at: string | null }>,
+      answerRows as Array<{ card_id: number; correct_fraction: number | null; answered_at: string | null }>
+    );
     expect(merged.length).toBe(2);
     const byId = Object.fromEntries(merged.map(r => [r.cardId, r]));
     expect(byId[10].attempts).toBe(3);
