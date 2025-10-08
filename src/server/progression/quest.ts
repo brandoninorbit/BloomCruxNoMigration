@@ -136,6 +136,10 @@ export async function recordMissionAttempt(params: {
       const variants = payloadVariants();
       let lastErr: string | null = null;
       for (const p of variants) {
+        // Defensive: ensure required foreign key fields look valid (UUID format minimal check) before attempting insert
+        if (typeof p.user_id !== 'string' || p.user_id.length < 20) {
+          return { ok: false, error: 'invalid user_id (not UUID?)' };
+        }
         const { data, error } = await client
           .from("user_deck_mission_attempts")
           .insert(p)
@@ -176,6 +180,7 @@ export async function recordMissionAttempt(params: {
               console.error('❌ Card answers insert failed (user_deck_mission_card_answers):', cardError);
             }
             // Attempt secondary insert into coverage table introduced later (user_mission_attempt_cards).
+            // Use admin client to bypass RLS since this is a server-side analytics insert.
             try {
               const coverageRows = answersSanitized.slice(0, 5000).map(ans => ({
                 attempt_id: attemptId,
@@ -191,7 +196,8 @@ export async function recordMissionAttempt(params: {
                 response: ans.response ?? null,
               }));
               if (coverageRows.length > 0) {
-                const coverageResult = await client.from('user_mission_attempt_cards').insert(coverageRows);
+                const adminClient = supabaseAdmin();
+                const coverageResult = await adminClient.from('user_mission_attempt_cards').insert(coverageRows);
                 console.log('🗂 Coverage per-card insert:', {
                   error: coverageResult.error?.message,
                   success: !coverageResult.error,
@@ -312,7 +318,11 @@ export async function recordMissionAttempt(params: {
     );
     const res = await tryInsert(sbUser);
     if (res.ok) return res;
-    return res; // continue to admin fallback
+    // If RLS blocked (typical error message includes 'violates row-level security'), fall through to admin client.
+    if (res.error && /row-level security|permission|RLS/i.test(res.error)) {
+      throw new Error(res.error);
+    }
+    return res; // return non-RLS error directly
   } catch {
     // Fall through to admin client as last resort
   }

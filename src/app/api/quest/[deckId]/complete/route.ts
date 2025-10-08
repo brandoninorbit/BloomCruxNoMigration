@@ -10,9 +10,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dec
   const { deckId: deckIdStr } = await params;
   const deckId = Number(deckIdStr);
   if (!Number.isFinite(deckId)) return NextResponse.json({ error: "invalid deckId" }, { status: 400 });
-  // const session = await getSupabaseSession();
-  // if (!session?.user?.id) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const userId = 'test-user'; // session.user.id;
+  const session = await getSupabaseSession();
+  if (!session?.user?.id) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const userId = session.user.id;
 
   const body = await req.json().catch(() => ({}));
   const bloom_level = body?.bloom_level as DeckBloomLevel | undefined;

@@ -63,6 +63,9 @@ export function useMasteryTracker() {
     };
 
     const next = updateCardMastery(prev, outcome);
-    await upsertUserCardState(userId, Number(payload.cardId), next);
+    // DEPRECATED: Server-side mission complete API now handles all mastery/SRS persistence via recordMissionAttempt.
+    // Client-side direct writes cause RLS 403 errors. Disable this to let server handle it.
+    // await upsertUserCardState(userId, Number(payload.cardId), next);
+    console.log('📊 [useMasteryTracker] Mastery calculated (not persisting client-side; server handles via /api/quest/complete):', { cardId: payload.cardId, Mi: next.Mi });
   };
 }
