@@ -68,10 +68,10 @@ export async function recordMissionAttempt(params: {
   const scorePctSafe = Math.max(0, Math.min(100, Number(params.scorePct) || 0));
   // Some databases may not allow certain custom modes (e.g., 'starred') via a CHECK constraint.
   // Clamp to an allowed set to avoid insert failures when schemas lag behind.
-  const modeSafe = ((): 'quest' | 'remix' | 'drill' | 'study' | null => {
+  const modeSafe = ((): 'quest' | 'remix' | 'drill' | 'study' | 'starred' | null => {
     const m = params.mode as 'quest' | 'remix' | 'drill' | 'study' | 'starred' | undefined;
     if (!m) return 'quest'; // default to quest when not provided
-  if (m === 'quest' || m === 'remix' || m === 'drill' || m === 'study') return m;
+  if (m === 'quest' || m === 'remix' || m === 'drill' || m === 'study' || m === 'starred') return m;
   return null;
   })();
   const answersSanitized = Array.isArray(params.answers)

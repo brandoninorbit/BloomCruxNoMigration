@@ -29,19 +29,20 @@ describe('fetchWithAuth (server-side cookie forwarding)', () => {
   it('forwards cookies as cookie header on server', async () => {
     // Force server-side branch by removing `window` from global scope so
     // `typeof window === 'undefined'` is true in the module under test.
-  // Use globalThis to access the global window if present. Cast to unknown to avoid `any`.
-  const originalWindow = (globalThis as unknown as { window?: unknown }).window;
+  // Use globalThis to access the global window if present. Cast to any to avoid `any`.
+  const originalWindow = (globalThis as any).window;
     try {
       // Simulate server environment by setting window to undefined. Some test
       // runners define a read-only window; assigning undefined is more robust
       // than deleting the property.
-  (globalThis as unknown as { window?: unknown }).window = undefined;
+  (globalThis as any).window = undefined;
     // Mock global.fetch and capture headers
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const fetchMock = vi.fn(async (_input: RequestInfo, _init?: RequestInit) => {
       return new Response(JSON.stringify({ ok: true }), { status: 200 });
     });
     // assign to global.fetch with a cast to avoid TS errors in the test
-    (global as unknown as { fetch?: typeof fetch }).fetch = fetchMock as unknown as typeof fetch;
+    (global as any).fetch = fetchMock;
 
     // Import the function under test (after mocking next/headers)
     const mod = await import('@/lib/supabase/fetchWithAuth');
@@ -52,7 +53,7 @@ describe('fetchWithAuth (server-side cookie forwarding)', () => {
     expect(fetchMock).toHaveBeenCalled();
   const calledArgs = fetchMock.mock.calls[0] as [RequestInfo, RequestInit | undefined];
   const passedInit = calledArgs[1];
-    const headersInit = passedInit?.headers as unknown;
+    const headersInit = passedInit?.headers as any;
     let cookieHeader: string | null = null;
     if (headersInit instanceof Headers) {
       cookieHeader = headersInit.get('cookie');
@@ -69,7 +70,7 @@ describe('fetchWithAuth (server-side cookie forwarding)', () => {
       }
     }
           // If headers is a Headers instance, convert to object for easier inspection
-        if (passedInit && (passedInit as unknown as { headers?: unknown }).headers instanceof Headers) {
+        if (passedInit && (passedInit as any).headers instanceof Headers) {
             // nothing; kept for parity when debugging locally
           }
 
@@ -78,7 +79,7 @@ describe('fetchWithAuth (server-side cookie forwarding)', () => {
   expect(String(cookieHeader)).toContain('other=x');
     } finally {
       // restore global.window
-  if (originalWindow !== undefined) (globalThis as unknown as { window?: unknown }).window = originalWindow;
+  if (originalWindow !== undefined) (globalThis as any).window = originalWindow;
     }
   });
 });
