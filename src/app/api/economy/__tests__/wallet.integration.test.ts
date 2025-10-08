@@ -1,5 +1,5 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { NextResponse } from 'next/server';
 
 // We'll mock getSupabaseSession and supabaseAdmin to simulate the full
 // server path: session -> supabaseAdmin -> user_economy select
@@ -50,18 +50,24 @@ describe('GET /api/economy/wallet integration (mocked supabase/session)', () => 
     // NextResponse.json returns a NextResponse object; extract its body via json()
     // But in our environment route.GET returns NextResponse directly; so call its json method if present
     // The NextResponse in test env may be a simple object; handle both
-    let jsonBody: any = null;
+  let jsonBody: unknown = null;
     try {
-      // @ts-ignore
-      jsonBody = await res.json();
+        const possibleJson = (res as { json?: () => Promise<unknown> }).json;
+        if (typeof possibleJson === 'function') {
+          // call the json() method if available
+          // result may be unknown; capture as unknown
+          jsonBody = await possibleJson.call(res);
+        } else {
+          // fall through to catch block which will handle plain objects
+          throw new Error('no-json');
+        }
     } catch {
       // If res is already a plain object
-      // @ts-ignore
-      if (res && typeof res === 'object') jsonBody = (res as any).body ?? res;
+        if (res && typeof res === 'object') jsonBody = (res as { body?: unknown })?.body ?? res;
     }
     expect(mockFrom).toHaveBeenCalledWith('user_economy');
     expect(mockSelect).toHaveBeenCalledWith('tokens, commander_xp, commander_level');
     expect(mockMaybeSingle).toHaveBeenCalled();
-    expect(jsonBody).toMatchObject({ tokens: 123, commander_xp: 456, commander_level: 7 });
+  expect(jsonBody as Record<string, unknown>).toMatchObject({ tokens: 123, commander_xp: 456, commander_level: 7 });
   });
 });

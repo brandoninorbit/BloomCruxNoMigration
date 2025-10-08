@@ -30,7 +30,7 @@ export async function fetchWithAuth(input: RequestInfo | URL, init: RequestInit 
       const headers = new Headers(init.headers || {});
       if (cookieHeader) headers.set('cookie', cookieHeader);
       return fetch(input, { ...init, headers });
-    } catch (err) {
+    } catch {
       // If anything goes wrong, fall back to plain fetch
       return fetch(input, init);
     }
