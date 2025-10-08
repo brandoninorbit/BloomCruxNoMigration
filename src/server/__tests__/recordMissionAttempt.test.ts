@@ -27,7 +27,7 @@ function makeBuilder(table: string) {
       ops.push({ table, type: 'upsert', payload: data });
       return Promise.resolve({ data: null, error: null });
     },
-    select(_cols?: string) { return this; },
+  select() { return this; },
     eq() { return this; },
     in() { return this; },
     order() { return this; },
