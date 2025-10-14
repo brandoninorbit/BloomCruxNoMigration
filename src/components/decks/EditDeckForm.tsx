@@ -89,6 +89,7 @@ export default function EditDeckForm({ deckId }: Props) {
   const [importing, setImporting] = useState<boolean>(false);
   const [warningModal, setWarningModal] = useState<null | { code: string }>(null);
   const [openCodes, setOpenCodes] = useState<Record<string, boolean>>({});
+  const [openErrorCodes, setOpenErrorCodes] = useState<Record<string, boolean>>({});
   const [previewRow, setPreviewRow] = useState<null | number>(null);
   const [rawCsvText, setRawCsvText] = useState<string>("");
   const [previewContext, setPreviewContext] = useState<null | { code: string; rows: number[]; idx: number }>(null);
@@ -646,6 +647,121 @@ export default function EditDeckForm({ deckId }: Props) {
                   </div>
                 );
               })()}
+              {/* Critical parsing errors (red) grouped and collapsible */}
+              {pendingImport.errRows.length > 0 && (() => {
+                // Build entries of errors with optional [E-...] code extraction
+                const entries: Array<{ code: string; index: number; text: string }> = [];
+                pendingImport.errRows.forEach(er => {
+                  (er.errors || []).forEach(msg => {
+                    const m = msg.match(/\[(E-[A-Z0-9-]+)]/);
+                    const code = m?.[1] || 'PARSE-ERROR';
+                    entries.push({ code, index: er.index, text: msg });
+                  });
+                });
+                if (entries.length === 0) return null;
+                // Group by code
+                const groups = new Map<string, Array<{ index: number; text: string }>>();
+                entries.forEach(e => {
+                  const arr = groups.get(e.code) || [];
+                  arr.push({ index: e.index, text: e.text });
+                  groups.set(e.code, arr);
+                });
+                const codes = Array.from(groups.keys()).sort();
+                const copyAll = async () => {
+                  const lines: string[] = [];
+                  codes.forEach(code => {
+                    const list = groups.get(code) || [];
+                    list.forEach(it => lines.push(`Row ${it.index}: ${code} ${it.text.replace(/\[(E-[A-Z0-9-]+)]\s*/, '')}`));
+                  });
+                  const blob = lines.join('\n');
+                  try {
+                    await navigator.clipboard.writeText(blob);
+                    toast({ title: 'Copied', description: `Copied ${lines.length} error${lines.length!==1?'s':''} to clipboard.` });
+                  } catch {
+                    // Fallback
+                    const ta = document.createElement('textarea');
+                    ta.value = blob; document.body.appendChild(ta); ta.select();
+                    document.execCommand('copy'); document.body.removeChild(ta);
+                    toast({ title: 'Copied', description: `Copied ${lines.length} errors to clipboard.` });
+                  }
+                };
+                return (
+                  <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-900">
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="font-medium">Critical parsing errors ({codes.length})</div>
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          className="text-red-900 underline"
+                          onClick={() => {
+                            const next: Record<string, boolean> = {};
+                            codes.forEach(c => { next[c] = false; });
+                            setOpenErrorCodes(next);
+                          }}
+                        >Collapse all</button>
+                        <button
+                          type="button"
+                          className="text-red-900 underline"
+                          onClick={() => {
+                            const next: Record<string, boolean> = {};
+                            codes.forEach(c => { next[c] = true; });
+                            setOpenErrorCodes(next);
+                          }}
+                        >Expand all</button>
+                        <button
+                          type="button"
+                          className="text-red-900 underline"
+                          onClick={copyAll}
+                        >Copy all</button>
+                      </div>
+                    </div>
+                    <div className="space-y-2 max-h-56 overflow-auto pr-1">
+                      {codes.map(code => {
+                        const list = groups.get(code) || [];
+                        const isOpen = openErrorCodes.hasOwnProperty(code) ? !!openErrorCodes[code] : list.length <= 3;
+                        return (
+                          <div key={code} className="border border-red-200 rounded">
+                            <button
+                              type="button"
+                              className="w-full flex items-center justify-between px-3 py-2 bg-red-100 hover:bg-red-200"
+                              onClick={() => setOpenErrorCodes(prev => ({ ...prev, [code]: !prev[code] }))}
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono text-xs bg-red-200 text-red-900 px-2 py-0.5 rounded">{code}</span>
+                                <span className="font-medium">{code === 'PARSE-ERROR' ? 'Parser error' : 'Import error'}</span>
+                                <span className="text-red-900/70">({list.length})</span>
+                              </div>
+                              <span className="text-red-900/70">{isOpen ? 'Hide' : 'Show'}</span>
+                            </button>
+                            {isOpen && (
+                              <ul className="px-4 py-2 list-disc pl-5">
+                                {list.slice(0, 200).map((it, i) => (
+                                  <li key={i} className="flex items-start justify-between gap-3">
+                                    <span>Row {it.index}: {it.text.replace(/\[(E-[A-Z0-9-]+)]\s*/, '')}</span>
+                                    <button
+                                      type="button"
+                                      className="text-xs text-red-800 underline"
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        const rows = (groups.get(code) || []).map(x => x.index);
+                                        const pos = rows.findIndex(r => r === it.index);
+                                        setPreviewRow(it.index);
+                                        setPreviewContext({ code, rows, idx: pos < 0 ? 0 : pos });
+                                      }}
+                                    >
+                                      View row
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
               {/* Grouped warnings by code with dropdowns */}
               {pendingImport.rowWarnings && pendingImport.rowWarnings.length > 0 && (() => {
                 // Flatten all row warnings and extract codes in square brackets
@@ -666,6 +782,23 @@ export default function EditDeckForm({ deckId }: Props) {
                 });
                 const codes = Array.from(groups.keys()).sort();
                 if (codes.length === 0) return null;
+                const copyAll = async () => {
+                  const lines: string[] = [];
+                  codes.forEach(code => {
+                    const list = groups.get(code) || [];
+                    list.forEach(it => lines.push(`Row ${it.index}: ${code} ${it.text.replace(/\[(W-[A-Z0-9-]+)]\s*/, '')}`));
+                  });
+                  const blob = lines.join('\n');
+                  try {
+                    await navigator.clipboard.writeText(blob);
+                    toast({ title: 'Copied', description: `Copied ${lines.length} warning${lines.length!==1?'s':''} to clipboard.` });
+                  } catch {
+                    const ta = document.createElement('textarea');
+                    ta.value = blob; document.body.appendChild(ta); ta.select();
+                    document.execCommand('copy'); document.body.removeChild(ta);
+                    toast({ title: 'Copied', description: `Copied ${lines.length} warnings to clipboard.` });
+                  }
+                };
                 return (
                   <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
                     <div className="flex items-center justify-between mb-1">
@@ -689,6 +822,11 @@ export default function EditDeckForm({ deckId }: Props) {
                             setOpenCodes(next);
                           }}
                         >Expand all</button>
+                        <button
+                          type="button"
+                          className="text-amber-900 underline"
+                          onClick={copyAll}
+                        >Copy all</button>
                       </div>
                     </div>
                     <div className="space-y-2 max-h-56 overflow-auto pr-1">
@@ -813,24 +951,7 @@ export default function EditDeckForm({ deckId }: Props) {
                   </button>
                 </div>
               )}
-              {pendingImport.errRows.length > 0 && (
-                <div>
-                  <button
-                    className="text-sm text-gray-700 underline underline-offset-2"
-                    type="button"
-                    onClick={() => setShowImportErrors((v) => !v)}
-                  >
-                    What went wrong?
-                  </button>
-                  {showImportErrors && (
-                    <ul className="mt-2 list-disc pl-6 text-sm text-gray-700 max-h-40 overflow-auto">
-                      {pendingImport.errRows.slice(0, 200).map((e) => (
-                        <li key={e.index}>Row {e.index}: {e.errors.join('; ')}</li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              )}
+              {/* Removed legacy "What went wrong" toggle; replaced by red grouped errors above */}
             </div>
           )}
         </div>
@@ -1034,8 +1155,9 @@ export default function EditDeckForm({ deckId }: Props) {
       />
       {/* CSV Row Preview Drawer */}
       {previewRow && (
-        <div className="fixed inset-0 bg-black/20 z-40" onClick={() => setPreviewRow(null)}>
-          <div className="absolute right-0 top-0 bottom-0 w-full max-w-2xl bg-white shadow-xl p-4"
+        // Position the overlay below the fixed global nav (h-16 => top-16) and raise z-index above nav (z-[200])
+        <div className="fixed left-0 right-0 bottom-0 top-16 bg-black/20 z-[220]" onClick={() => setPreviewRow(null)}>
+          <div className="absolute right-0 top-0 bottom-0 w-full max-w-xl bg-white shadow-xl p-4 overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-3">
