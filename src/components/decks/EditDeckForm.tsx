@@ -9,6 +9,8 @@ import useFolders from "@/hooks/useFolders";
 import AddCardModal from "@/components/decks/AddCardModal";
 import * as cardsRepo from "@/lib/cardsRepo";
 import { parseCsv, type ImportPayload } from "@/lib/csvImport";
+import { getWarningInfo } from "@/lib/csvWarningCatalog";
+import CsvRowPreview from "@/components/decks/CsvRowPreview";
 import { hasImportHash, recordImportHash } from "@/lib/cardsRepo";
 import { UNLOCKS } from "@/lib/unlocks";
 
@@ -85,6 +87,11 @@ export default function EditDeckForm({ deckId }: Props) {
   }>(null);
   const [showImportErrors, setShowImportErrors] = useState<boolean>(false);
   const [importing, setImporting] = useState<boolean>(false);
+  const [warningModal, setWarningModal] = useState<null | { code: string }>(null);
+  const [openCodes, setOpenCodes] = useState<Record<string, boolean>>({});
+  const [previewRow, setPreviewRow] = useState<null | number>(null);
+  const [rawCsvText, setRawCsvText] = useState<string>("");
+  const [previewContext, setPreviewContext] = useState<null | { code: string; rows: number[]; idx: number }>(null);
 
   if (!deckId) {
     return (
@@ -178,7 +185,9 @@ export default function EditDeckForm({ deckId }: Props) {
         // ignore check errors; allow import to proceed
       }
 
-      const { okRows, badRows, warnings, rowWarnings } = parseCsv(await file.text());
+  const text = await file.text();
+  const { okRows, badRows, warnings, rowWarnings } = parseCsv(text);
+  setRawCsvText(text);
       if (!okRows.length && !badRows.length) {
         toast({ title: "CSV empty", description: "No rows found.", variant: "destructive" });
         return;
@@ -637,28 +646,104 @@ export default function EditDeckForm({ deckId }: Props) {
                   </div>
                 );
               })()}
-              {/* Per-row warnings list */}
-              {pendingImport.rowWarnings && pendingImport.rowWarnings.length > 0 && (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-                  <div className="flex items-center justify-between text-sm text-amber-900">
-                    <div className="font-medium">Warnings detected</div>
-                    <button
-                      className="text-amber-800 underline underline-offset-2"
-                      type="button"
-                      onClick={() => setShowImportErrors((v) => !v)}
-                    >
-                      {showImportErrors ? 'Hide details' : 'Show details'}
-                    </button>
+              {/* Grouped warnings by code with dropdowns */}
+              {pendingImport.rowWarnings && pendingImport.rowWarnings.length > 0 && (() => {
+                // Flatten all row warnings and extract codes in square brackets
+                const entries: Array<{ code: string; index: number; text: string }> = [];
+                pendingImport.rowWarnings.forEach(rw => {
+                  (rw.warnings || []).forEach(w => {
+                    const m = w.match(/\[(W-[A-Z0-9-]+)]/);
+                    const code = m?.[1] || 'OTHER';
+                    entries.push({ code, index: rw.index, text: w });
+                  });
+                });
+                // Group by code
+                const groups = new Map<string, Array<{ index: number; text: string }>>();
+                entries.forEach(e => {
+                  const arr = groups.get(e.code) || [];
+                  arr.push({ index: e.index, text: e.text });
+                  groups.set(e.code, arr);
+                });
+                const codes = Array.from(groups.keys()).sort();
+                if (codes.length === 0) return null;
+                return (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="font-medium">Warnings detected ({codes.length})</div>
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          className="text-amber-900 underline"
+                          onClick={() => {
+                            const next: Record<string, boolean> = {};
+                            codes.forEach(c => { next[c] = false; });
+                            setOpenCodes(next);
+                          }}
+                        >Collapse all</button>
+                        <button
+                          type="button"
+                          className="text-amber-900 underline"
+                          onClick={() => {
+                            const next: Record<string, boolean> = {};
+                            codes.forEach(c => { next[c] = true; });
+                            setOpenCodes(next);
+                          }}
+                        >Expand all</button>
+                      </div>
+                    </div>
+                    <div className="space-y-2 max-h-56 overflow-auto pr-1">
+                      {codes.map(code => {
+                        const list = groups.get(code) || [];
+                        const info = getWarningInfo(code);
+                        const defaultOpen = (list.length <= 3);
+                        const isOpen = openCodes.hasOwnProperty(code) ? !!openCodes[code] : defaultOpen;
+                        return (
+                          <div key={code} className="border border-amber-200 rounded">
+                            <button
+                              type="button"
+                              className="w-full flex items-center justify-between px-3 py-2 bg-amber-100 hover:bg-amber-200"
+                              onClick={() => setOpenCodes(prev => ({ ...prev, [code]: !prev[code] }))}
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono text-xs bg-amber-200 text-amber-900 px-2 py-0.5 rounded cursor-pointer"
+                                  onClick={(e) => { e.stopPropagation(); setWarningModal({ code }); }}
+                                  title="Click for details"
+                                >{code}</span>
+                                <span className="font-medium">{info?.title || 'Importer warning'}</span>
+                                <span className="text-amber-900/70">({list.length})</span>
+                              </div>
+                              <span className="text-amber-900/70">{isOpen ? 'Hide' : 'Show'}</span>
+                            </button>
+                            {isOpen && (
+                              <ul className="px-4 py-2 list-disc pl-5">
+                                {list.slice(0, 200).map((it, i) => (
+                                  <li key={i} className="flex items-start justify-between gap-3">
+                                    <span>Row {it.index}: {it.text.replace(/\[(W-[A-Z0-9-]+)]\s*/, '')}</span>
+                                    <button
+                                      type="button"
+                                      className="text-xs text-amber-800 underline"
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        const rows = (groups.get(code) || []).map(x => x.index);
+                                        const pos = rows.findIndex(r => r === it.index);
+                                        setPreviewRow(it.index);
+                                        setPreviewContext({ code, rows, idx: pos < 0 ? 0 : pos });
+                                      }}
+                                      title="Open preview at this row (coming soon)"
+                                    >
+                                      View row
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                  {showImportErrors && (
-                    <ul className="mt-2 list-disc pl-6 text-sm text-amber-900 max-h-40 overflow-auto">
-                      {pendingImport.rowWarnings.slice(0, 300).map((rw) => (
-                        <li key={rw.index}>Row {rw.index}: {rw.warnings.join('; ')}</li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              )}
+                );
+              })()}
               {pendingImport.errRows.length > 0 && (
                 <div className="grid sm:grid-cols-2 gap-3">
                   <button
@@ -947,6 +1032,80 @@ export default function EditDeckForm({ deckId }: Props) {
           toast({ title: "Deck updated", description: `+1 ${lvl} card. Mastery bars recalculating.` });
         }}
       />
+      {/* CSV Row Preview Drawer */}
+      {previewRow && (
+        <div className="fixed inset-0 bg-black/20 z-40" onClick={() => setPreviewRow(null)}>
+          <div className="absolute right-0 top-0 bottom-0 w-full max-w-2xl bg-white shadow-xl p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <div className="font-semibold">CSV Row Preview — Row {previewRow}</div>
+              <button className="text-gray-500 hover:text-gray-800" onClick={() => setPreviewRow(null)}>
+                <span className="material-icons">close</span>
+              </button>
+            </div>
+            {/* Next/Prev occurrence for this warning code */}
+            {previewContext && (
+              <div className="flex items-center justify-between mb-3">
+                <div className="text-sm text-gray-600">{previewContext.code} — {previewContext.idx + 1} of {previewContext.rows.length}</div>
+                <div className="flex items-center gap-2">
+                  <button
+                    className="px-3 py-1 rounded border text-sm"
+                    onClick={() => {
+                      if (!previewContext) return;
+                      const nextIdx = Math.max(0, previewContext.idx - 1);
+                      const nextRow = previewContext.rows[nextIdx];
+                      setPreviewContext({ ...previewContext, idx: nextIdx });
+                      setPreviewRow(nextRow);
+                    }}
+                    disabled={!previewContext || previewContext.idx <= 0}
+                  >Prev</button>
+                  <button
+                    className="px-3 py-1 rounded border text-sm"
+                    onClick={() => {
+                      if (!previewContext) return;
+                      const nextIdx = Math.min(previewContext.rows.length - 1, previewContext.idx + 1);
+                      const nextRow = previewContext.rows[nextIdx];
+                      setPreviewContext({ ...previewContext, idx: nextIdx });
+                      setPreviewRow(nextRow);
+                    }}
+                    disabled={!previewContext || previewContext.idx >= (previewContext.rows.length - 1)}
+                  >Next</button>
+                </div>
+              </div>
+            )}
+            <CsvRowPreview csvText={rawCsvText} rowIndex={previewRow} code={previewContext?.code} />
+          </div>
+        </div>
+      )}
+      {/* Warning detail modal */}
+      {warningModal && (() => {
+        const info = getWarningInfo(warningModal.code);
+        return (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+            <div className="bg-white w-full max-w-lg rounded-xl shadow-lg">
+              <div className="px-6 py-4 border-b flex items-center justify-between">
+                <h3 className="text-base font-semibold text-gray-900">{warningModal.code}</h3>
+                <button className="text-gray-500 hover:text-gray-800" onClick={() => setWarningModal(null)} aria-label="Close">
+                  <span className="material-icons">close</span>
+                </button>
+              </div>
+              <div className="px-6 py-4 text-sm text-gray-800 space-y-2">
+                <div className="font-medium">{info?.title || 'Importer warning'}</div>
+                <div>{info?.description || 'No further details available for this code.'}</div>
+                {info?.impact && (
+                  <div className="text-gray-600">Why it matters: {info.impact}</div>
+                )}
+                <div className="text-gray-600">What to do: Refer to the CSV reference and adjust your data. See the CSV guide for exact columns and formatting.</div>
+                <a className="text-blue-600 underline" href="/docs/csv-import" target="_blank" rel="noreferrer">Open CSV import guide</a>
+              </div>
+              <div className="px-6 py-4 border-t flex justify-end">
+                <button className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50" onClick={() => setWarningModal(null)}>Close</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </>
   );
 }
