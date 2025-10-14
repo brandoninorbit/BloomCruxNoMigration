@@ -93,6 +93,101 @@ export default function EditDeckForm({ deckId }: Props) {
   const [previewRow, setPreviewRow] = useState<null | number>(null);
   const [rawCsvText, setRawCsvText] = useState<string>("");
   const [previewContext, setPreviewContext] = useState<null | { code: string; rows: number[]; idx: number }>(null);
+  const [dismissedWarnings, setDismissedWarnings] = useState<Set<string>>(new Set());
+
+  // Map warning/error codes to the most relevant CSV columns for highlighting in the preview
+  const getHighlightKeysForCode = (code?: string): string[] => {
+    if (!code) return [];
+    const ansCols = ['Answer', ...Array.from({ length: 20 }, (_, i) => `Answer${i + 1}`)];
+    const titleCols = ['Question', 'Prompt', 'Title', 'Scenario'];
+    const tier2QCols = ['RQuestion', 'ReasoningQuestion', 'Tier2Question', 'Tier-2 Question'];
+    const tier2AnsCols = ['RAnswer', 'Tier2Answer'];
+    const raToRd = ['RA', 'RB', 'RC', 'RD'];
+    const claimCols = ['ClaimOptions', 'ClaimCorrect'];
+    const evidenceCols = ['EvidenceOptions', 'EvidenceCorrect'];
+    const reasoningCols = ['ReasoningOptions', 'ReasoningCorrect'];
+    const set = new Set<string>();
+    const add = (arr: string[]) => arr.forEach((k) => set.add(k));
+
+    // General
+    if (/^E-GENERAL-CARDTYPE$/.test(code)) add(['CardType']);
+    if (/^W-BLOOM-INVALID$/.test(code)) add(['BloomLevel']);
+    if (/^W-DUP-QUESTION$/.test(code)) add(titleCols);
+
+    // MCQ
+    if (/^W-MCQ-ANSWER-NOT-LETTER$/.test(code) || /^W-MCQ-MULTI-ANS$/.test(code)) add(['Answer']);
+    if (/^W-MCQ-SHORT-OPTIONS$/.test(code) || /^W-MCQ-OPTIONS-NEAR-DUP$/.test(code)) add(['A','B','C','D']);
+    if (/^E-MCQ-MISSING-QUESTION$/.test(code)) add(titleCols);
+    if (/^E-MCQ-MISSING-A$/.test(code)) add(['A']);
+    if (/^E-MCQ-MISSING-B$/.test(code)) add(['B']);
+    if (/^E-MCQ-MISSING-C$/.test(code)) add(['C']);
+    if (/^E-MCQ-MISSING-D$/.test(code)) add(['D']);
+    if (/^E-MCQ-MISSING-ANSWER$/.test(code)) add(['Answer']);
+    if (/^E-MCQ-ANSWER-EMPTY$/.test(code)) add(['Answer','A','B','C','D']);
+
+    // Two-Tier
+    if (/^W-2T-RANSWER-NOT-LETTER$/.test(code)) add(tier2AnsCols);
+    if (/^W-2T-DUP-OPTIONS$/.test(code) || /^W-2T-JUSTIF-DUP$/.test(code)) add(raToRd);
+    if (/^E-2T-MISSING-RQUESTION$/.test(code)) add(tier2QCols);
+    if (/^E-2T-MISSING-RA$/.test(code)) add(['RA']);
+    if (/^E-2T-MISSING-RB$/.test(code)) add(['RB']);
+    if (/^E-2T-MISSING-RC$/.test(code)) add(['RC']);
+    if (/^E-2T-MISSING-RD$/.test(code)) add(['RD']);
+    if (/^E-2T-MISSING-RANSWER$/.test(code)) add(tier2AnsCols);
+    if (/^E-2T-RANSWER-EMPTY$/.test(code)) add([...tier2AnsCols, ...raToRd]);
+
+    // Fill
+    if (/^W-FILL-OPTIONS-FREE-TEXT$/.test(code)) add(['Options','Mode']);
+    if (/^W-FILL-OPTIONS-NO-ANSWERS$/.test(code)) add(['Options','Answer','Answer1']);
+    if (/^W-FILL-DND-NO-OPTIONS$/.test(code)) add(['Options','Mode']);
+    if (/^W-FILL-WRONG-DELIM$/.test(code)) add(['Options']);
+    if (/^W-FILL-PLACEHOLDER-MISMATCH$/.test(code)) add([...titleCols, ...ansCols]);
+    if (/^W-FILL-CASE-SENSING$/.test(code)) add(['CaseSensitive', 'Answer', 'Answer1']);
+    if (/^E-FILL-MISSING-PROMPT$/.test(code)) add(titleCols);
+    if (/^E-FILL-MISSING-ANSWERS$/.test(code)) add(['Answer','Answer1']);
+    if (/^E-FILL-NO-PLACEHOLDERS$/.test(code)) add(titleCols);
+    if (/^E-FILL-PLACEHOLDER-RANGE$/.test(code)) add(titleCols);
+
+    // Sorting
+    if (/^W-SORT-SINGLE-LETTERS$/.test(code)) add(['Categories']);
+    if (/^W-SORT-FEW-CATEGORIES$/.test(code) || /^W-SORT-MANY-CATEGORIES$/.test(code)) add(['Categories']);
+    if (/^W-SORT-FEW-ITEMS$/.test(code) || /^W-SORT-TOO-MANY-ITEMS$/.test(code)) add(['Items']);
+    if (/^W-SORT-WRONG-DELIM$/.test(code)) add(['Categories']);
+    if (/^W-SORT-ITEMS-WRONG-DELIM$/.test(code)) add(['Items']);
+    if (/^W-SORT-UNKNOWN-CATEGORY$/.test(code) || /^W-SORT-CATEGORY-CASE$/.test(code)) add(['Items','Categories']);
+    if (/^W-SORT-UNASSIGNED-ITEMS$/.test(code)) add(['Items']);
+    if (/^W-SORT-EMPTY-CAT$/.test(code)) add(['Categories']);
+    if (/^W-SORT-ITEM-DUP$/.test(code)) add(['Items']);
+    if (/^E-SORT-MISSING-QUESTION$/.test(code)) add(titleCols);
+    if (/^E-SORT-MISSING-CATEGORIES$/.test(code)) add(['Categories']);
+    if (/^E-SORT-MISSING-ITEMS$/.test(code)) add(['Items']);
+    if (/^E-SORT-ITEM-FORMAT$/.test(code)) add(['Items']);
+
+    // Sequencing
+    if (/^W-SEQ-/.test(code)) add(['Steps','Items']);
+    if (/^E-SEQ-MISSING-QUESTION$/.test(code)) add(titleCols);
+    if (/^E-SEQ-MISSING-STEPS$/.test(code)) add(['Steps','Items']);
+
+    // Compare/Contrast
+    if (/^W-COMPARE-/.test(code)) add(['Points']);
+    if (/^E-COMPARE-MISSING-QUESTION$/.test(code)) add(titleCols);
+    if (/^E-COMPARE-MISSING-ITEMA$/.test(code)) add(['ItemA','A']);
+    if (/^E-COMPARE-MISSING-ITEMB$/.test(code)) add(['ItemB','B']);
+    if (/^E-COMPARE-MISSING-POINTS$/.test(code) || /^E-COMPARE-POINT-FORMAT$/.test(code)) add(['Points']);
+
+    // CER
+    if (/^W-CER-MODE-ALIAS$/.test(code)) add(['Mode']);
+    if (/^W-CER-PARTS-MISSING$/.test(code)) add(['Claim','Evidence','Reasoning']);
+    if (/^E-CER-MISSING-QUESTION$/.test(code)) add(titleCols);
+    if (/^E-CER-CLAIM-OPTIONS-REQUIRED$/.test(code)) add(['ClaimOptions']);
+    if (/^E-CER-CLAIM-CORRECT-RANGE$/.test(code)) add(['ClaimCorrect']);
+    if (/^E-CER-EVIDENCE-OPTIONS-REQUIRED$/.test(code)) add(['EvidenceOptions']);
+    if (/^E-CER-EVIDENCE-CORRECT-RANGE$/.test(code)) add(['EvidenceCorrect']);
+    if (/^E-CER-REASONING-OPTIONS-REQUIRED$/.test(code)) add(['ReasoningOptions']);
+    if (/^E-CER-REASONING-CORRECT-RANGE$/.test(code)) add(['ReasoningCorrect']);
+
+    return Array.from(set);
+  };
 
   if (!deckId) {
     return (
@@ -770,7 +865,10 @@ export default function EditDeckForm({ deckId }: Props) {
                   (rw.warnings || []).forEach(w => {
                     const m = w.match(/\[(W-[A-Z0-9-]+)]/);
                     const code = m?.[1] || 'OTHER';
-                    entries.push({ code, index: rw.index, text: w });
+                    const key = `${code}::${rw.index}`;
+                    if (!dismissedWarnings.has(key)) {
+                      entries.push({ code, index: rw.index, text: w });
+                    }
                   });
                 });
                 // Group by code
@@ -857,20 +955,37 @@ export default function EditDeckForm({ deckId }: Props) {
                                 {list.slice(0, 200).map((it, i) => (
                                   <li key={i} className="flex items-start justify-between gap-3">
                                     <span>Row {it.index}: {it.text.replace(/\[(W-[A-Z0-9-]+)]\s*/, '')}</span>
-                                    <button
-                                      type="button"
-                                      className="text-xs text-amber-800 underline"
-                                      onClick={(e) => {
-                                        e.preventDefault();
-                                        const rows = (groups.get(code) || []).map(x => x.index);
-                                        const pos = rows.findIndex(r => r === it.index);
-                                        setPreviewRow(it.index);
-                                        setPreviewContext({ code, rows, idx: pos < 0 ? 0 : pos });
-                                      }}
-                                      title="Open preview at this row (coming soon)"
-                                    >
-                                      View row
-                                    </button>
+                                    <div className="flex items-center gap-3">
+                                      <button
+                                        type="button"
+                                        className="text-xs text-amber-800 underline"
+                                        onClick={(e) => {
+                                          e.preventDefault();
+                                          const rows = (groups.get(code) || []).map(x => x.index);
+                                          const pos = rows.findIndex(r => r === it.index);
+                                          setPreviewRow(it.index);
+                                          setPreviewContext({ code, rows, idx: pos < 0 ? 0 : pos });
+                                        }}
+                                        title="Open preview at this row"
+                                      >
+                                        View row
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="text-xs text-amber-800 underline"
+                                        onClick={(e) => {
+                                          e.preventDefault();
+                                          setDismissedWarnings(prev => {
+                                            const next = new Set(prev);
+                                            next.add(`${code}::${it.index}`);
+                                            return next;
+                                          });
+                                        }}
+                                        title="Dismiss this warning"
+                                      >
+                                        Dismiss
+                                      </button>
+                                    </div>
                                   </li>
                                 ))}
                               </ul>
@@ -1196,7 +1311,12 @@ export default function EditDeckForm({ deckId }: Props) {
                 </div>
               </div>
             )}
-            <CsvRowPreview csvText={rawCsvText} rowIndex={previewRow} code={previewContext?.code} />
+            <CsvRowPreview
+              csvText={rawCsvText}
+              rowIndex={previewRow}
+              code={previewContext?.code}
+              highlightKeys={getHighlightKeysForCode(previewContext?.code)}
+            />
           </div>
         </div>
       )}
