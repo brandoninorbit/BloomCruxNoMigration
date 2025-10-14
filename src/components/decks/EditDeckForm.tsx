@@ -78,9 +78,10 @@ export default function EditDeckForm({ deckId }: Props) {
   const [pendingImport, setPendingImport] = useState<null | {
     fileName: string;
     fileHash: string;
-    okRows: { index: number; payload: ImportPayload }[];
+    okRows: { index: number; payload: ImportPayload; warnings?: string[]; flagged?: boolean }[];
     errRows: { index: number; errors: string[] }[];
     warnings: string[];
+    rowWarnings?: { index: number; warnings: string[] }[];
   }>(null);
   const [showImportErrors, setShowImportErrors] = useState<boolean>(false);
   const [importing, setImporting] = useState<boolean>(false);
@@ -177,12 +178,12 @@ export default function EditDeckForm({ deckId }: Props) {
         // ignore check errors; allow import to proceed
       }
 
-      const { okRows, badRows, warnings } = parseCsv(await file.text());
+      const { okRows, badRows, warnings, rowWarnings } = parseCsv(await file.text());
       if (!okRows.length && !badRows.length) {
         toast({ title: "CSV empty", description: "No rows found.", variant: "destructive" });
         return;
       }
-      setPendingImport({ fileName: file.name, fileHash: hash, okRows, errRows: badRows, warnings });
+      setPendingImport({ fileName: file.name, fileHash: hash, okRows, errRows: badRows, warnings, rowWarnings });
       setShowImportErrors(false);
       if (badRows.length) {
         toast({ title: `Parsed ${okRows.length} OK, ${badRows.length} failed`, description: `Review options below to continue.`, variant: "default" });
@@ -214,14 +215,17 @@ export default function EditDeckForm({ deckId }: Props) {
     }
   };
 
-  const commitPendingImport = async () => {
+  const commitPendingImport = async (opts?: { excludeFlagged?: boolean }) => {
     if (!pendingImport) return;
     if (importing) return; // prevent double-click
     setImporting(true);
     const filename = pendingImport.fileName;
   const fileHash = pendingImport.fileHash;
+  const rowsToImport = (opts?.excludeFlagged
+      ? pendingImport.okRows.filter((r) => !r.flagged)
+      : pendingImport.okRows);
   const created = await cardsRepo.createMany(
-      pendingImport.okRows.map((r) => {
+      rowsToImport.map((r) => {
         const tmap = {
           mcq: 'Standard MCQ',
           short: 'Short Answer',
@@ -328,7 +332,7 @@ export default function EditDeckForm({ deckId }: Props) {
     try {
       // Summarize by Bloom based on parsed rows
       const bloomCounts: Record<string, number> = {};
-      pendingImport.okRows.forEach((r) => {
+      rowsToImport.forEach((r) => {
         const lvl = r.payload.bloom || "Remember";
         bloomCounts[lvl] = (bloomCounts[lvl] ?? 0) + 1;
       });
@@ -612,6 +616,49 @@ export default function EditDeckForm({ deckId }: Props) {
                   {pendingImport.okRows.length} rows parsed and ready.
                 </div>
               )}
+              {/* Gentle warnings section for suspicious rows */}
+              {(() => {
+                const flagged = pendingImport.okRows.filter((r) => r.flagged);
+                if (flagged.length === 0) return null;
+                return (
+                  <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                    <div className="font-medium">Heads-up: {flagged.length} row{flagged.length>1?'s':''} look suspicious.</div>
+                    <div className="mt-1">Some Sorting cards have categories that look like single letters (e.g., a word split into letters). You can exclude these from import, cancel, or proceed anyway.</div>
+                    <div className="mt-2 max-h-28 overflow-auto">
+                      <ul className="list-disc pl-5">
+                        {flagged.slice(0, 10).map((r) => (
+                          <li key={r.index}>Row {r.index}{r.warnings && r.warnings.length ? ` — ${r.warnings[0]}` : ''}</li>
+                        ))}
+                        {flagged.length > 10 && (
+                          <li>…and {flagged.length - 10} more</li>
+                        )}
+                      </ul>
+                    </div>
+                  </div>
+                );
+              })()}
+              {/* Per-row warnings list */}
+              {pendingImport.rowWarnings && pendingImport.rowWarnings.length > 0 && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <div className="flex items-center justify-between text-sm text-amber-900">
+                    <div className="font-medium">Warnings detected</div>
+                    <button
+                      className="text-amber-800 underline underline-offset-2"
+                      type="button"
+                      onClick={() => setShowImportErrors((v) => !v)}
+                    >
+                      {showImportErrors ? 'Hide details' : 'Show details'}
+                    </button>
+                  </div>
+                  {showImportErrors && (
+                    <ul className="mt-2 list-disc pl-6 text-sm text-amber-900 max-h-40 overflow-auto">
+                      {pendingImport.rowWarnings.slice(0, 300).map((rw) => (
+                        <li key={rw.index}>Row {rw.index}: {rw.warnings.join('; ')}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
               {pendingImport.errRows.length > 0 && (
                 <div className="grid sm:grid-cols-2 gap-3">
                   <button
@@ -625,8 +672,55 @@ export default function EditDeckForm({ deckId }: Props) {
                   >
                     {importing ? "Importing…" : "Import successful cards"}
                   </button>
+                  {pendingImport.okRows.some((r) => r.flagged) && (
+                    <button
+                      className="w-full bg-white text-[#2481f9] border border-[#2481f9] px-5 py-2.5 rounded-lg font-semibold hover:bg-blue-50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                      type="button"
+                      onClick={() => {
+                        if (importing) { toast({ title: "Import in progress", description: "Please wait—this may take a moment." }); return; }
+                        void commitPendingImport({ excludeFlagged: true });
+                      }}
+                      disabled={importing}
+                    >
+                      {importing ? "Importing…" : "Import successful (exclude flagged)"}
+                    </button>
+                  )}
                   <button
                     className="w-full border border-gray-300 text-gray-700 px-5 py-2.5 rounded-lg font-semibold hover:bg-gray-50 transition-colors"
+                    type="button"
+                    onClick={() => setPendingImport(null)}
+                  >
+                    Don&apos;t import anything
+                  </button>
+                </div>
+              )}
+              {/* Safe import option when flagged rows exist */}
+              {pendingImport.errRows.length === 0 && pendingImport.okRows.some((r) => r.flagged) && (
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <button
+                    className="w-full bg-[#2481f9] text-white px-5 py-2.5 rounded-lg font-semibold hover:bg-blue-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                    type="button"
+                    onClick={() => {
+                      if (importing) { toast({ title: "Import in progress", description: "Please wait—this may take a moment." }); return; }
+                      void commitPendingImport({ excludeFlagged: true });
+                    }}
+                    disabled={importing}
+                  >
+                    {importing ? "Importing…" : "Import safe (exclude flagged)"}
+                  </button>
+                  <button
+                    className="w-full border border-gray-300 text-gray-700 px-5 py-2.5 rounded-lg font-semibold hover:bg-gray-50 transition-colors"
+                    type="button"
+                    onClick={() => {
+                      if (importing) { toast({ title: "Import in progress", description: "Please wait—this may take a moment." }); return; }
+                      void commitPendingImport();
+                    }}
+                    disabled={importing}
+                  >
+                    Import all (including flagged)
+                  </button>
+                  <button
+                    className="w-full mt-2 border border-gray-300 text-gray-700 px-5 py-2.5 rounded-lg font-semibold hover:bg-gray-50 transition-colors sm:col-span-2"
                     type="button"
                     onClick={() => setPendingImport(null)}
                   >

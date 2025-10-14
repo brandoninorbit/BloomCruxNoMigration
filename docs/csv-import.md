@@ -73,6 +73,8 @@ Items: pipe list of term:category, e.g. Protein:Polymers|Amino acid:Monomers
 
 Allowed: Explanation, BloomLevel
 
+Importer safeguard: If all/most categories are single letters (e.g., a word split like B|r|o|a|d), the importer will gently flag those rows. In the UI you can choose to exclude flagged rows from import, cancel the import, or proceed anyway.
+
 Example
 
 CardType,Title,Categories,Items,Explanation

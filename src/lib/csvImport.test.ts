@@ -1,7 +1,7 @@
 // src/lib/csvImport.test.ts
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, test, expect } from "vitest";
-import { rowToPayload } from "./csvImport";
+import { rowToPayload, parseCsv } from "./csvImport";
 
 const row = (r: any) => r;
 
@@ -184,5 +184,65 @@ describe("CSV importer – strict mapping", () => {
     );
     // Guidance should fall back to Question when explicit Guidance is absent
     expect(p.meta.guidance).toBe("Predict the effect of these structures.");
+  });
+
+  test("Sorting: one-letter categories are gently flagged", () => {
+    const csv = [
+      'CardType,Question,Categories,Items',
+      'Sorting,"Sort the term correctly.",B|r|o|a|d,Term:B'
+    ].join("\n");
+    const { okRows, badRows, rowWarnings } = parseCsv(csv);
+    expect(badRows.length).toBe(0);
+    expect(okRows.length).toBe(1);
+    expect(okRows[0]?.flagged).toBe(true);
+    expect((rowWarnings?.[0]?.warnings?.[0] || "")).toMatch(/single letters/i);
+  });
+
+  test("MCQ: multi-letter answer produces non-blocking warning", () => {
+    const csv = [
+      'CardType,Question,A,B,C,D,Answer',
+      'Standard MCQ,"Pick letters",One,Two,Three,Four,AB'
+    ].join("\n");
+    const { okRows, badRows, rowWarnings } = parseCsv(csv);
+    expect(badRows.length).toBe(0);
+    expect(okRows.length).toBe(1);
+    const warnings = (rowWarnings.find(rw => rw.index === 2)?.warnings || []).join(' ');
+    expect(warnings).toMatch(/W-MCQ-MULTI-ANS/);
+  });
+
+  test("Sequencing: duplicate steps warning", () => {
+    const csv = [
+      'CardType,Prompt,Steps',
+      'Sequencing,"Do these",A|B|A|C'
+    ].join("\n");
+    const { okRows, badRows, rowWarnings } = parseCsv(csv);
+    expect(badRows.length).toBe(0);
+    expect(okRows.length).toBe(1);
+    const warnings = (rowWarnings.find(rw => rw.index === 2)?.warnings || []).join(' ');
+    expect(warnings).toMatch(/W-SEQ-DUP-STEP/);
+  });
+
+  test("Fill: placeholder mismatch warns, non-blocking", () => {
+    const csv = [
+      'CardType,Prompt,Answer1,Answer2',
+      'Fill in the Blank,"Text with [[1]] and [[2]] and [[3]]",A,B'
+    ].join("\n");
+    const { okRows, badRows, rowWarnings } = parseCsv(csv);
+    expect(badRows.length).toBe(0);
+    expect(okRows.length).toBe(1);
+    const warnings = (rowWarnings.find(rw => rw.index === 2)?.warnings || []).join(' ');
+    expect(warnings).toMatch(/W-FILL-PLACEHOLDER-MISMATCH/);
+  });
+
+  test("Compare: duplicate feature keys warns, non-blocking", () => {
+    const csv = [
+      'CardType,Question,ItemA,ItemB,Points',
+      'Compare/Contrast,"DNA vs RNA",DNA,RNA,"Sugar::deoxyribose::ribose|Sugar::2\' deoxy::ribose"'
+    ].join("\n");
+    const { okRows, badRows, rowWarnings } = parseCsv(csv);
+    expect(badRows.length).toBe(0);
+    expect(okRows.length).toBe(1);
+    const warnings = (rowWarnings.find(rw => rw.index === 2)?.warnings || []).join(' ');
+    expect(warnings).toMatch(/W-COMPARE-KEY-DUP/);
   });
 });
