@@ -8,8 +8,8 @@ interface CardMetaLite { id: number; [k: string]: unknown }
  * AccuracyDetailsModal
  * Reusable modal showing per-card performance for the most recently completed mission.
  * Weak cards: any card answered incorrectly (correct === 0 or false)
- * Strong points: cards answered correctly (correct >= 0.65 fraction OR boolean true)
- * Cards can appear in neither group if partially correct but < 0.65 (future nuance) – currently treated as weak if < 0.65.
+ * Strong points: cards answered correctly (correct >= 0.60 fraction OR boolean true)
+ * Cards can appear in neither group if partially correct but < 0.60 (future nuance) – currently treated as weak if < 0.60.
  */
 export type MissionAnswer = { cardId: number; correct: boolean | number; response?: unknown };
 
@@ -28,7 +28,7 @@ function classify(answers: MissionAnswer[] | null | undefined) {
   if (!answers || answers.length === 0) return { weak, strong };
   for (const a of answers) {
     const val = typeof a.correct === "number" ? a.correct : (a.correct ? 1 : 0);
-    if (val >= 0.65) strong.push(a); else weak.push(a);
+  if (val >= 0.60) strong.push(a); else weak.push(a);
   }
   return { weak, strong };
 }
@@ -118,7 +118,7 @@ export const AccuracyDetailsModal: React.FC<AccuracyDetailsModalProps> = (props:
               </section>
               <section>
                 <h3 className="font-semibold text-emerald-600 mb-2">Strong points ({strong.length})</h3>
-                {strong.length === 0 && <p className="text-slate-500">No cards reached the strong threshold yet (≥65%).</p>}
+                {strong.length === 0 && <p className="text-slate-500">No cards reached the strong threshold yet (≥60%).</p>}
                 {strong.length > 0 && (
                   <ul className="space-y-1">
                     {strong.map((a: MissionAnswer) => {

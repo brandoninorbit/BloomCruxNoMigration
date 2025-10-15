@@ -16,29 +16,29 @@ function makeState(total: number, correctCount: number): MissionState {
 }
 
 describe("computePass epsilon threshold behavior", () => {
-  test("64.95% should not pass when threshold is 65%", () => {
+  test("59.95% should not pass when threshold is 60%", () => {
     const total = 200; // use large total to represent fractional correctness precisely
-    const correctCount = total * 0.6495; // 64.95%
-    const res = computePass(makeState(total, correctCount), { passThreshold: 65 });
-    // Display rounds to one decimal (65.0%), but pass/fail uses raw float
-    expect(res.percent).toBeCloseTo(65.0, 1);
+    const correctCount = total * 0.5995; // 59.95%
+    const res = computePass(makeState(total, correctCount), { passThreshold: 60 });
+    // Display rounds to one decimal (60.0%), but pass/fail uses raw float
+    expect(res.percent).toBeCloseTo(60.0, 1);
     expect(res.passed).toBe(false);
   });
 
-  test("65.0% should pass when threshold is 65%", () => {
+  test("60.0% should pass when threshold is 60%", () => {
     const total = 200;
-    const correctCount = total * 0.65; // exactly 65%
-    const res = computePass(makeState(total, correctCount), { passThreshold: 65 });
-    expect(res.percent).toBeCloseTo(65.0, 1);
+    const correctCount = total * 0.60; // exactly 60%
+    const res = computePass(makeState(total, correctCount), { passThreshold: 60 });
+    expect(res.percent).toBeCloseTo(60.0, 1);
     expect(res.passed).toBe(true);
   });
 
   test(
-    "slightly above threshold (65.0001%) should pass due to raw float compare",
+    "slightly above threshold (60.0001%) should pass due to raw float compare",
     () => {
       const total = 100000; // allow fine granularity
-      const correctCount = total * 0.650001;
-      const res = computePass(makeState(total, correctCount), { passThreshold: 65 });
+      const correctCount = total * 0.600001;
+      const res = computePass(makeState(total, correctCount), { passThreshold: 60 });
       expect(res.passed).toBe(true);
     }
   );

@@ -195,14 +195,14 @@ export default function QuestEnterPage() {
             const questAttempts = prevLevelAttempts.filter(attempt => attempt.mode === 'quest');
             const mostRecentQuest = questAttempts.length > 0 ? questAttempts[0] : null;
             
-            // Look for attempts with 100% coverage and 65%+ accuracy that might indicate mastery
+            // Look for attempts with 100% coverage and 60%+ accuracy that might indicate mastery
             const masteryAttempts = prevLevelAttempts.filter(attempt => {
               const accuracy = attempt.score_pct; // score_pct is already a percentage
               const cardsSeen = attempt.recomputed?.seen || attempt.stored?.seen || 0;
               const coverage = totalCards > 0 ? (cardsSeen / totalCards) * 100 : 0;
               
-              // Consider it a mastery attempt if coverage is 100% AND accuracy > 65%
-              return coverage >= 100 && accuracy > 65;
+              // Consider it a mastery attempt if coverage is 100% AND accuracy > 60%
+              return coverage >= 100 && accuracy > 60;
             });
             
             let bestAttempt = mostRecentQuest;
@@ -412,13 +412,13 @@ export default function QuestEnterPage() {
                     <p className="font-medium mb-2">Current status of {details.prevLevel}:</p>
                     <ul className="list-disc list-inside space-y-1 text-sm">
                       {details.prevMastered && <li>✅ Mastered</li>}
-                      {details.prevCleared && <li>✅ Is cleared (65% or higher required)</li>}
+                      {details.prevCleared && <li>✅ Is cleared (60% or higher required)</li>}
                       {!details.prevMastered && !details.prevCleared && (
                         <>
                           <li>❌ Not mastered</li>
                           <li>❌ Not cleared</li>
                           {details.prevHasMission ? (
-                            <li>Last attempt accuracy: {details.prevAvg}% (need ≥65% to unlock)</li>
+                            <li>Last attempt accuracy: {details.prevAvg}% (need ≥60% to unlock)</li>
                           ) : (
                             <li>No missions completed yet</li>
                           )}
@@ -437,7 +437,7 @@ export default function QuestEnterPage() {
                     </div>
                   )}
 
-                  {!details.prevMastered && !details.prevCleared && details.prevHasMission && details.prevAvg < 65 && (
+                  {!details.prevMastered && !details.prevCleared && details.prevHasMission && details.prevAvg < 60 && (
                     <p className="text-sm text-gray-600 mt-4">
                       Try the {details.prevLevel} missions again to improve your accuracy and unlock {modalLevel}.
                     </p>

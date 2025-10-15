@@ -100,8 +100,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dec
     await updateQuestProgressOnComplete({ userId, deckId, level: bloom_level, scorePct: score_pct, cardsSeen: cards_seen });
   }
 
-  // Unlock next on single pass (>=65) only for quest missions. Do this after progress update to avoid races.
-  if ((mode ?? 'quest') === 'quest' && score_pct >= 65) {
+  // Unlock next on single pass (>=60) only for quest missions. Do this after progress update to avoid races.
+  if ((mode ?? 'quest') === 'quest' && score_pct >= 60) {
     try { await unlockNextBloomLevel(userId, deckId, bloom_level); } catch {}
   }
 
@@ -155,5 +155,5 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dec
     }
   } catch {}
 
-  return NextResponse.json({ ok: true, attemptId: attempt.attemptId, unlocked: score_pct >= 65 });
+  return NextResponse.json({ ok: true, attemptId: attempt.attemptId, unlocked: score_pct >= 60 });
 }

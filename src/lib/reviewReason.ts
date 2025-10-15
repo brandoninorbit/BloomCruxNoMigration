@@ -7,7 +7,7 @@ import type { ReviewReason } from "@/components/decks/CardReviewReasonChip";
 export type CardReason = { cardId: number; reason: ReviewReason };
 
 // Defaults
-const LOW_ACC_THRESHOLD = 0.65; // 65%
+const LOW_ACC_THRESHOLD = 0.60; // 60%
 const LEECH_LAPSES = 3; // reasonable default until configured elsewhere
 
 function rollingAccuracy(acc?: CardMastery["accuracy"]): number | undefined {

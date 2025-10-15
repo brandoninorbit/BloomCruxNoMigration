@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
   let tokensDelta = 0;
   let primaryBloomLevel: BloomLevel = 'Remember';
 
-  if (pct >= 65) {
+  if (pct >= 60) {
     // Determine the primary bloom level for token calculation
     if (breakdown && Object.keys(breakdown).length > 0) {
       // Use the bloom level with the most correct answers
@@ -168,7 +168,7 @@ export async function POST(req: NextRequest) {
     if (e3) return NextResponse.json({ error: e3.message }, { status: 500 });
 
     // Check for first-clear bonus
-    if (pct >= 65) {
+  if (pct >= 60) {
       const existingFirstClear = await sb
         .from('user_deck_first_clears')
         .select('id')

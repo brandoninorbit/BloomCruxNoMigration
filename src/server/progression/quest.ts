@@ -236,7 +236,7 @@ export async function recordMissionAttempt(params: {
                 const DAY_MS = 86400000;
                 const statsRows = answersSanitized.map(ans => {
                   const prev = existingMap.get(ans.cardId) || { attempts: 0, correct: 0, streak: 0, ease: 2.5, interval_days: 0 };
-                  const success = ans.correct >= 0.65; // treat >=65% as a success (aligns with unlocking threshold)
+                  const success = ans.correct >= 0.60; // treat >=60% as a success (aligns with unlocking threshold)
                   const attempts = prev.attempts + 1;
                   const correct = prev.correct + (success ? 1 : 0);
                   const streak = success ? (prev.streak + 1) : 0;
@@ -441,7 +441,7 @@ export async function updateQuestProgressOnComplete(params: {
   const cur = (per[params.level] ?? {}) as Partial<PerBloomItem>;
   cur.missionsCompleted = Number(cur.missionsCompleted ?? 0) + 1;
   // Only increment missionsPassed when passing threshold
-  if ((params.scorePct ?? 0) >= 65) {
+  if ((params.scorePct ?? 0) >= 60) {
     cur.missionsPassed = Number(cur.missionsPassed ?? 0) + 1;
   }
   const before = Number(cur.completedCards ?? 0);
@@ -460,7 +460,7 @@ export async function updateQuestProgressOnComplete(params: {
   const wavg = recent.reduce((s, r, i) => s + (r.percent * weights[i]), 0) / denom;
   cur.weightedAvg = Math.round(wavg);
   // Single-pass clear flag
-  if ((params.scorePct ?? 0) >= 65) cur.cleared = true;
+  if ((params.scorePct ?? 0) >= 60) cur.cleared = true;
   per[params.level] = cur;
   try {
     await sb

@@ -110,7 +110,7 @@ export async function shouldUnlockQuest(
   userId: string,
   deckId: number,
   bloom: DeckBloomLevel,
-  passThresholdPct: number = 65,
+  passThresholdPct: number = 60,
   strategy: 'mean' | 'latest' = 'mean'
 ): Promise<boolean> {
   const result = await getQuestUnlockScore(userId, deckId, bloom, strategy);

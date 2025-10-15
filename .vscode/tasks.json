@@ -406,6 +406,15 @@
 			"label": "Run repair glitch SQL",
 			"type": "shell",
 			"command": "node scripts\\run-sql.js sql\\repair_glitched_counts.sql"
+		},
+		{
+			"label": "Typecheck (no emit)",
+			"type": "shell",
+			"command": "npx tsc --noEmit",
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "build"
 		}
 	]
 }

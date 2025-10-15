@@ -51,7 +51,7 @@ Standard MCQ,Which has 3 H-bonds?,A-T,A-U,G≡C,A=G,C,"G≡C forms 3 hydrogen bo
 
 Missions unlock **sequentially** (Remember → Understand → ... → Create) based on a **composite unlock score** system:
 
-- Default threshold: **65%** (configurable per mission)
+- Default threshold: **60%** (configurable per mission)
 - Mastery threshold: **80%** for Bloom level completion
 - Unlock logic: `src/lib/quest/unlock.ts` checks highest quest attempt OR composite coverage score from views `v_unlock_basis_mean`/`v_unlock_basis_latest`
 - Quest unlocks use **whichever score is higher**: previous quest attempt OR composite per-card mastery (when 100% coverage achieved)
@@ -110,7 +110,7 @@ node scripts/run-sql.js supabase/migrations/<file>.sql
 
 Missions save after **every card** (`user_deck_missions.answered` JSONB array). On logout, user resumes at exact card. Mission types:
 
-- **Quest**: Sequential, shuffled once, unlocks next Bloom level at ≥65%
+- **Quest**: Sequential, shuffled once, unlocks next Bloom level at ≥60%
 - **Target Practice**: Uses SM-2 due cards, shows "Engage Target" popup before start
 - **Random Remix**: Pure random, no SRS
 - **Level Up**: Focused practice on one Bloom level

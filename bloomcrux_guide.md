@@ -12,7 +12,7 @@
 
 ## 1) Golden Rules (must-keep promises)
 
-- **Progression**: Missions unlock in order: Remember → Understand → Apply → Analyze → Evaluate → Create. Default mission complete at **≥ 65%** (user can toggle threshold in mission settings). Bloom mastery however is 80% and above
+- **Progression**: Missions unlock in order: Remember → Understand → Apply → Analyze → Evaluate → Create. Default mission complete at **≥ 60%** (user can toggle threshold in mission settings). Bloom mastery however is 80% and above
 - **Decks**: Start as empty. Users can add manually in UI or bulk import CSV. Example decks remain only for logged-out users via “Show Example.”
 - **Card types are CSV-first**. Every card is CSV-authorable. When autograding isn’t viable, **SelfCheck=1** enables manual reflection.
 - **Manual editing parity**: The deck editor must support add/edit/delete cards that update the *same schema* as CSV import.
@@ -38,8 +38,8 @@
 
 ## 4) Missions & SRS
 
-- **Quest**: One mission per Bloom level. Cards shuffled once. Completion defaults to ≥65% (toggleable).
-- **Target Practice**: Uses SM-2 flags. Users can set their own threshold (default 65%) before mission via “Engage Target” popup.
+- **Quest**: One mission per Bloom level. Cards shuffled once. Completion defaults to ≥60% (toggleable).
+- **Target Practice**: Uses SM-2 flags. Users can set their own threshold (default 60%) before mission via “Engage Target” popup.
 - **Random Remix**: Pure randomness.
 - **Level Up**: Focused practice on one Bloom level.
 - **Timed Drill**: Awards a little extra XP; always shows a “mission debrief” popup before mission begins.
