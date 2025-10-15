@@ -85,6 +85,9 @@ Sorting,Sort these examples,"Covalent|Noncovalent","Peptide bond:Covalent|Hydrog
 Required: Prompt, Steps (or Items) as a pipe list in correct order.
 Allowed: Explanation, BloomLevel
 
+Important guidance
+- Avoid including explicit numbers, dates, or ordinals in step text that give away the correct order. For example, avoid steps like "Stock market crash 1929" or "Great Depression 1929–1939" or prefixed markers like "1.", "2.", "First", "Second". These reveal the answer and defeat the purpose of sequencing practice. Prefer neutral phrasing (e.g., "Stock market crash", "Great Depression period").
+
 Example
 
 CardType,Prompt,Steps,Explanation

@@ -84,9 +84,30 @@ export default function QuestClient({ deckId }: { deckId: number }) {
         const existing = await fetchMission(deckId, level, mi).catch(() => null);
         if (!alive) return;
         if (existing && existing.cardOrder.length > 0) {
-          setMission(existing);
-          startedIsoRef.current = existing.startedAt;
-          return;
+          // Reconcile mission with current deck cards (skip deleted cards)
+          const available = new Set((cards ?? []).map(c => c.id));
+          const filteredOrder = existing.cardOrder.filter(id => available.has(id));
+          // Keep only answered entries that still exist and are in the filtered order
+          const orderSet = new Set(filteredOrder);
+          const filteredAnswered = (existing.answered ?? []).filter(a => orderSet.has(a.cardId));
+          const recomputeCorrect = filteredAnswered.reduce((s, a) => s + (typeof a.correct === "number" ? Math.max(0, Math.min(1, a.correct)) : (a.correct ? 1 : 0)), 0);
+
+          if (filteredOrder.length === 0) {
+            // All cards for this mission are gone; fall through to compose a fresh mission
+          } else {
+            const normalized = (filteredOrder.length !== existing.cardOrder.length || filteredAnswered.length !== existing.answered.length)
+              ? { ...existing, cardOrder: filteredOrder, answered: filteredAnswered, correctCount: recomputeCorrect, resumedAt: new Date().toISOString() }
+              : existing;
+            // If normalized is already complete after filtering, do not resume; compose new mission instead
+            if (normalized.answered.length < normalized.cardOrder.length) {
+              setMission(normalized);
+              startedIsoRef.current = normalized.startedAt;
+              // Persist normalization to server for idempotent resume
+              try { await upsertMission(deckId, normalized); } catch {}
+              return;
+            }
+            // else: fall through to compose new mission
+          }
         }
       }
       
