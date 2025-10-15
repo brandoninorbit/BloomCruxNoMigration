@@ -119,6 +119,7 @@ export default function QuestStudyCard({ card, onAnswer, onContinue }: { card: D
         key={card.id}
         prompt={seq.question}
         steps={seq.meta.steps}
+        explanation={(card as DeckCard).explanation}
         onAnswer={({ wrongIndexes, allCorrect, responseMs, confidence, guessed }) => {
           const total = seq.meta.steps.length;
           const numCorrect = total && wrongIndexes ? Math.max(0, total - wrongIndexes.length) : (allCorrect ? total : 0);
@@ -341,14 +342,22 @@ function SortingQuest({ card, onAnswer, onContinue }: { card: DeckCard & { type:
       {!checked ? (
         <div className="mt-4"><button type="button" className="px-4 py-2 rounded-lg bg-blue-600 text-white" onClick={checkNow}>Check</button></div>
       ) : (
-        <div className="mt-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            {!showCorrect ? <button type="button" className="px-3 py-2 rounded border border-slate-300" onClick={revealCorrect}>Show correct</button> : <span className="text-sm text-slate-600">Correct answers highlighted.</span>}
+        <div className="mt-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              {!showCorrect ? <button type="button" className="px-3 py-2 rounded border border-slate-300" onClick={revealCorrect}>Show correct</button> : <span className="text-sm text-slate-600">Correct answers highlighted.</span>}
+            </div>
+            <div className={`rounded-xl border px-4 py-3 flex items-center justify-between ${allCorrect ? "bg-green-100 border-green-200 text-green-800" : "bg-red-100 border-red-200 text-red-800"}`}>
+              <div className="font-semibold">{allCorrect ? "Correct!" : "Not quite"}</div>
+              <button type="button" className={`px-4 py-2 rounded-lg font-medium shadow-sm ${allCorrect ? "bg-green-600 text-white hover:bg-green-700" : "bg-red-600 text-white hover:bg-red-700"}`} onClick={onContinue}>Continue</button>
+            </div>
           </div>
-          <div className={`rounded-xl border px-4 py-3 flex items-center justify-between ${allCorrect ? "bg-green-100 border-green-200 text-green-800" : "bg-red-100 border-red-200 text-red-800"}`}>
-            <div className="font-semibold">{allCorrect ? "Correct!" : "Not quite"}</div>
-            <button type="button" className={`px-4 py-2 rounded-lg font-medium shadow-sm ${allCorrect ? "bg-green-600 text-white hover:bg-green-700" : "bg-red-600 text-white hover:bg-red-700"}`} onClick={onContinue}>Continue</button>
-          </div>
+          {checked && card.explanation ? (
+            <div className="rounded-lg bg-slate-50 p-4 text-slate-700">
+              <div className="font-semibold text-slate-900 mb-1">Explanation</div>
+              <div className="text-sm leading-relaxed">{card.explanation}</div>
+            </div>
+          ) : null}
         </div>
       )}
     </div>

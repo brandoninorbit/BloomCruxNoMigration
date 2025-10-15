@@ -11,11 +11,12 @@ type Item = { id: string; label: string };
 type Props = {
   prompt: string;
   steps: string[];
+  explanation?: string;
   onAnswer: (res: { allCorrect: boolean; wrongIndexes?: number[]; order?: string[]; responseMs?: number; confidence?: 0|1|2|3; guessed?: boolean }) => void;
   onContinue?: () => void;
 };
 
-export default function SequencingStudy({ prompt, steps, onAnswer, onContinue }: Props) {
+export default function SequencingStudy({ prompt, steps, explanation, onAnswer, onContinue }: Props) {
   const [items, setItems] = useState<Item[]>([]);
   const [checked, setChecked] = useState(false);
   const [result, setResult] = useState<{ allCorrect: boolean; wrongIndexes?: number[] } | null>(null);
@@ -70,11 +71,16 @@ export default function SequencingStudy({ prompt, steps, onAnswer, onContinue }:
   if (allCorrect) playCorrectSound();
   };
 
-  function Row({ item, index }: { item: Item; index: number }) {
+  function Row({ item, index, showCorrectFlag }: { item: Item; index: number; showCorrectFlag: boolean }) {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
     const style: React.CSSProperties = { transform: CSS.Transform.toString(transform), transition, willChange: "transform, opacity" };
-    const wrong = checked && result?.wrongIndexes?.includes(index);
-    const statusClass = checked ? (wrong ? "bg-red-50 border-red-300 text-red-800" : "bg-green-50 border-green-300 text-green-800") : "bg-white";
+    // When showing the correct sequence, force green (do not keep prior red highlights)
+    const wrong = checked && !showCorrectFlag && result?.wrongIndexes?.includes(index);
+    const statusClass = checked
+      ? (showCorrectFlag
+          ? "bg-green-50 border-green-300 text-green-800"
+          : (wrong ? "bg-red-50 border-red-300 text-red-800" : "bg-green-50 border-green-300 text-green-800"))
+      : "bg-white";
     return (
       <div ref={setNodeRef} style={style} {...attributes} {...listeners} className={`flex items-center gap-3 rounded border p-3 shadow-sm transition-all duration-200 ease-out ${statusClass} ${isDragging ? "opacity-80 shadow-2xl scale-105" : "cursor-grab hover:shadow-md"}`}>
         <div className="flex items-center justify-center h-8 w-8 rounded-full bg-blue-600 text-white font-semibold">{index + 1}</div>
@@ -91,7 +97,7 @@ export default function SequencingStudy({ prompt, steps, onAnswer, onContinue }:
           <SortableContext items={items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
             <div className="space-y-2">
               {items.map((it, idx) => (
-                <Row key={it.id} item={it} index={idx} />
+                <Row key={it.id} item={it} index={idx} showCorrectFlag={showCorrect} />
               ))}
             </div>
           </SortableContext>
@@ -126,6 +132,12 @@ export default function SequencingStudy({ prompt, steps, onAnswer, onContinue }:
               Show my attempt
             </button>
           )}
+          {explanation ? (
+            <div className="mt-3 rounded-lg bg-slate-50 p-3 text-slate-700">
+              <div className="font-semibold text-slate-900 mb-1">Explanation</div>
+              <div className="text-sm leading-relaxed">{explanation}</div>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
