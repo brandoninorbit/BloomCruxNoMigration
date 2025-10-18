@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { playCorrectSound, triggerDeferredCorrect } from "@/lib/audio";
 import { DndContext, DragEndEvent, PointerSensor, useDroppable, useDraggable, useSensor, useSensors, rectIntersection } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
+import FormattedText from "@/components/ui/FormattedText";
 
 export type BlankSpec = {
   id: string | number;
@@ -19,6 +20,7 @@ type Props = {
   wordBank?: string[];
   explanation?: string;
   submitLabel?: string;
+  formattingEnabled?: boolean;
   onAnswer: (result: { perBlank: Record<string | number, boolean>; allCorrect: boolean; filledText: string; mode: "auto"; responseMs?: number; confidence?: 0|1|2|3; guessed?: boolean }) => void;
   onContinue?: () => void;
 };
@@ -30,14 +32,14 @@ function normalize(s: string, caseSensitive?: boolean, ignorePunct?: boolean) {
   return t;
 }
 
-function Token({ id, text, disabled }: { id: string; text: string; disabled?: boolean }) {
+function Token({ id, text, disabled, formattingEnabled = true }: { id: string; text: string; disabled?: boolean; formattingEnabled?: boolean }) {
   // Always call the hook to preserve hook ordering. When disabled we just don't attach the drag refs/props.
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id });
   const style: React.CSSProperties = { transform: CSS.Translate.toString(transform) };
   if (disabled) {
     return (
       <div className="px-2 py-1 rounded border text-sm bg-white shadow-sm opacity-80 cursor-default">
-        {text}
+  <FormattedText text={text} enabled={formattingEnabled} />
       </div>
     );
   }
@@ -49,7 +51,7 @@ function Token({ id, text, disabled }: { id: string; text: string; disabled?: bo
       {...attributes}
       {...listeners}
     >
-      {text}
+      <FormattedText text={text} enabled={formattingEnabled} />
     </div>
   );
 }
@@ -71,6 +73,7 @@ function BlankSlot({
   onConfirmRight,
   correctAnswer,
   showCorrect,
+  formattingEnabled,
 }: {
   id: string;
   value: string;
@@ -88,6 +91,7 @@ function BlankSlot({
   onConfirmRight?: () => void;
   correctAnswer?: string;
   showCorrect?: boolean;
+  formattingEnabled?: boolean;
 }) {
   const { isOver, setNodeRef } = useDroppable({ id });
   const cls = `inline-flex items-center gap-1 min-w-[64px] px-2 py-1 rounded border align-middle mx-1 ${
@@ -110,8 +114,8 @@ function BlankSlot({
       {mode !== "bank" ? (
         checked ? (
           <>
-            <span className={inputCls}>{value}</span>
-            {correctAnswer ? <span className="text-green-700 ml-1">(correct: {correctAnswer})</span> : null}
+            <span className={inputCls}><FormattedText text={value} enabled={formattingEnabled} /></span>
+            {correctAnswer ? <span className="text-green-700 ml-1">(correct: <FormattedText text={correctAnswer} enabled={formattingEnabled} />)</span> : null}
           </>
         ) : (
           <input
@@ -122,7 +126,7 @@ function BlankSlot({
           />
         )
       ) : (
-        <span className={valueCls}>{value || placeholder}</span>
+        <span className={valueCls}><FormattedText text={value || placeholder} enabled={formattingEnabled} /></span>
       )}
       {showClear && (
         <button aria-label={`Clear ${label}`} className="font-valid text-slate-500 hover:text-slate-700" onClick={onClear} type="button">
@@ -156,7 +160,7 @@ function BlankSlot({
   );
 }
 
-export default function FillBlankStudy({ stem, blanks, wordBank, explanation, submitLabel = "Submit answer", onAnswer, onContinue }: Props) {
+export default function FillBlankStudy({ stem, blanks, wordBank, explanation, submitLabel = "Submit answer", formattingEnabled = true, onAnswer, onContinue }: Props) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const [placements, setPlacements] = useState<Record<string | number, string>>({});
   const [bank, setBank] = useState<string[]>(() => [...(wordBank ?? [])]);
@@ -321,16 +325,17 @@ export default function FillBlankStudy({ stem, blanks, wordBank, explanation, su
                     }}
                     correctAnswer={correctMap[id]}
                     showCorrect={showCorrect}
+                    formattingEnabled={formattingEnabled}
                   />
                 );
               }
-              return <span key={i}>{p}</span>;
+                return <span key={i}><FormattedText text={p} enabled={formattingEnabled} /></span>;
             })}
           </div>
           {bank.length > 0 && !showCorrect && (
             <div className="mt-4">
               <p className="font-valid text-sm text-slate-500 mb-2">Word bank</p>
-              <div className="flex flex-wrap gap-2">{bank.map((t) => (<Token key={t} id={t} text={t} disabled={checked} />))}</div>
+                <div className="flex flex-wrap gap-2">{bank.map((t) => (<Token key={t} id={t} text={t} disabled={checked} formattingEnabled={formattingEnabled} />))}</div>
             </div>
           )}
         </DndContext>
@@ -359,7 +364,7 @@ export default function FillBlankStudy({ stem, blanks, wordBank, explanation, su
             {showCorrect ? "Show my placement" : "Show correct placement"}
           </button>
         ) : null}
-        {checked && explanation ? <span className="text-sm text-slate-600">{explanation}</span> : null}
+  {checked && explanation ? <span className="text-sm text-slate-600"><FormattedText text={explanation} enabled={formattingEnabled} /></span> : null}
       </div>
       {checked ? (
         <div className={`mt-4 rounded-xl border px-4 py-3 flex items-center justify-between ${Object.values(perBlank).every(Boolean) ? "bg-green-100 border-green-200 text-green-800" : "bg-red-100 border-red-200 text-red-800"}`}>

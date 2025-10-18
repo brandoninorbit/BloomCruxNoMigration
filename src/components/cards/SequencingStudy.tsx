@@ -5,6 +5,7 @@ import { playCorrectSound } from "@/lib/audio";
 import { DndContext, DragEndEvent, PointerSensor, KeyboardSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { arrayMove, SortableContext, verticalListSortingStrategy, useSortable, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import FormattedText from "@/components/ui/FormattedText";
 
 type Item = { id: string; label: string };
 
@@ -12,11 +13,12 @@ type Props = {
   prompt: string;
   steps: string[];
   explanation?: string;
+  formattingEnabled?: boolean;
   onAnswer: (res: { allCorrect: boolean; wrongIndexes?: number[]; order?: string[]; responseMs?: number; confidence?: 0|1|2|3; guessed?: boolean }) => void;
   onContinue?: () => void;
 };
 
-export default function SequencingStudy({ prompt, steps, explanation, onAnswer, onContinue }: Props) {
+export default function SequencingStudy({ prompt, steps, explanation, formattingEnabled = true, onAnswer, onContinue }: Props) {
   const [items, setItems] = useState<Item[]>([]);
   const [checked, setChecked] = useState(false);
   const [result, setResult] = useState<{ allCorrect: boolean; wrongIndexes?: number[] } | null>(null);
@@ -84,14 +86,14 @@ export default function SequencingStudy({ prompt, steps, explanation, onAnswer, 
     return (
       <div ref={setNodeRef} style={style} {...attributes} {...listeners} className={`flex items-center gap-3 rounded border p-3 shadow-sm transition-all duration-200 ease-out ${statusClass} ${isDragging ? "opacity-80 shadow-2xl scale-105" : "cursor-grab hover:shadow-md"}`}>
         <div className="flex items-center justify-center h-8 w-8 rounded-full bg-blue-600 text-white font-semibold">{index + 1}</div>
-        <div className="flex-1 text-slate-800">{item.label}</div>
+        <div className="flex-1 text-slate-800"><FormattedText text={item.label} enabled={formattingEnabled} /></div>
       </div>
     );
   }
 
   return (
     <div className="w-full max-w-3xl">
-      <h2 className="text-2xl font-semibold mb-4 text-slate-900">{prompt}</h2>
+  <h2 className="text-2xl font-semibold mb-4 text-slate-900"><FormattedText text={prompt} enabled={formattingEnabled} /></h2>
       <div className="prose prose-slate">
         <DndContext sensors={sensors} onDragEnd={onDragEnd}>
           <SortableContext items={items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
@@ -135,7 +137,7 @@ export default function SequencingStudy({ prompt, steps, explanation, onAnswer, 
           {explanation ? (
             <div className="mt-3 rounded-lg bg-slate-50 p-3 text-slate-700">
               <div className="font-semibold text-slate-900 mb-1">Explanation</div>
-              <div className="text-sm leading-relaxed">{explanation}</div>
+              <div className="text-sm leading-relaxed"><FormattedText text={explanation} enabled={formattingEnabled} /></div>
             </div>
           ) : null}
         </div>

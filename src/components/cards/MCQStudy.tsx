@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import { playCorrectSound } from "@/lib/audio";
+import FormattedText from "@/components/ui/FormattedText";
 
 export type MCQOption = { key: "A" | "B" | "C" | "D"; text: string };
 
@@ -10,11 +11,12 @@ type Props = {
   answerKey: "A" | "B" | "C" | "D";
   explanation?: string;
   submitLabel?: string;
+  formattingEnabled?: boolean;
   onAnswer: (result: { correct: boolean; chosen: "A" | "B" | "C" | "D"; mode: "auto"; responseMs?: number; confidence?: 0|1|2|3; guessed?: boolean }) => void;
   onContinue?: () => void;
 };
 
-export default function MCQStudy({ prompt, options, answerKey, explanation, submitLabel = "Check Answer", onAnswer, onContinue }: Props) {
+export default function MCQStudy({ prompt, options, answerKey, explanation, submitLabel = "Check Answer", formattingEnabled = true, onAnswer, onContinue }: Props) {
   const [chosen, setChosen] = useState<"A" | "B" | "C" | "D" | null>(null);
   const [checked, setChecked] = useState(false);
   const [confidence, setConfidence] = useState<0|1|2|3|undefined>(undefined);
@@ -38,7 +40,7 @@ export default function MCQStudy({ prompt, options, answerKey, explanation, subm
   };
   return (
     <div className="w-full max-w-3xl">
-      <h2 className="font-valid text-2xl font-semibold mb-4 text-slate-900">{prompt}</h2>
+  <h2 className="font-valid text-2xl font-semibold mb-4 text-slate-900"><FormattedText text={prompt} enabled={formattingEnabled} /></h2>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {options.map((o) => {
           const isSelected = chosen === o.key;
@@ -54,7 +56,7 @@ export default function MCQStudy({ prompt, options, answerKey, explanation, subm
             >
               <div className="flex items-start gap-2">
                 <span className="font-bold text-slate-700">{o.key}.</span>
-                <span className="text-slate-800">{o.text}</span>
+                <span className="text-slate-800"><FormattedText text={o.text} enabled={formattingEnabled} /></span>
               </div>
             </button>
           );
@@ -73,7 +75,7 @@ export default function MCQStudy({ prompt, options, answerKey, explanation, subm
           <label className="ml-2 text-sm"><input type="checkbox" checked={guessed} onChange={(e) => setGuessed(e.target.checked)} className="mr-1"/>Guessed</label>
         </div>
         <button disabled={!chosen} onClick={handleCheck} className="font-valid px-3 py-2 rounded bg-blue-600 disabled:opacity-50 text-white">{submitLabel}</button>
-        {checked && explanation ? <p className="text-sm text-slate-600">{explanation}</p> : null}
+  {checked && explanation ? <p className="text-sm text-slate-600"><FormattedText text={explanation} enabled={formattingEnabled} /></p> : null}
       </div>
       {/* Bottom status banner (reveal answer) */}
       {checked ? (

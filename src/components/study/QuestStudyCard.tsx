@@ -20,6 +20,7 @@ import FillBlankStudy from "@/components/cards/FillBlankStudy";
 import SequencingStudy from "@/components/cards/SequencingStudy";
 import { DndContext, DragEndEvent, PointerSensor, useDroppable, useDraggable, useSensor, useSensors, rectIntersection } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
+import FormattedText from "@/components/ui/FormattedText";
 
 export type StudyAnswerEvent = {
   // Either boolean or fractional [0,1]
@@ -32,7 +33,7 @@ export type StudyAnswerEvent = {
   cardType: string;
 };
 
-export default function QuestStudyCard({ card, onAnswer, onContinue }: { card: DeckCard; onAnswer: (ev: StudyAnswerEvent & { cardId: number }) => void; onContinue: () => void }) {
+export default function QuestStudyCard({ card, onAnswer, onContinue, markupEnabled = true }: { card: DeckCard; onAnswer: (ev: StudyAnswerEvent & { cardId: number }) => void; onContinue: () => void; markupEnabled?: boolean }) {
   // Simple switch to render a per-type UI that matches Quest styling/flow
   if (card.type === "Standard MCQ") {
     const mcq = card as DeckStandardMCQ;
@@ -48,6 +49,7 @@ export default function QuestStudyCard({ card, onAnswer, onContinue }: { card: D
         ]}
         answerKey={mcq.meta.answer}
         explanation={mcq.explanation}
+        formattingEnabled={markupEnabled}
         onAnswer={({ correct, chosen, responseMs, confidence, guessed }) => {
           onAnswer({ cardId: card.id, correct, responseMs, confidence, guessed, payload: { choice: chosen }, cardType: card.type });
         }}
@@ -101,6 +103,7 @@ export default function QuestStudyCard({ card, onAnswer, onContinue }: { card: D
         blanks={blanks}
         wordBank={wordBank}
         explanation={(card as DeckCard).explanation}
+        formattingEnabled={markupEnabled}
         onAnswer={({ perBlank, allCorrect, filledText, responseMs, confidence, guessed }) => {
           const total = blanks.length || 1;
           const numCorrect = Object.values(perBlank).filter(Boolean).length;
@@ -120,6 +123,7 @@ export default function QuestStudyCard({ card, onAnswer, onContinue }: { card: D
         prompt={seq.question}
         steps={seq.meta.steps}
         explanation={(card as DeckCard).explanation}
+        formattingEnabled={markupEnabled}
         onAnswer={({ wrongIndexes, allCorrect, responseMs, confidence, guessed }) => {
           const total = seq.meta.steps.length;
           const numCorrect = total && wrongIndexes ? Math.max(0, total - wrongIndexes.length) : (allCorrect ? total : 0);
@@ -132,29 +136,29 @@ export default function QuestStudyCard({ card, onAnswer, onContinue }: { card: D
   }
 
   if (card.type === "Short Answer") {
-    return <ShortAnswerQuest key={card.id} card={card as DeckShortAnswer} onAnswer={onAnswer} onContinue={onContinue} />;
+    return <ShortAnswerQuest key={card.id} card={card as DeckShortAnswer} onAnswer={onAnswer} onContinue={onContinue} formattingEnabled={markupEnabled} />;
   }
 
   if (card.type === "Sorting") {
-    return <SortingQuest key={card.id} card={card as DeckCard & { type: "Sorting"; meta: DeckSortingMeta }} onAnswer={onAnswer} onContinue={onContinue} />;
+    return <SortingQuest key={card.id} card={card as DeckCard & { type: "Sorting"; meta: DeckSortingMeta }} onAnswer={onAnswer} onContinue={onContinue} formattingEnabled={markupEnabled} />;
   }
 
   if (card.type === "Two-Tier MCQ") {
-    return <TwoTierQuest key={card.id} card={card as DeckTwoTierMCQ} onAnswer={onAnswer} onContinue={onContinue} />;
+    return <TwoTierQuest key={card.id} card={card as DeckTwoTierMCQ} onAnswer={onAnswer} onContinue={onContinue} formattingEnabled={markupEnabled} />;
   }
 
   if (card.type === "CER") {
-    return <CERQuest key={card.id} card={card as DeckCER} onAnswer={onAnswer} onContinue={onContinue} />;
+    return <CERQuest key={card.id} card={card as DeckCER} onAnswer={onAnswer} onContinue={onContinue} formattingEnabled={markupEnabled} />;
   }
 
   if (card.type === "Compare/Contrast") {
-    return <CompareContrastQuest key={card.id} card={card as DeckCard & { type: "Compare/Contrast"; meta: DeckCompareContrastMeta }} onAnswer={onAnswer} onContinue={onContinue} />;
+    return <CompareContrastQuest key={card.id} card={card as DeckCard & { type: "Compare/Contrast"; meta: DeckCompareContrastMeta }} onAnswer={onAnswer} onContinue={onContinue} formattingEnabled={markupEnabled} />;
   }
 
   return null;
 }
 
-function ShortAnswerQuest({ card, onAnswer, onContinue }: { card: DeckShortAnswer; onAnswer: (ev: StudyAnswerEvent & { cardId: number }) => void; onContinue: () => void }) {
+function ShortAnswerQuest({ card, onAnswer, onContinue, formattingEnabled = true }: { card: DeckShortAnswer; onAnswer: (ev: StudyAnswerEvent & { cardId: number }) => void; onContinue: () => void; formattingEnabled?: boolean }) {
   const [text, setText] = useState("");
   const [checked, setChecked] = useState(false);
   const [judged, setJudged] = useState<null | "yes" | "no">(null);
@@ -181,7 +185,7 @@ function ShortAnswerQuest({ card, onAnswer, onContinue }: { card: DeckShortAnswe
   }
   return (
     <div className="w-full">
-      <h2 className="text-2xl font-semibold mb-4 text-slate-900">{card.question}</h2>
+      <h2 className="text-2xl font-semibold mb-4 text-slate-900"><FormattedText text={card.question} enabled={formattingEnabled} /></h2>
       <textarea
         className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
         rows={4}
@@ -210,8 +214,8 @@ function ShortAnswerQuest({ card, onAnswer, onContinue }: { card: DeckShortAnswe
           <div className="space-y-3">
             <div className="rounded-lg bg-slate-50 p-4">
               <div className="font-semibold text-slate-900 mb-1">Suggested answer</div>
-              <div className="text-slate-800 font-semibold">{card.meta.suggestedAnswer || "No suggested answer."}</div>
-              {card.explanation ? <div className="mt-3 text-sm text-slate-600">{card.explanation}</div> : null}
+              <div className="text-slate-800 font-semibold"><FormattedText text={card.meta.suggestedAnswer || "No suggested answer."} enabled={formattingEnabled} /></div>
+              {card.explanation ? <div className="mt-3 text-sm text-slate-600"><FormattedText text={card.explanation} enabled={formattingEnabled} /></div> : null}
             </div>
             {judged == null ? (
               <div className="flex items-center justify-between">
@@ -240,7 +244,7 @@ function ShortAnswerQuest({ card, onAnswer, onContinue }: { card: DeckShortAnswe
   );
 }
 
-function SortingQuest({ card, onAnswer, onContinue }: { card: DeckCard & { type: "Sorting"; meta: DeckSortingMeta }; onAnswer: (ev: StudyAnswerEvent & { cardId: number }) => void; onContinue: () => void }) {
+function SortingQuest({ card, onAnswer, onContinue, formattingEnabled = true }: { card: DeckCard & { type: "Sorting"; meta: DeckSortingMeta }; onAnswer: (ev: StudyAnswerEvent & { cardId: number }) => void; onContinue: () => void; formattingEnabled?: boolean }) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const [assignments, setAssignments] = useState<Record<string, string>>({}); // term -> category
   const [checked, setChecked] = useState(false);
@@ -275,7 +279,7 @@ function SortingQuest({ card, onAnswer, onContinue }: { card: DeckCard & { type:
     }
     return (
       <div ref={setNodeRef} style={style} className={`px-2 py-1 rounded border text-sm shadow-sm ${chipClass || "bg-white"} ${checked ? "opacity-70" : "cursor-grab active:cursor-grabbing"} ${isDragging ? "opacity-75 dragging" : ""}`} {...(!checked ? { ...attributes, ...listeners } : {})}>
-        {text}
+        <FormattedText text={text} enabled={formattingEnabled} />
       </div>
     );
   }
@@ -284,7 +288,7 @@ function SortingQuest({ card, onAnswer, onContinue }: { card: DeckCard & { type:
     const { isOver, setNodeRef } = useDroppable({ id });
     return (
       <div className={`rounded-lg border ${isOver ? "border-blue-400 bg-blue-50" : "border-slate-200 bg-slate-50"} p-3 min-h-[80px]`} ref={!checked ? setNodeRef : undefined}>
-        <div className="text-xs font-medium text-slate-500 mb-2">{title}</div>
+        <div className="text-xs font-medium text-slate-500 mb-2"><FormattedText text={title} enabled={formattingEnabled} /></div>
         <div className="flex flex-wrap gap-2">{children}</div>
       </div>
     );
@@ -326,7 +330,7 @@ function SortingQuest({ card, onAnswer, onContinue }: { card: DeckCard & { type:
 
   return (
     <div className="w-full">
-      <h2 className="text-2xl font-semibold mb-4 text-slate-900">{card.question}</h2>
+  <h2 className="text-2xl font-semibold mb-4 text-slate-900"><FormattedText text={card.question} enabled={formattingEnabled} /></h2>
       <DndContext sensors={sensors} collisionDetection={rectIntersection} onDragEnd={onDragEnd}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {categories.map((cat) => (
@@ -355,7 +359,7 @@ function SortingQuest({ card, onAnswer, onContinue }: { card: DeckCard & { type:
           {checked && card.explanation ? (
             <div className="rounded-lg bg-slate-50 p-4 text-slate-700">
               <div className="font-semibold text-slate-900 mb-1">Explanation</div>
-              <div className="text-sm leading-relaxed">{card.explanation}</div>
+              <div className="text-sm leading-relaxed"><FormattedText text={card.explanation || ""} enabled={formattingEnabled} /></div>
             </div>
           ) : null}
         </div>
@@ -364,7 +368,7 @@ function SortingQuest({ card, onAnswer, onContinue }: { card: DeckCard & { type:
   );
 }
 
-function TwoTierQuest({ card, onAnswer, onContinue }: { card: DeckTwoTierMCQ; onAnswer: (ev: StudyAnswerEvent & { cardId: number }) => void; onContinue: () => void }) {
+function TwoTierQuest({ card, onAnswer, onContinue, formattingEnabled = true }: { card: DeckTwoTierMCQ; onAnswer: (ev: StudyAnswerEvent & { cardId: number }) => void; onContinue: () => void; formattingEnabled?: boolean }) {
   const [tier1, setTier1] = useState<"A" | "B" | "C" | "D" | null>(null);
   const [tier2, setTier2] = useState<"A" | "B" | "C" | "D" | null>(null);
   const [checked, setChecked] = useState(false);
@@ -391,7 +395,7 @@ function TwoTierQuest({ card, onAnswer, onContinue }: { card: DeckTwoTierMCQ; on
     <div className="w-full">
       <div className="text-sm font-medium text-slate-700 mb-2">{label}</div>
       {extraQuestion ? (
-        <div className="mb-2 text-slate-800 font-medium">{extraQuestion}</div>
+        <div className="mb-2 text-slate-800 font-medium"><FormattedText text={extraQuestion} enabled={formattingEnabled} /></div>
       ) : null}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
   {(["A","B","C","D"] as const).map((k) => {
@@ -409,7 +413,7 @@ function TwoTierQuest({ card, onAnswer, onContinue }: { card: DeckTwoTierMCQ; on
             <button key={k} type="button" disabled={disabled} onClick={() => onChoose(k)} className={`text-left rounded-lg border px-4 py-3 shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-slate-300 ${classes}`}>
               <div className="flex items-start gap-2">
                 <span className="font-bold text-slate-700">{k}.</span>
-                <span className="text-slate-800">{text}</span>
+                <span className="text-slate-800"><FormattedText text={text} enabled={formattingEnabled} /></span>
               </div>
             </button>
           );
@@ -431,7 +435,7 @@ function TwoTierQuest({ card, onAnswer, onContinue }: { card: DeckTwoTierMCQ; on
 
   return (
     <div className="w-full">
-      <h2 className="text-2xl font-semibold mb-4 text-slate-900">{card.question}</h2>
+  <h2 className="text-2xl font-semibold mb-4 text-slate-900"><FormattedText text={card.question} enabled={formattingEnabled} /></h2>
       {!checked ? (
         <div className="mb-3 flex items-center gap-3">
           <label className="text-sm text-slate-600">Confidence</label>
@@ -451,7 +455,7 @@ function TwoTierQuest({ card, onAnswer, onContinue }: { card: DeckTwoTierMCQ; on
           <div className="my-4 flex items-center justify-center"><div className="h-1 w-40 bg-slate-200 rounded-full" /></div>
       {renderTier("Tier 2", meta.tier2.options, meta.tier2.answer, tier2, checked || tier2 != null, (k) => onPick(2, k), meta.tier2.question)}
           {checked && card.explanation ? (
-            <div className="mt-4 rounded-lg bg-slate-50 p-4 text-slate-700"><div className="font-semibold text-slate-900 mb-1">Explanation</div><div className="text-sm leading-relaxed">{card.explanation}</div></div>
+            <div className="mt-4 rounded-lg bg-slate-50 p-4 text-slate-700"><div className="font-semibold text-slate-900 mb-1">Explanation</div><div className="text-sm leading-relaxed"><FormattedText text={card.explanation || ""} enabled={formattingEnabled} /></div></div>
           ) : null}
         </>
       )}
@@ -465,7 +469,7 @@ function TwoTierQuest({ card, onAnswer, onContinue }: { card: DeckTwoTierMCQ; on
   );
 }
 
-function CERQuest({ card, onAnswer, onContinue }: { card: DeckCER; onAnswer: (ev: StudyAnswerEvent & { cardId: number }) => void; onContinue: () => void }) {
+function CERQuest({ card, onAnswer, onContinue, formattingEnabled = true }: { card: DeckCER; onAnswer: (ev: StudyAnswerEvent & { cardId: number }) => void; onContinue: () => void; formattingEnabled?: boolean }) {
   // Support both CER modes: Multiple Choice (per-part) and Free Text with suggested answers + self-mark
   const meta = card.meta as DeckCER["meta"];
   const [mcqSel, setMcqSel] = useState<{ claim: number | null; evidence: number | null; reasoning: number | null }>({ claim: null, evidence: null, reasoning: null });
@@ -539,8 +543,8 @@ function CERQuest({ card, onAnswer, onContinue }: { card: DeckCER; onAnswer: (ev
   if (meta.mode === "Multiple Choice") {
     return (
       <div className="w-full">
-        <h2 className="text-2xl font-semibold mb-1 text-slate-900">{card.question}</h2>
-        {guidance ? <div className="mb-3 text-base font-semibold text-slate-700">{guidance}</div> : null}
+  <h2 className="text-2xl font-semibold mb-1 text-slate-900"><FormattedText text={card.question} enabled={formattingEnabled} /></h2>
+  {guidance ? <div className="mb-3 text-base font-semibold text-slate-700"><FormattedText text={guidance} enabled={formattingEnabled} /></div> : null}
         {!mcqChecked ? (
           <div className="mb-3 flex items-center gap-3">
             <label className="text-sm text-slate-600">Confidence</label>
@@ -585,7 +589,7 @@ function CERQuest({ card, onAnswer, onContinue }: { card: DeckCER; onAnswer: (ev
                       <button key={idx} type="button" disabled={mcqChecked} onClick={() => setMcqSel((prev) => ({ ...prev, [p.key]: idx }))} className={`text-left rounded-lg border px-4 py-3 shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-slate-300 ${classes}`}>
                         <div className="flex items-start gap-2">
                           <span className="font-bold text-slate-700">{String.fromCharCode(65 + idx)}.</span>
-                          <span className="text-slate-800">{text}</span>
+                          <span className="text-slate-800"><FormattedText text={text} enabled={formattingEnabled} /></span>
                         </div>
                       </button>
                     );
@@ -613,8 +617,8 @@ function CERQuest({ card, onAnswer, onContinue }: { card: DeckCER; onAnswer: (ev
 
   return (
     <div className="w-full">
-      <h2 className="text-2xl font-semibold mb-1 text-slate-900">{card.question}</h2>
-      {guidance ? <div className="mb-3 text-base font-semibold text-slate-700">{guidance}</div> : null}
+  <h2 className="text-2xl font-semibold mb-1 text-slate-900"><FormattedText text={card.question} enabled={formattingEnabled} /></h2>
+  {guidance ? <div className="mb-3 text-base font-semibold text-slate-700"><FormattedText text={guidance} enabled={formattingEnabled} /></div> : null}
       {!ftChecked ? (
         <div className="mb-3 flex items-center gap-3">
           <label className="text-sm text-slate-600">Confidence</label>
@@ -644,7 +648,7 @@ function CERQuest({ card, onAnswer, onContinue }: { card: DeckCER; onAnswer: (ev
               <div className="mt-3 flex items-start justify-between gap-3">
                 <div className="flex-1 text-sm text-slate-700">
                   <div className="font-medium text-slate-900 mb-1">Sample answer</div>
-                  <div className="text-slate-700">{p.sample || "No sample answer provided."}</div>
+                  <div className="text-slate-700"><FormattedText text={p.sample || "No sample answer provided."} enabled={formattingEnabled} /></div>
                 </div>
                 <div className="flex items-center gap-2 whitespace-nowrap">
                   <button type="button" className="px-2 py-1 rounded-md border border-green-500 text-green-600 hover:bg-green-50 text-xs" onClick={() => setFtOverride((prev) => ({ ...prev, [p.key]: "right" }))}>I was right</button>
@@ -669,13 +673,13 @@ function CERQuest({ card, onAnswer, onContinue }: { card: DeckCER; onAnswer: (ev
         </div>
       ) : null}
       {ftChecked && card.explanation ? (
-        <div className="mt-3 text-sm text-slate-600">{card.explanation}</div>
+        <div className="mt-3 text-sm text-slate-600"><FormattedText text={card.explanation || ""} enabled={formattingEnabled} /></div>
       ) : null}
     </div>
   );
 }
 
-function CompareContrastQuest({ card, onAnswer, onContinue }: { card: DeckCard & { type: "Compare/Contrast"; meta: DeckCompareContrastMeta }; onAnswer: (ev: StudyAnswerEvent & { cardId: number }) => void; onContinue: () => void }) {
+function CompareContrastQuest({ card, onAnswer, onContinue, formattingEnabled = true }: { card: DeckCard & { type: "Compare/Contrast"; meta: DeckCompareContrastMeta }; onAnswer: (ev: StudyAnswerEvent & { cardId: number }) => void; onContinue: () => void; formattingEnabled?: boolean }) {
   const meta = card.meta;
   const itemA = meta.itemA;
   const itemB = meta.itemB;
@@ -782,11 +786,11 @@ function CompareContrastQuest({ card, onAnswer, onContinue }: { card: DeckCard &
 
   return (
     <div className="w-full">
-      <h2 className="text-2xl font-semibold mb-4 text-slate-900">{card.question}</h2>
+      <h2 className="text-2xl font-semibold mb-4 text-slate-900"><FormattedText text={card.question} enabled={formattingEnabled} /></h2>
       {prompt ? (
         <div className="mb-3 text-sm text-slate-700">
           <div className="font-medium text-slate-900">Prompt</div>
-          <div>{prompt}</div>
+          <div><FormattedText text={prompt} enabled={formattingEnabled} /></div>
         </div>
       ) : null}
       <div className="overflow-x-auto">
@@ -796,8 +800,8 @@ function CompareContrastQuest({ card, onAnswer, onContinue }: { card: DeckCard &
               <thead className="bg-slate-50">
                 <tr>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700">Feature</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700">{itemA}</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700">{itemB}</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700"><FormattedText text={itemA} enabled={formattingEnabled} /></th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700"><FormattedText text={itemB} enabled={formattingEnabled} /></th>
                   <th className="px-2 py-3 text-right text-sm font-medium text-slate-400">Self-mark</th>
                 </tr>
               </thead>
@@ -807,7 +811,7 @@ function CompareContrastQuest({ card, onAnswer, onContinue }: { card: DeckCard &
                   const placeholderB = `How does ${pt.feature} relate to ${itemB}?`;
                   return (
                     <tr key={idx} className="align-top">
-                      <td className="px-4 py-3 text-sm text-slate-800 bg-slate-50 min-w-[160px]">{pt.feature}</td>
+                      <td className="px-4 py-3 text-sm text-slate-800 bg-slate-50 min-w-[160px]"><FormattedText text={pt.feature} enabled={formattingEnabled} /></td>
                       <td className="px-4 py-3">
                         <textarea
                           className={`w-full rounded-lg border p-2 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300 ${cellClass(idx)}`}
@@ -820,7 +824,7 @@ function CompareContrastQuest({ card, onAnswer, onContinue }: { card: DeckCard &
                         />
                         {ccChecked && !effectiveRowCorrect(idx) && (rows[idx]?.a ?? "").trim().length > 0 ? (
                           <div className="mt-2 text-xs text-green-700">
-                            <span className="font-semibold">Right answer:</span> {rows[idx]!.a}
+                            <span className="font-semibold">Right answer:</span> <FormattedText text={rows[idx]!.a || ""} enabled={formattingEnabled} />
                           </div>
                         ) : null}
                       </td>
@@ -836,7 +840,7 @@ function CompareContrastQuest({ card, onAnswer, onContinue }: { card: DeckCard &
                         />
                         {ccChecked && !effectiveRowCorrect(idx) && (rows[idx]?.b ?? "").trim().length > 0 ? (
                           <div className="mt-2 text-xs text-green-700">
-                            <span className="font-semibold">Right answer:</span> {rows[idx]!.b}
+                            <span className="font-semibold">Right answer:</span> <FormattedText text={rows[idx]!.b || ""} enabled={formattingEnabled} />
                           </div>
                         ) : null}
                       </td>
@@ -889,7 +893,7 @@ function CompareContrastQuest({ card, onAnswer, onContinue }: { card: DeckCard &
         </div>
       ) : null}
       {ccChecked && card.explanation ? (
-        <div className="mt-3 text-sm text-slate-600">{card.explanation}</div>
+        <div className="mt-3 text-sm text-slate-600"><FormattedText text={card.explanation || ""} enabled={formattingEnabled} /></div>
       ) : null}
       {ccChecked ? (
         <div className={`mt-4 rounded-xl border px-4 py-3 flex items-center justify-between ${ccAllCorrect ? "bg-green-100 border-green-200 text-green-800" : "bg-red-100 border-red-200 text-red-800"}`}>

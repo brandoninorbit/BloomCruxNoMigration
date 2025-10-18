@@ -13,6 +13,7 @@ import { getWarningInfo } from "@/lib/csvWarningCatalog";
 import CsvRowPreview from "@/components/decks/CsvRowPreview";
 import { hasImportHash, recordImportHash } from "@/lib/cardsRepo";
 import { UNLOCKS } from "@/lib/unlocks";
+import { loadDeckOptions, saveDeckOptions } from "@/lib/deckOptions";
 
 type Props = {
   deckId: string;
@@ -30,6 +31,12 @@ export default function EditDeckForm({ deckId }: Props) {
   const [stealthPurchased, setStealthPurchased] = useState<boolean>(false);
   const [rainPurchased, setRainPurchased] = useState<boolean>(false);
   const [commanderLevel, setCommanderLevel] = useState<number>(0);
+  // Deck options
+  const [deckOpts, setDeckOpts] = useState(() => loadDeckOptions(deckId));
+  useEffect(() => {
+    // Initialize from DB if available; fall back to local storage.
+    setDeckOpts(loadDeckOptions(deckId));
+  }, [deckId]);
 
   // Helper function to determine if a cosmetic should be shown
   const shouldShowCosmetic = (cosmeticId: string, isPurchased: boolean): boolean => {
@@ -588,6 +595,41 @@ export default function EditDeckForm({ deckId }: Props) {
               )}
             </select>
             <p className="text-xs text-gray-500 mt-2">Choose a deck cover (applies as a visual only). Locked covers will appear but cannot be selected in production until purchased.</p>
+          </div>
+
+          {/* Deck options */}
+          <div className="mt-6">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Deck options</label>
+            <div className="inline-flex items-center gap-2">
+              <details className="rounded border border-gray-200 bg-white open:shadow-sm">
+                <summary className="cursor-pointer select-none px-3 py-2 text-sm text-gray-800">Options</summary>
+                <div className="px-3 py-2 space-y-2 text-sm">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={deck?.markupEnabled ?? deckOpts.markupEnabled}
+                      onChange={async (e) => {
+                        const enabled = e.target.checked;
+                        // Update local UI and localStorage immediately for responsiveness
+                        const next = saveDeckOptions(deckId, { markupEnabled: enabled });
+                        setDeckOpts(next);
+                        // Update deck state and persist to Supabase on save
+                        setDeck((prev) => (prev ? { ...prev, markupEnabled: enabled } : prev));
+                        try {
+                          // Save immediately to DB to make it durable across devices
+                          await save();
+                          toast({ title: enabled ? "Markup enabled" : "Markup disabled", description: "Saved to deck settings." });
+                        } catch (err) {
+                          toast({ title: "Failed to save deck setting", description: (err as Error).message, variant: "destructive" });
+                        }
+                      }}
+                    />
+                    <span>Enable markup (sub/superscript, Greek names)</span>
+                  </label>
+                  <div className="text-xs text-gray-500">Future toggles will appear here.</div>
+                </div>
+              </details>
+            </div>
           </div>
         </div>
       </div>

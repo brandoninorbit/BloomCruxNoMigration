@@ -59,6 +59,8 @@ export type Deck = {
   user_id?: string;
   folder_id?: number | null;
   cover?: string | null;
+  // Per-deck rendering options
+  markupEnabled?: boolean; // if true (default), render subscripts/superscripts/Greek at view-time
   created_at?: string;
   updatedAt?: string;
 };

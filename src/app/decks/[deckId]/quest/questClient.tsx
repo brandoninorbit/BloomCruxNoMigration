@@ -13,6 +13,8 @@ import QuestStudyCard from "@/components/study/QuestStudyCard";
 import { fetchProgress, saveProgressRepo, fetchMission, upsertMission, fetchSrs, logXpEvent, upsertSrs } from "@/lib/quest/repo";
 import { Bloom } from "@/lib/bloom";
 import { useMasteryTracker } from "@/lib/useMasteryTracker";
+import { loadDeckOptions } from "@/lib/deckOptions";
+import { getDeck } from "@/lib/repo";
 // no auth header/sidebar needs
 
 export default function QuestClient({ deckId }: { deckId: number }) {
@@ -28,6 +30,24 @@ export default function QuestClient({ deckId }: { deckId: number }) {
   });
 
   const tracker = useMasteryTracker();
+  const [markupEnabled, setMarkupEnabled] = useState<boolean>(true);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      // Prefer DB flag when available; fallback to local storage
+      try {
+        const d = await getDeck(String(deckId));
+        if (!alive) return;
+        if (d && typeof d.markupEnabled === 'boolean') {
+          setMarkupEnabled(d.markupEnabled);
+          return;
+        }
+      } catch {}
+      if (!alive) return;
+      setMarkupEnabled(loadDeckOptions(deckId).markupEnabled);
+    })();
+    return () => { alive = false; };
+  }, [deckId]);
   const startedIsoRef = useRef<string | null>(null);
   const pendingRef = useRef<{ cardId: number; correct: boolean | number; payload?: Record<string, unknown>; responseMs?: number; confidence?: 0|1|2|3; guessed?: boolean; cardType?: string } | null>(null);
   const [finishing, setFinishing] = useState(false);
@@ -348,7 +368,7 @@ export default function QuestClient({ deckId }: { deckId: number }) {
               </div>
             ) : mission ? (
               total > 0 && currentCard ? (
-                <QuestStudyCard card={currentCard} onAnswer={onAnswer} onContinue={applyPendingAndAdvance} />
+                <QuestStudyCard card={currentCard} onAnswer={onAnswer} onContinue={applyPendingAndAdvance} markupEnabled={markupEnabled} />
               ) : (
                 <div className="rounded-xl border bg-slate-50 p-6 text-slate-700">
                   {(() => {
@@ -390,4 +410,5 @@ export default function QuestClient({ deckId }: { deckId: number }) {
       </div>
     </main>
   );
+  return null;
 }

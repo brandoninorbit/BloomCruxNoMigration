@@ -15,7 +15,7 @@ export const supabaseRepo = {
     // Rely on RLS to scope rows to the current session; avoid auth.getUser() on client
     const { data, error } = await supabase
       .from("decks")
-      .select("id, title, description, folder_id, user_id, created_at, cover")
+      .select("id, title, description, folder_id, user_id, created_at, cover, markup_enabled")
       .eq("id", id)
       .maybeSingle();
 
@@ -30,6 +30,7 @@ export const supabaseRepo = {
       user_id: (data?.user_id as string) ?? "",
       created_at: (data?.created_at as string) ?? "",
       cover: (data?.cover as string | null) ?? null,
+      markupEnabled: (data?.markup_enabled as boolean | null) ?? true,
   updatedAt: undefined,
       // sources/cards may exist in DB in the future; default to empty for UI safety
       sources: [],
@@ -48,6 +49,7 @@ export const supabaseRepo = {
       description: deck.description ?? null,
       folder_id: deck.folder_id ?? null,
       cover: deck.cover ?? null,
+      markup_enabled: typeof deck.markupEnabled === 'boolean' ? deck.markupEnabled : undefined,
     };
 
     const { error } = await supabase
@@ -72,7 +74,7 @@ export const supabaseRepo = {
     const { data, error } = await supabase
       .from("decks")
       .insert([row])
-      .select("id, title, description, folder_id, cover")
+  .select("id, title, description, folder_id, cover")
       .single();
 
     if (error) throw error;
