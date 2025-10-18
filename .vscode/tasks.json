@@ -450,6 +450,26 @@
 			"type": "shell",
 			"command": "npm run -s build",
 			"group": "build"
+		},
+		{
+			"label": "Typecheck (no emit)",
+			"type": "shell",
+			"command": "npx tsc --noEmit",
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Run unit tests",
+			"type": "shell",
+			"command": "npm run -s test"
+		},
+		{
+			"label": "Build Next.js project",
+			"type": "shell",
+			"command": "npm run -s build",
+			"group": "build"
 		}
 	]
 }

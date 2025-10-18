@@ -3,6 +3,7 @@
 import * as React from "react";
 import type { BloomLevel as MasteryBloomLevel } from "./MasteryPill";
 import chroma from 'chroma-js';
+import FormattedText from "@/components/ui/FormattedText";
 
 export type DeckCardShellProps = {
   title: string;
@@ -20,6 +21,8 @@ export type DeckCardShellProps = {
   masteryPill?: React.ReactNode;
   /** Optional description to show in hover modal */
   description?: string;
+  /** Enable inline markup formatting for title/description */
+  formattingEnabled?: boolean;
 };
 
 export function DeckCardShell({
@@ -33,6 +36,7 @@ export function DeckCardShell({
   folderName,
   masteryPill,
   description,
+  formattingEnabled = true,
 }: DeckCardShellProps) {
   const [isHovered, setIsHovered] = React.useState(false);
   const cardRef = React.useRef<HTMLDivElement>(null);
@@ -165,7 +169,9 @@ export function DeckCardShell({
         <div className="absolute top-3 left-3 right-3">
           <div className="inline-block bg-white/30 dark:bg-neutral-900/30 backdrop-blur-sm px-3 py-2 rounded-md w-full">
             {/* Title */}
-            <div className="text-[15px] font-bold text-[#111418] line-clamp-2 pr-1 text-center">{title}</div>
+            <div className="text-[15px] font-bold text-[#111418] line-clamp-2 pr-1 text-center">
+              <FormattedText text={title} enabled={formattingEnabled} />
+            </div>
             {/* Folder name below, if provided */}
             {folderName && (
               <div className="mt-1 text-center">
@@ -208,7 +214,7 @@ export function DeckCardShell({
               className="overflow-hidden text-ellipsis pointer-events-auto leading-snug"
               style={{ display: '-webkit-box', WebkitLineClamp: 4, WebkitBoxOrient: 'vertical' }}
             >
-              {description}
+              <FormattedText text={description} enabled={formattingEnabled} />
             </p>
           </div>
         )}

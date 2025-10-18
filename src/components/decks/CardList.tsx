@@ -8,12 +8,15 @@ import Modal from "@/components/ui/Modal";
 // Removed: MCQCard (we render an interactive inline version tailored for modal study)
 import FillBlankStudy from "@/components/cards/FillBlankStudy";
 import SequencingStudy from "@/components/cards/SequencingStudy";
+import FormattedText from "@/components/ui/FormattedText";
 import { DndContext, DragEndEvent, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, rectIntersection } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { useMasteryTracker } from "@/lib/useMasteryTracker";
 import { Bloom, defaultBloomForType } from "@/lib/bloom";
 import CardReviewReasonChip from "@/components/decks/CardReviewReasonChip";
 import { fetchCardReasons } from "@/lib/reviewReason";
+import { supabaseRepo } from "@/lib/repo/supabaseRepo";
+import { loadDeckOptions } from "@/lib/deckOptions";
 // (consolidated all deck-card type imports above)
 
 export type CardListProps = {
@@ -28,6 +31,7 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
   const deckId = items[0]?.deckId;
   const [starred, setStarred] = useState<Record<number, boolean>>({});
   const [reasons, setReasons] = useState<Record<number, import("@/components/decks/CardReviewReasonChip").ReviewReason>>({});
+  const [formattingEnabled, setFormattingEnabled] = useState<boolean>(true);
 
   useEffect(() => {
     let alive = true;
@@ -59,6 +63,26 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
     })();
     return () => { cancelled = true; };
   }, [items]);
+
+  // Load deck's markup flag from DB with local fallback
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        if (!deckId) return;
+        const deck = await supabaseRepo.getDeck(String(deckId));
+        const local = loadDeckOptions(String(deckId));
+        const enabled = (deck?.markupEnabled ?? local.markupEnabled ?? true);
+        if (!cancelled) setFormattingEnabled(enabled);
+      } catch {
+        if (!cancelled) {
+          const local = loadDeckOptions(String(deckId));
+          setFormattingEnabled(local.markupEnabled ?? true);
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [deckId]);
 
   async function toggleStar(cardId: number, deckId: number) {
     const next = !starred[cardId];
@@ -264,7 +288,7 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
     };
     return (
       <div className="w-full">
-        <h2 className="text-2xl font-semibold mb-4 text-slate-900">{card.question}</h2>
+        <h2 className="text-2xl font-semibold mb-4 text-slate-900"><FormattedText text={card.question} enabled={formattingEnabled} /></h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {options.map(([k, text]) => {
             const isChosen = mcqChosen === k;
@@ -287,7 +311,7 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
               >
                 <div className="flex items-start gap-2">
                   <span className="font-bold text-slate-700">{k}.</span>
-                  <span className="text-slate-800">{text}</span>
+                  <span className="text-slate-800"><FormattedText text={text} enabled={formattingEnabled} /></span>
                 </div>
               </button>
             );
@@ -310,7 +334,7 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
           <div className="mt-4 overflow-hidden transition-all duration-300">
             <div className="rounded-lg bg-slate-50 p-4 text-slate-700">
               <div className="font-semibold text-slate-900 mb-1">Explanation</div>
-              <div className="text-sm leading-relaxed">{card.explanation}</div>
+              <div className="text-sm leading-relaxed"><FormattedText text={card.explanation} enabled={formattingEnabled} /></div>
             </div>
           </div>
         ) : null}
@@ -321,7 +345,7 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
   const renderShortAnswer = (card: DeckShortAnswer) => {
     return (
       <div className="w-full">
-        <h2 className="text-2xl font-semibold mb-4 text-slate-900">{card.question}</h2>
+        <h2 className="text-2xl font-semibold mb-4 text-slate-900"><FormattedText text={card.question} enabled={formattingEnabled} /></h2>
         <textarea
           className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
           rows={4}
@@ -344,8 +368,8 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
             <div className="space-y-3">
               <div className="rounded-lg bg-slate-50 p-4">
                 <div className="font-semibold text-slate-900 mb-1">Suggested answer</div>
-                <div className="text-slate-800 font-semibold">{card.meta.suggestedAnswer || "No suggested answer."}</div>
-                {card.explanation ? <div className="mt-3 text-sm text-slate-600">{card.explanation}</div> : null}
+                <div className="text-slate-800 font-semibold"><FormattedText text={card.meta.suggestedAnswer || "No suggested answer."} enabled={formattingEnabled} /></div>
+                {card.explanation ? <div className="mt-3 text-sm text-slate-600"><FormattedText text={card.explanation} enabled={formattingEnabled} /></div> : null}
               </div>
               {saJudged == null ? (
                 <div className="flex items-center justify-between">
@@ -414,7 +438,7 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
       return (
         <div className="w-full">
           <div className="text-sm font-medium text-slate-700 mb-2">{tier === 1 ? "Tier 1" : "Tier 2"}</div>
-          <h3 className="text-lg font-semibold mb-3 text-slate-900">{prompt}</h3>
+          <h3 className="text-lg font-semibold mb-3 text-slate-900"><FormattedText text={prompt} enabled={formattingEnabled} /></h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {opts.map(([k, text]) => {
               const isChosen = chosen === k;
@@ -437,7 +461,7 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
                 >
                   <div className="flex items-start gap-2">
                     <span className="font-bold text-slate-700">{k}.</span>
-                    <span className="text-slate-800">{text}</span>
+                    <span className="text-slate-800"><FormattedText text={text} enabled={formattingEnabled} /></span>
                   </div>
                 </button>
               );
@@ -450,7 +474,7 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
     const showTier2 = ttTier1 != null;
     return (
       <div className="w-full">
-        <h2 className="text-2xl font-semibold mb-4 text-slate-900">{card.question}</h2>
+        <h2 className="text-2xl font-semibold mb-4 text-slate-900"><FormattedText text={card.question} enabled={formattingEnabled} /></h2>
         {!ttChecked ? (
           <div className="mb-3 flex items-center gap-3">
             <label className="text-sm text-slate-600">Confidence</label>
@@ -474,7 +498,7 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
             {ttChecked && card.explanation ? (
               <div className="mt-4 rounded-lg bg-slate-50 p-4 text-slate-700">
                 <div className="font-semibold text-slate-900 mb-1">Explanation</div>
-                <div className="text-sm leading-relaxed">{card.explanation}</div>
+                <div className="text-sm leading-relaxed"><FormattedText text={card.explanation} enabled={formattingEnabled} /></div>
               </div>
             ) : null}
           </>
@@ -490,8 +514,8 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
 
     const renderHeader = () => (
       <div className="mb-4">
-        <h2 className="text-2xl font-semibold text-slate-900">{title}</h2>
-        {guidance ? <div className="mt-1 text-base font-semibold text-slate-700">{guidance}</div> : null}
+        <h2 className="text-2xl font-semibold text-slate-900"><FormattedText text={title} enabled={formattingEnabled} /></h2>
+        {guidance ? <div className="mt-1 text-base font-semibold text-slate-700"><FormattedText text={guidance} enabled={formattingEnabled} /></div> : null}
       </div>
     );
 
@@ -555,7 +579,7 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
                       >
                         <div className="flex items-start gap-2">
                           <span className="font-bold text-slate-700">{String.fromCharCode(65 + i)}.</span>
-                          <span className="text-slate-800">{opt}</span>
+                          <span className="text-slate-800"><FormattedText text={opt} enabled={formattingEnabled} /></span>
                         </div>
                       </button>
                     );
@@ -567,7 +591,7 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
           {cerMCQChecked && card.explanation ? (
             <div className="mt-4 rounded-lg bg-slate-50 p-4 text-slate-700">
               <div className="font-semibold text-slate-900 mb-1">Explanation</div>
-              <div className="text-sm leading-relaxed">{card.explanation}</div>
+              <div className="text-sm leading-relaxed"><FormattedText text={card.explanation} enabled={formattingEnabled} /></div>
             </div>
           ) : null}
           {/* Banner handled by outer section */}
@@ -620,7 +644,7 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
                 <div className="mt-3 flex items-start justify-between gap-3">
                   <div className="flex-1 text-sm text-slate-700">
                     <div className="font-medium text-slate-900 mb-1">Sample answer</div>
-                    <div className="text-slate-700">{p.sample || "No sample answer provided."}</div>
+                    <div className="text-slate-700"><FormattedText text={p.sample || "No sample answer provided."} enabled={formattingEnabled} /></div>
                   </div>
                   <div className="flex items-center gap-2 whitespace-nowrap">
                     <button type="button" className="px-2 py-1 rounded-md border border-green-500 text-green-600 hover:bg-green-50 text-xs" onClick={() => setCerFreeOverride((prev) => ({ ...prev, [p.key]: "right" }))}>I was right</button>
@@ -639,7 +663,7 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
           </div>
         ) : null}
         {cerFreeChecked && card.explanation ? (
-          <div className="mt-3 text-sm text-slate-600">{card.explanation}</div>
+          <div className="mt-3 text-sm text-slate-600"><FormattedText text={card.explanation} enabled={formattingEnabled} /></div>
         ) : null}
       </div>
     );
@@ -753,11 +777,11 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
 
     return (
       <div className="w-full">
-        <h2 className="text-2xl font-semibold mb-4 text-slate-900">{card.question}</h2>
+        <h2 className="text-2xl font-semibold mb-4 text-slate-900"><FormattedText text={card.question} enabled={formattingEnabled} /></h2>
         {prompt ? (
           <div className="mb-3 text-sm text-slate-700">
             <div className="font-medium text-slate-900">Prompt</div>
-            <div>{prompt}</div>
+            <div><FormattedText text={prompt} enabled={formattingEnabled} /></div>
           </div>
         ) : null}
         <div className="overflow-x-auto">
@@ -767,8 +791,8 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
                 <thead className="bg-slate-50">
                   <tr>
                     <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700">Feature</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700">{itemA}</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700">{itemB}</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700"><FormattedText text={itemA} enabled={formattingEnabled} /></th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700"><FormattedText text={itemB} enabled={formattingEnabled} /></th>
                     <th className="px-2 py-3 text-right text-sm font-medium text-slate-400">Self-mark</th>
                   </tr>
                 </thead>
@@ -778,7 +802,7 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
                     const placeholderB = `How does ${pt.feature} relate to ${itemB}?`;
                     return (
                       <tr key={idx} className="align-top">
-                        <td className="px-4 py-3 text-sm text-slate-800 bg-slate-50 min-w-[160px]">{pt.feature}</td>
+                        <td className="px-4 py-3 text-sm text-slate-800 bg-slate-50 min-w-[160px]"><FormattedText text={pt.feature} enabled={formattingEnabled} /></td>
                         <td className="px-4 py-3">
                           <textarea
                             className={`w-full rounded-lg border p-2 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300 ${cellClass(idx)}`}
@@ -791,7 +815,7 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
                           />
                           {ccChecked && !effectiveRowCorrect(idx) && (rows[idx]?.a ?? "").trim().length > 0 ? (
                             <div className="mt-2 text-xs text-green-700">
-                              <span className="font-semibold">Right answer:</span> {rows[idx]!.a}
+                              <span className="font-semibold">Right answer:</span> <FormattedText text={rows[idx]!.a ?? ""} enabled={formattingEnabled} />
                             </div>
                           ) : null}
                         </td>
@@ -807,7 +831,7 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
                           />
                           {ccChecked && !effectiveRowCorrect(idx) && (rows[idx]?.b ?? "").trim().length > 0 ? (
                             <div className="mt-2 text-xs text-green-700">
-                              <span className="font-semibold">Right answer:</span> {rows[idx]!.b}
+                              <span className="font-semibold">Right answer:</span> <FormattedText text={rows[idx]!.b ?? ""} enabled={formattingEnabled} />
                             </div>
                           ) : null}
                         </td>
@@ -860,7 +884,7 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
           </div>
         ) : null}
         {ccChecked && card.explanation ? (
-          <div className="mt-3 text-sm text-slate-600">{card.explanation}</div>
+          <div className="mt-3 text-sm text-slate-600"><FormattedText text={card.explanation} enabled={formattingEnabled} /></div>
         ) : null}
       </div>
     );
@@ -882,7 +906,7 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
           className={`px-2 py-1 rounded border text-sm bg-white shadow-sm ${disabled ? "opacity-70" : "cursor-grab active:cursor-grabbing"} ${isDragging ? "opacity-75 dragging" : ""}`}
           {...(!disabled ? { ...attributes, ...listeners } : {})}
         >
-          {text}
+          <FormattedText text={text} enabled={formattingEnabled} />
         </div>
       );
     }
@@ -892,7 +916,7 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
       return (
         <div className={`rounded-lg border ${isOver ? "border-blue-400 bg-blue-50" : "border-slate-200 bg-slate-50"} p-3 min-h-[80px]`}
              ref={!disabled ? setNodeRef : undefined}>
-          <div className="text-xs font-medium text-slate-500 mb-2">{title}</div>
+          <div className="text-xs font-medium text-slate-500 mb-2"><FormattedText text={title} enabled={formattingEnabled} /></div>
           <div className="flex flex-wrap gap-2">{children}</div>
         </div>
       );
@@ -928,7 +952,7 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
 
     return (
       <div className="w-full">
-        <h2 className="text-2xl font-semibold mb-4 text-slate-900">{card.question}</h2>
+        <h2 className="text-2xl font-semibold mb-4 text-slate-900"><FormattedText text={card.question} enabled={formattingEnabled} /></h2>
         <DndContext sensors={sensors} onDragEnd={onDragEnd} collisionDetection={rectIntersection}>
           <div className="grid grid-cols-1 sm:grid-cols-[220px_minmax(0,1fr)] gap-4 items-start">
             <DropZone id="unsorted" title="Unsorted">
@@ -966,7 +990,7 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
           </div>
         ) : null}
         {sortChecked && card.explanation ? (
-          <div className="mt-3 text-sm text-slate-600">{card.explanation}</div>
+          <div className="mt-3 text-sm text-slate-600"><FormattedText text={card.explanation} enabled={formattingEnabled} /></div>
         ) : null}
       </div>
     );
@@ -981,7 +1005,7 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
             <div className="flex items-center justify-between gap-4">
               {/* Left: question, type, bloom */}
               <div className="flex-1">
-                <p className="font-semibold text-gray-900">{card.question || "Untitled"}</p>
+                <p className="font-semibold text-gray-900"><FormattedText text={card.question || "Untitled"} enabled={formattingEnabled} /></p>
                 <div className="flex items-center flex-wrap gap-2 mt-1">
                   <p className="text-sm text-gray-500">
                     {card.type}
@@ -1045,6 +1069,7 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
                         blanks={blanks}
                         wordBank={wordBank}
                         explanation={studying.explanation}
+                        formattingEnabled={formattingEnabled}
                         submitLabel="Submit answer"
                         onAnswer={(res) => {
                           setFibResult(res);
@@ -1078,6 +1103,7 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
                   <SequencingStudy
                     prompt={studying.question}
                     steps={(studying.meta as DeckSequencingMeta).steps}
+                    formattingEnabled={formattingEnabled}
                     onAnswer={(res) => {
                       // optional handling inside CardList study modal (no mission state here)
                       // persist mastery - sequencing: fraction = (# positions correct) / total
