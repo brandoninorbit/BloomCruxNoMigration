@@ -104,7 +104,13 @@ Allowed: Title/Prompt/Scenario, Explanation, BloomLevel
 Example
 
 CardType,Title,ItemA,ItemB,Points,Explanation
-Compare/Contrast,DNA vs RNA,"DNA","RNA","Sugar::deoxyribose::ribose|Strands::double::single|2' group::H::OH","RNA 2'-OH reduces stability"
+Required columns: CardType, Title|Question|Prompt|Scenario, ItemA, ItemB, Points
+
+Optional columns: Explanation, Prompt|Context|Scenario (a short scenario or instruction to guide the comparison)
+
+Example:
+
+Compare/Contrast,DNA vs RNA,"DNA","RNA","Sugar::deoxyribose::ribose|Strands::double::single|2' group::H::OH","RNA 2'-OH reduces stability","In what biological contexts would DNA vs RNA be used?"
 
 7) Two‑Tier MCQ (Evaluate by default)
 
@@ -173,7 +179,7 @@ STRICT CSV CONTRACT (BloomCrux Importer)
 - Two-Tier MCQ: require A..D, Answer, and RQuestion, RA..RD, RAnswer.
 - Sorting: require Categories (pipe) AND Items (pipe of term:category).
 - Sequencing: require Steps (pipe list) or Items (pipe list).
-- Compare/Contrast: require ItemA, ItemB, Points (pipe of feature::a::b).
+- Compare/Contrast: require ItemA, ItemB, Points (pipe of feature::a::b). Optionally include a Prompt/Context/Scenario column to provide guidance.
 - Fill in the Blank: one blank uses Answer; multiple blanks use Answer1..N and Prompt must contain [[1]]..[[N]]; Options is a pipe list if Drag & Drop.
 - CER Free Text: Mode="Free Text" with Claim, Evidence, Reasoning samples.
 - CER Multiple Choice: Mode="Multiple Choice" with ...Options (pipe) and ...Correct (1-based).
@@ -188,7 +194,7 @@ Sorting: Do I see both Categories and Items with term:category pairs?
 
 Sequencing: Does Steps exist with a pipe list?
 
-Compare/Contrast: Do I have ItemA, ItemB, and Points using feature::a::b?
+Compare/Contrast: Do I have ItemA, ItemB, and Points using feature::a::b? Did I include an optional Prompt/Context if needed to ground the comparison?
 
 Fill: For 2+ blanks, does the prompt have [[n]] and Answer1..n?
 

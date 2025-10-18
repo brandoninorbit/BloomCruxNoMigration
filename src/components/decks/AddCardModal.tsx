@@ -58,6 +58,7 @@ export default function AddCardModal({ open, mode = "create", initialCard, onClo
   const [steps, setSteps] = useState<string[]>(["", ""]);
   const [ccItemA, setCcItemA] = useState("");
   const [ccItemB, setCcItemB] = useState("");
+  const [ccPrompt, setCcPrompt] = useState<string>("");
   const [ccPoints, setCcPoints] = useState<{ feature: string; a: string; b: string }[]>([{ feature: "", a: "", b: "" }]);
   // CER state
   const [cerMode, setCerMode] = useState<DeckCERMode>("Free Text");
@@ -134,6 +135,7 @@ export default function AddCardModal({ open, mode = "create", initialCard, onClo
         const meta = (initialCard.meta as DeckCompareContrastMeta);
         setCcItemA(meta.itemA ?? "");
         setCcItemB(meta.itemB ?? "");
+        setCcPrompt(meta.prompt ?? "");
         setCcPoints(meta.points?.length ? meta.points : [{ feature: "", a: "", b: "" }]);
   } else if (initialCard.type === "Two-Tier MCQ") {
         const meta = (initialCard.meta as DeckTwoTierMCQMeta);
@@ -190,6 +192,7 @@ export default function AddCardModal({ open, mode = "create", initialCard, onClo
   setSteps(["", ""]);
       setCcItemA("");
       setCcItemB("");
+  setCcPrompt("");
       setCcPoints([{ feature: "", a: "", b: "" }]);
       // reset Two-Tier
       setTier2Question("");
@@ -460,6 +463,7 @@ export default function AddCardModal({ open, mode = "create", initialCard, onClo
           meta: {
             itemA: ccItemA.trim(),
             itemB: ccItemB.trim(),
+            prompt: ccPrompt.trim() || undefined,
             points: ccPoints
               .map((p) => ({ feature: p.feature.trim(), a: p.a.trim(), b: p.b.trim() }))
               .filter((p) => p.feature && p.a && p.b),
@@ -1155,6 +1159,11 @@ export default function AddCardModal({ open, mode = "create", initialCard, onClo
                   <input className="w-full px-3 py-2 border border-gray-300 rounded-lg" type="text" value={ccItemB} onChange={(e) => setCcItemB(e.target.value)} placeholder="e.g., Meiosis" />
                 </div>
 
+                <div className="mt-3">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Prompt / Context (optional)</label>
+                  <textarea className="w-full px-3 py-2 border border-gray-300 rounded-lg" rows={2} value={ccPrompt} onChange={(e) => setCcPrompt(e.target.value)} placeholder="e.g., In which scenarios would you use A vs B? Define the context to guide the comparison." />
+                </div>
+
                 <div className="mt-5">
                   <div className="font-semibold text-gray-700 mb-2">Comparison Points</div>
                   <div className="space-y-4">
@@ -1211,6 +1220,12 @@ export default function AddCardModal({ open, mode = "create", initialCard, onClo
                 <div className="text-center font-semibold text-gray-700 mb-3">Card Preview</div>
                 <div className="rounded-xl border border-gray-200 p-5 bg-white">
                   <div className="text-xl font-bold text-gray-900 mb-4">{ccItemA?.trim() || ccItemB?.trim() ? `Compare ${ccItemA || 'Item A'} and ${ccItemB || 'Item B'}` : 'Compare Item A and Item B'}</div>
+                  {ccPrompt?.trim() ? (
+                    <div className="mb-3 text-sm text-slate-700">
+                      <div className="font-medium text-slate-900">Prompt</div>
+                      <div>{ccPrompt}</div>
+                    </div>
+                  ) : null}
                   <div className="rounded-lg border border-gray-200">
                     <div className="grid grid-cols-12 text-sm font-medium text-gray-600">
                       <div className="col-span-4 px-3 py-2 border-b">Feature</div>

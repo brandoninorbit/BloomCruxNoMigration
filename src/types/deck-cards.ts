@@ -39,7 +39,7 @@ export type DeckSortingItem = { term: string; correctCategory: string };
 export type DeckSortingMeta = { categories: string[]; items: DeckSortingItem[] };
 export type DeckSequencingMeta = { steps: string[] };
 export type DeckCompareContrastPoint = { feature: string; a: string; b: string };
-export type DeckCompareContrastMeta = { itemA: string; itemB: string; points: DeckCompareContrastPoint[] };
+export type DeckCompareContrastMeta = { itemA: string; itemB: string; points: DeckCompareContrastPoint[]; prompt?: string };
 export type DeckTwoTierMCQMeta = {
   tier1: { options: { A: string; B: string; C: string; D: string }; answer: 'A' | 'B' | 'C' | 'D' };
   tier2: { question: string; options: { A: string; B: string; C: string; D: string }; answer: 'A' | 'B' | 'C' | 'D' };

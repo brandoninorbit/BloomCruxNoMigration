@@ -650,6 +650,7 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
     const itemA = meta.itemA;
     const itemB = meta.itemB;
     const rows = meta.points; // { feature, a, b }
+    const prompt = meta.prompt;
 
     const normalize = (s: string) => s.trim().toLowerCase().replace(/[\p{P}\p{S}]/gu, "").replace(/\s+/g, " ");
     const tokenize = (s: string) => normalize(s).split(" ").filter(Boolean);
@@ -753,6 +754,12 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
     return (
       <div className="w-full">
         <h2 className="text-2xl font-semibold mb-4 text-slate-900">{card.question}</h2>
+        {prompt ? (
+          <div className="mb-3 text-sm text-slate-700">
+            <div className="font-medium text-slate-900">Prompt</div>
+            <div>{prompt}</div>
+          </div>
+        ) : null}
         <div className="overflow-x-auto">
           <div className="inline-block min-w-full align-middle">
             <div className="rounded-xl border border-slate-200 overflow-hidden">

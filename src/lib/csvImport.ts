@@ -90,7 +90,7 @@ type ComparePayload = {
   question: string;
   bloom: Bloom;
   explanation?: string;
-  meta: { itemA: string; itemB: string; points: { feature: string; a: string; b: string }[] };
+  meta: { itemA: string; itemB: string; points: { feature: string; a: string; b: string }[]; prompt?: string };
 };
 
 type CERMode = 'Free Text' | 'Multiple Choice';
@@ -559,6 +559,7 @@ function mapCompare(row: CsvRow, idx: number, bloom: Bloom): MapResult {
   const question = questionFrom(row);
   const itemA = pick(row, 'ItemA', 'A');
   const itemB = pick(row, 'ItemB', 'B');
+  const prompt = pick(row, 'Prompt', 'Context', 'Scenario');
   const ptsRaw = pick(row, 'Points', 'Pairs');
   const pts = splitPipes(ptsRaw);
   const errors: string[] = [];
@@ -601,7 +602,7 @@ function mapCompare(row: CsvRow, idx: number, bloom: Bloom): MapResult {
       warnings.push(`Row ${idx}: [W-COMPARE-UNBALANCED] Item A and B sides are significantly different in total length`);
     }
   }
-  return { errors: [], warnings, payload: { type: 'compare', question, bloom, explanation: explanationFrom(row), meta: { itemA: itemA!, itemB: itemB!, points } } };
+  return { errors: [], warnings, payload: { type: 'compare', question, bloom, explanation: explanationFrom(row), meta: { itemA: itemA!, itemB: itemB!, points, prompt: prompt || undefined } } };
 }
 
 function mapCER(row: CsvRow, idx: number, bloom: Bloom): MapResult {
@@ -846,7 +847,7 @@ export function importPayloadToNewDeckCard(payload: ImportPayload, deckId: numbe
       return { ...baseCard, type: 'Sequencing' as DeckCardType, meta: payload.meta as DeckSequencingMeta };
 
     case 'compare':
-      return { ...baseCard, type: 'Compare/Contrast' as DeckCardType, meta: { itemA: payload.meta.itemA, itemB: payload.meta.itemB, points: payload.meta.points } as DeckCompareContrastMeta };
+      return { ...baseCard, type: 'Compare/Contrast' as DeckCardType, meta: { itemA: payload.meta.itemA, itemB: payload.meta.itemB, points: payload.meta.points, prompt: payload.meta.prompt } as DeckCompareContrastMeta };
 
     case 'cer': {
       const m = payload.meta;

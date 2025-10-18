@@ -680,6 +680,7 @@ function CompareContrastQuest({ card, onAnswer, onContinue }: { card: DeckCard &
   const itemA = meta.itemA;
   const itemB = meta.itemB;
   const rows = meta.points || [];
+  const prompt = meta.prompt;
 
   const [ccA, setCcA] = useState<Record<number, string>>({});
   const [ccB, setCcB] = useState<Record<number, string>>({});
@@ -782,6 +783,12 @@ function CompareContrastQuest({ card, onAnswer, onContinue }: { card: DeckCard &
   return (
     <div className="w-full">
       <h2 className="text-2xl font-semibold mb-4 text-slate-900">{card.question}</h2>
+      {prompt ? (
+        <div className="mb-3 text-sm text-slate-700">
+          <div className="font-medium text-slate-900">Prompt</div>
+          <div>{prompt}</div>
+        </div>
+      ) : null}
       <div className="overflow-x-auto">
         <div className="inline-block min-w-full align-middle">
           <div className="rounded-xl border border-slate-200 overflow-hidden">
