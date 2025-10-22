@@ -8,8 +8,8 @@ export type QuestSettings = {
 
 export const DEFAULT_QUEST_SETTINGS: QuestSettings = {
   passThreshold: 60,
-  missionCap: 50,
-  blastsPercent: 30,
+  missionCap: 25,
+  blastsPercent: 5,
 } as const;
 
 export type MissionState = {

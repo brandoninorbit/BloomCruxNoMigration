@@ -106,3 +106,9 @@ fetch('/api/auth/session').then(r => r.json()).then(console.log)
 **This was a configuration issue** - OAuth redirect URLs need your production domain.
 
 After fixing OAuth settings, session will be valid → All features will work! 🎉
+
+## Note: Quest mission cap updated
+
+- Mission cap is now 25 cards. Source of truth is `DEFAULT_QUEST_SETTINGS.missionCap`.
+- Existing missions created under the old 50-card cap are preserved; we never truncate `user_deck_missions.card_order` on resume.
+- Progress math (`totalMissions`) and reset routes read the cap from the shared setting to avoid drift.

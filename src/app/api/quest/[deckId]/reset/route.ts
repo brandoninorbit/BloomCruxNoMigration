@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { getSupabaseSession } from "@/app/supabase/session";
+import { DEFAULT_QUEST_SETTINGS } from "@/lib/quest/types";
 
 // Force Node.js runtime for server-side operations (required for service role key)
 export const runtime = 'nodejs';
@@ -76,7 +77,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dec
       const lvl = (r.bloom_level ?? "Remember") as keyof typeof by;
       by[lvl] = (by[lvl] ?? 0) + 1;
     }
-    const cap = 50; // missionCap default
+  const cap = DEFAULT_QUEST_SETTINGS.missionCap; // missionCap default
     const per_bloom: Record<string, unknown> = {};
     (Object.keys(by) as Array<keyof typeof by>).forEach((lvl) => {
       const totalCards = by[lvl] ?? 0;
