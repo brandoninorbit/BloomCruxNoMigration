@@ -115,6 +115,101 @@ export type ImportPayload =
   | ComparePayload
   | CERPayload;
 
+// ---------- Payload Parser (Keyed Payload Mode) ----------
+// Canonical keys for normalization
+const CANONICAL_KEYS = new Set([
+  'CardType', 'Question', 'Prompt', 'Title', 'Scenario',
+  'A', 'B', 'C', 'D', 'Answer', 'SuggestedAnswer', 'BloomLevel', 'Explanation',
+  'ItemA', 'ItemB', 'Points', 'Categories', 'Items', 'Steps',
+  'RQuestion', 'RA', 'RB', 'RC', 'RD', 'RAnswer',
+  'Mode', 'Claim', 'Evidence', 'Reasoning'
+]);
+
+// Map lowercase key to canonical form
+function getCanonicalKey(lowerKey: string): string | undefined {
+  for (const canonical of CANONICAL_KEYS) {
+    if (canonical.toLowerCase() === lowerKey) return canonical;
+  }
+  return undefined;
+}
+
+type PayloadParseResult = {
+  fields: Record<string, string>;
+  warnings: string[];
+};
+
+function parsePayload(payloadStr: string): PayloadParseResult {
+  const fields: Record<string, string> = {};
+  const warnings: string[] = [];
+  const seenKeys = new Set<string>();
+  
+  let i = 0;
+  const len = payloadStr.length;
+  
+  while (i < len) {
+    // Skip whitespace, commas, semicolons
+    while (i < len && /[\s,;]/.test(payloadStr[i])) i++;
+    if (i >= len) break;
+    
+    // Extract key until we see (( or end
+    const keyStart = i;
+    while (i < len && payloadStr[i] !== '(') i++;
+    
+    if (i >= len) break;
+    if (i + 1 >= len || payloadStr[i + 1] !== '(') break;
+    
+    const rawKey = payloadStr.slice(keyStart, i).trim();
+    if (!rawKey) {
+      i += 2; // skip ((
+      continue;
+    }
+    
+    const lowerKey = rawKey.toLowerCase();
+    const canonicalKey = getCanonicalKey(lowerKey);
+    
+    if (!canonicalKey) {
+      warnings.push(`[W-PAYLOAD-UNKNOWN-KEY] Unknown key "${rawKey}"`);
+      // Still parse the value, just don't store it
+    }
+    
+    // Skip ((
+    i += 2;
+    
+    // Parse value until unescaped ))
+    let value = '';
+    while (i < len) {
+      if (payloadStr[i] === '\\' && i + 1 < len) {
+        // Escape sequence
+        const nextChar = payloadStr[i + 1];
+        if (nextChar === '(' || nextChar === ')') {
+          value += nextChar;
+          i += 2;
+        } else {
+          value += payloadStr[i];
+          i++;
+        }
+      } else if (payloadStr[i] === ')' && i + 1 < len && payloadStr[i + 1] === ')') {
+        // End of value
+        i += 2;
+        break;
+      } else {
+        value += payloadStr[i];
+        i++;
+      }
+    }
+    
+    if (canonicalKey) {
+      if (seenKeys.has(canonicalKey)) {
+        warnings.push(`[W-PAYLOAD-DUPLICATE-KEY] Key "${canonicalKey}" appears multiple times, using last value`);
+      }
+      fields[canonicalKey] = value;
+      seenKeys.add(canonicalKey);
+    }
+  }
+  
+  return { fields, warnings };
+}
+
 // ---------- Helpers ----------
 const LABEL_RE = /^\s*([A-D])\s*[).:]\s*/i;
 const truthy = (s?: string) => /^(1|true|yes|y)$/i.test((s || '').trim());
@@ -653,39 +748,63 @@ function mapCER(row: CsvRow, idx: number, bloom: Bloom): MapResult {
   };
 }
 
+// Helper to merge payload fields into a row (payload fields take precedence)
+function mergePayloadIntoRow(row: CsvRow, payloadFields: Record<string, string>): CsvRow {
+  const merged = { ...row };
+  Object.entries(payloadFields).forEach(([key, value]) => {
+    merged[key] = value;
+  });
+  return merged;
+}
+
+// Helper to apply payload to a row and collect warnings
+function applyPayloadToRow(row: CsvRow): { row: CsvRow; warnings: string[] } {
+  const payloadCol = pick(row, 'Payload');
+  if (!payloadCol) {
+    return { row, warnings: [] };
+  }
+  
+  const result = parsePayload(payloadCol);
+  const mergedRow = mergePayloadIntoRow(row, result.fields);
+  return { row: mergedRow, warnings: result.warnings };
+}
+
 // ---------- Public API ----------
 
 export function rowToPayload(row: CsvRow): ImportPayload {
+  // Check for Payload column first
+  const { row: finalRow } = applyPayloadToRow(row);
+  
   // Determine type strictly by CardType cell
-  const rawType = pick(row, 'CardType');
+  const rawType = pick(finalRow, 'CardType');
   const mapped = mapCardType(rawType);
   const idx = 1; // row index unknown in standalone usage; error strings not emitted here
-  const bloom = normalizeBloom(pick(row, 'BloomLevel')) || (DEFAULT_BLOOM[mapped || 'mcq'] as Bloom);
+  const bloom = normalizeBloom(pick(finalRow, 'BloomLevel')) || (DEFAULT_BLOOM[mapped || 'mcq'] as Bloom);
   const t = mapped || 'mcq';
   const res =
     t === 'mcq'
-      ? mapMCQ(row, idx, bloom)
+      ? mapMCQ(finalRow, idx, bloom)
       : t === 'twoTier'
-      ? mapTwoTier(row, idx, bloom)
+      ? mapTwoTier(finalRow, idx, bloom)
       : t === 'fill'
-      ? mapFill(row, idx, bloom)
+      ? mapFill(finalRow, idx, bloom)
       : t === 'short'
-      ? mapShort(row, idx, bloom)
+      ? mapShort(finalRow, idx, bloom)
       : t === 'sorting'
-      ? mapSorting(row, idx, bloom)
+      ? mapSorting(finalRow, idx, bloom)
       : t === 'sequencing'
-      ? mapSequencing(row, idx, bloom)
+      ? mapSequencing(finalRow, idx, bloom)
       : t === 'compare'
-      ? mapCompare(row, idx, bloom)
-      : mapCER(row, idx, bloom);
+      ? mapCompare(finalRow, idx, bloom)
+      : mapCER(finalRow, idx, bloom);
   if (res.payload) return res.payload;
   // Non-throwing fallback for standalone usage; parseCsv will validate in real flows.
   return {
     type: 'mcq',
-    question: questionFrom(row),
+    question: questionFrom(finalRow),
     bloom,
-    explanation: explanationFrom(row),
-    meta: { options: { A: stripLabel(pick(row, 'A') || ''), B: stripLabel(pick(row, 'B') || ''), C: stripLabel(pick(row, 'C') || ''), D: stripLabel(pick(row, 'D') || '') }, answer: letterToKey(pick(row, 'Answer') || 'A') },
+    explanation: explanationFrom(finalRow),
+    meta: { options: { A: stripLabel(pick(finalRow, 'A') || ''), B: stripLabel(pick(finalRow, 'B') || ''), C: stripLabel(pick(finalRow, 'C') || ''), D: stripLabel(pick(finalRow, 'D') || '') }, answer: letterToKey(pick(finalRow, 'Answer') || 'A') },
   } as MCQPayload;
 }
 
@@ -709,43 +828,54 @@ export function parseCsv(csvText: string): {
   const rows = result.data || [];
   rows.forEach((row, i) => {
     const index = i + 2; // header + 1-based
-    const t = mapCardType(pick(row, 'CardType'));
+    
+    // Apply payload parsing first, if present
+    const { row: processRow, warnings: payloadWarnings } = applyPayloadToRow(row);
+    
+    const t = mapCardType(pick(processRow, 'CardType'));
     if (!t) {
       badRows.push({ index, errors: [`Row ${index}: [E-GENERAL-CARDTYPE] Missing or unsupported CardType`] });
       return;
     }
-    const rawBloom = pick(row, 'BloomLevel');
+    const rawBloom = pick(processRow, 'BloomLevel');
     const bloomNorm = normalizeBloom(rawBloom);
     const bloom = bloomNorm || DEFAULT_BLOOM[t];
     let res: MapResult;
     switch (t) {
       case 'mcq':
-        res = mapMCQ(row, index, bloom);
+        res = mapMCQ(processRow, index, bloom);
         break;
       case 'twoTier':
-        res = mapTwoTier(row, index, bloom);
+        res = mapTwoTier(processRow, index, bloom);
         break;
       case 'fill':
-        res = mapFill(row, index, bloom);
+        res = mapFill(processRow, index, bloom);
         break;
       case 'short':
-        res = mapShort(row, index, bloom);
+        res = mapShort(processRow, index, bloom);
         break;
       case 'sorting':
-        res = mapSorting(row, index, bloom);
+        res = mapSorting(processRow, index, bloom);
         break;
       case 'sequencing':
-        res = mapSequencing(row, index, bloom);
+        res = mapSequencing(processRow, index, bloom);
         break;
       case 'compare':
-        res = mapCompare(row, index, bloom);
+        res = mapCompare(processRow, index, bloom);
         break;
       case 'cer':
-        res = mapCER(row, index, bloom);
+        res = mapCER(processRow, index, bloom);
         break;
       default:
         res = { errors: [`Row ${index}: [E-GENERAL-CARDTYPE] Unsupported CardType`], warnings: [] };
     }
+    
+    // Collect payload warnings first
+    if (payloadWarnings.length) {
+      warnings.push(...payloadWarnings.map(w => `Row ${index}: ${w}`));
+      rowWarnings.push({ index, warnings: payloadWarnings.map(w => `Row ${index}: ${w}`) });
+    }
+    
     if (res.warnings.length) {
       warnings.push(...res.warnings);
       rowWarnings.push({ index, warnings: res.warnings });
@@ -757,7 +887,7 @@ export function parseCsv(csvText: string): {
       rowWarnings.push({ index, warnings: [msg] });
     }
     // Duplicate question detection (normalize by trimming and lowering)
-    const q = questionFrom(row).trim().toLowerCase();
+    const q = questionFrom(processRow).trim().toLowerCase();
     if (q) {
       const prev = seenQuestions.get(q);
       if (prev !== undefined) {
@@ -769,14 +899,14 @@ export function parseCsv(csvText: string): {
       }
     }
     // Large row content warning
-    const totalLen = Object.values(row).reduce((acc, v) => acc + String(v ?? '').length, 0);
+    const totalLen = Object.values(processRow).reduce((acc, v) => acc + String(v ?? '').length, 0);
     if (totalLen > 5000) {
       const msg = `Row ${index}: [W-ROW-LARGE] Row content is very large (>5000 chars)`;
       warnings.push(msg);
       rowWarnings.push({ index, warnings: [msg] });
     }
     // Smart quotes across any cell
-    if (Object.values(row).some((v) => hasSmartQuotesOrNbsp(String(v ?? '')))) {
+    if (Object.values(processRow).some((v) => hasSmartQuotesOrNbsp(String(v ?? '')))) {
       const msg = `Row ${index}: [W-ENCODING-SMART-QUOTES] Smart quotes or non-breaking spaces detected`;
       warnings.push(msg);
       rowWarnings.push({ index, warnings: [msg] });
