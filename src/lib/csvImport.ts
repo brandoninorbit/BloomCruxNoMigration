@@ -883,6 +883,19 @@ export function parseCsv(csvText: string): {
     let processRow: CsvRow = row;
     let payloadWarnings: string[] = [];
     if (payloadCell && payloadCell.trim() !== '') {
+      // Payload mode: row must have exactly 1 CSV column (the Payload cell must be quoted)
+      const columnCount = Object.keys(row).length;
+      if (columnCount > 1) {
+        // Row was split into multiple columns; Payload cell was not properly quoted
+        badRows.push({
+          index,
+          errors: [
+            `Row ${index}: [E-PAYLOAD-NOT-QUOTED] Payload mode requires each row to have exactly one CSV field; quote the Payload cell if it contains commas`,
+          ],
+        });
+        return;
+      }
+
       const strict = parsePayloadStrict(payloadCell);
       if (strict.errors.length) {
         // Treat as critical import errors for this row
