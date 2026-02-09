@@ -138,76 +138,102 @@ type PayloadParseResult = {
   warnings: string[];
 };
 
-function parsePayload(payloadStr: string): PayloadParseResult {
+function parsePayload(payloadStr: string, strict = false): { fields: Record<string, string>; warnings: string[]; errors: string[] } {
   const fields: Record<string, string> = {};
   const warnings: string[] = [];
-  const seenKeys = new Set<string>();
-  
+  const errors: string[] = [];
+  const seenKeys = new Map<string, number>();
+
   let i = 0;
   const len = payloadStr.length;
-  
+
   while (i < len) {
     // Skip whitespace, commas, semicolons
     while (i < len && /[\s,;]/.test(payloadStr[i])) i++;
     if (i >= len) break;
-    
-    // Extract key until we see (( or end
+
+    // Find the next occurrence of (( which indicates key end
     const keyStart = i;
+    // Advance until we hit '(' or end
     while (i < len && payloadStr[i] !== '(') i++;
-    
-    if (i >= len) break;
-    if (i + 1 >= len || payloadStr[i + 1] !== '(') break;
-    
-    const rawKey = payloadStr.slice(keyStart, i).trim();
-    if (!rawKey) {
-      i += 2; // skip ((
-      continue;
+    if (i >= len) {
+      // nothing more
+      break;
     }
-    
-    const lowerKey = rawKey.toLowerCase();
-    const canonicalKey = getCanonicalKey(lowerKey);
-    
-    if (!canonicalKey) {
-      warnings.push(`[W-PAYLOAD-UNKNOWN-KEY] Unknown key "${rawKey}"`);
-      // Still parse the value, just don't store it
+    // Expect a double '((' sequence (allow spaces/commas between key and '((')
+    const maybeOpen = i;
+    // allow intervening whitespace/punctuation between key and ((
+    while (i < len && /[\s,;\t]/.test(payloadStr[i])) i++;
+    if (i + 1 >= len || payloadStr[i] !== '(' || payloadStr[i + 1] !== '(') {
+      // malformed opening delimiter
+      if (strict) errors.push('[E-PAYLOAD-MALFORMED] Malformed or missing (( after key');
+      else warnings.push('[W-PAYLOAD-MALFORMED] Malformed or missing (( after key');
+      break;
     }
-    
-    // Skip ((
+
+    const rawKey = payloadStr.slice(keyStart, maybeOpen).trim();
+    // Skip the '(('
     i += 2;
-    
-    // Parse value until unescaped ))
+    if (!rawKey) {
+      // empty key, treat as malformed
+      if (strict) errors.push('[E-PAYLOAD-MALFORMED] Empty key before ((');
+      else warnings.push('[W-PAYLOAD-EMPTY-KEY] Empty key before ((');
+      // parse value but discard
+    }
+
+    // Parse value until unescaped '))'
     let value = '';
+    let closed = false;
     while (i < len) {
       if (payloadStr[i] === '\\' && i + 1 < len) {
-        // Escape sequence
+        // Escape sequence: accept \(, \), or \\)) sequence handling
         const nextChar = payloadStr[i + 1];
-        if (nextChar === '(' || nextChar === ')') {
-          value += nextChar;
-          i += 2;
-        } else {
-          value += payloadStr[i];
-          i++;
-        }
-      } else if (payloadStr[i] === ')' && i + 1 < len && payloadStr[i + 1] === ')') {
-        // End of value
+        // For simplicity, unescape backslash+char
+        value += nextChar;
         i += 2;
+        continue;
+      }
+      if (payloadStr[i] === ')' && i + 1 < len && payloadStr[i + 1] === ')') {
+        i += 2;
+        closed = true;
         break;
-      } else {
-        value += payloadStr[i];
-        i++;
       }
+      value += payloadStr[i];
+      i++;
     }
-    
-    if (canonicalKey) {
-      if (seenKeys.has(canonicalKey)) {
-        warnings.push(`[W-PAYLOAD-DUPLICATE-KEY] Key "${canonicalKey}" appears multiple times, using last value`);
-      }
-      fields[canonicalKey] = value;
-      seenKeys.add(canonicalKey);
+    if (!closed) {
+      if (strict) errors.push('[E-PAYLOAD-MALFORMED] Unterminated value (missing )) )');
+      else warnings.push('[W-PAYLOAD-MALFORMED] Unterminated value (missing )) )');
+      break;
     }
+
+    const lowerKey = (rawKey || '').toLowerCase();
+
+    // Acceptable dynamic keys (Answer, Answer1..Answer20, AnswerNAlt, Options, AnswerAlt, BlankNMode etc.)
+    const dynamicKeyMatch = lowerKey.match(/^(answer(?:\d+)?(?:alt)?)$|^(options)$|^(answeralt)$|^(blank\d+mode)$|^(blank\d+casesensitive)$|^(blank\d+ignorepunct)$/i);
+    const canonicalKey = getCanonicalKey(lowerKey) || (dynamicKeyMatch ? rawKey.trim() : undefined);
+
+    if (!canonicalKey) {
+      const msg = `[E-PAYLOAD-UNKNOWN-KEY] Unknown key "${rawKey}"`;
+      if (strict) errors.push(msg);
+      else warnings.push(msg);
+      // still record occurrence count for diagnostics
+      seenKeys.set(rawKey.trim(), (seenKeys.get(rawKey.trim()) || 0) + 1);
+      continue;
+    }
+
+    // duplicate key handling
+    if (fields[canonicalKey] !== undefined) {
+      // duplicate: keep last, emit non-critical warning
+      warnings.push(`[W-PAYLOAD-DUPLICATE-KEY] Key "${canonicalKey}" appears multiple times, using last value`);
+      seenKeys.set(canonicalKey, (seenKeys.get(canonicalKey) || 0) + 1);
+    } else {
+      seenKeys.set(canonicalKey, 1);
+    }
+    fields[canonicalKey] = value;
   }
-  
-  return { fields, warnings };
+
+  return { fields, warnings, errors };
 }
 
 // ---------- Helpers ----------
@@ -763,10 +789,33 @@ function applyPayloadToRow(row: CsvRow): { row: CsvRow; warnings: string[] } {
   if (!payloadCol) {
     return { row, warnings: [] };
   }
-  
-  const result = parsePayload(payloadCol);
+  const result = parsePayload(payloadCol, false);
   const mergedRow = mergePayloadIntoRow(row, result.fields);
   return { row: mergedRow, warnings: result.warnings };
+}
+
+// Strict payload-only parse used by parseCsv when Payload is present and non-empty.
+// Returns errors when critical issues are found as per spec.
+function parsePayloadStrict(payloadStr: string): { fields?: Record<string, string>; errors: string[]; warnings?: string[] } {
+  const res = parsePayload(payloadStr, true);
+  const errors: string[] = [];
+  if (res.errors.length) {
+    errors.push(...res.errors);
+    return { errors, warnings: res.warnings };
+  }
+  // CardType must exist exactly once
+  const cardTypeVal = res.fields['CardType'];
+  if (!cardTypeVal) {
+    errors.push('[E-PAYLOAD-MISSING-CARDTYPE] CardType missing in Payload');
+    return { errors, warnings: res.warnings };
+  }
+  // detect multiple CardType instances in string by simple search (count occurrences of 'cardtype((' case-insensitive)
+  const matches = (payloadStr.match(/cardtype\s*\(\(/gi) || []).length;
+  if (matches > 1) {
+    errors.push('[E-PAYLOAD-MULTIPLE-CARDTYPE] Multiple CardType keys in Payload');
+    return { errors, warnings: res.warnings };
+  }
+  return { fields: res.fields, errors: [], warnings: res.warnings };
 }
 
 // ---------- Public API ----------
@@ -828,10 +877,34 @@ export function parseCsv(csvText: string): {
   const rows = result.data || [];
   rows.forEach((row, i) => {
     const index = i + 2; // header + 1-based
-    
-    // Apply payload parsing first, if present
-    const { row: processRow, warnings: payloadWarnings } = applyPayloadToRow(row);
-    
+
+    // If Payload column exists and is non-empty, use strict payload-only parsing
+    const payloadCell = pick(row, 'Payload');
+    let processRow: CsvRow = row;
+    let payloadWarnings: string[] = [];
+    if (payloadCell && payloadCell.trim() !== '') {
+      const strict = parsePayloadStrict(payloadCell);
+      if (strict.errors.length) {
+        // Treat as critical import errors for this row
+        badRows.push({ index, errors: strict.errors.map((e) => `Row ${index}: ${e}`) });
+        return;
+      }
+      // Use only payload fields (do not merge with other columns)
+      processRow = strict.fields || {};
+      // collect non-critical warnings produced by parsePayload (e.g., duplicate keys)
+      payloadWarnings = strict.warnings || [];
+    } else {
+      // No payload: fall back to legacy behavior (merge non-strict)
+      const applied = applyPayloadToRow(row);
+      processRow = applied.row;
+      // collect any non-critical payload warnings
+      payloadWarnings = applied.warnings || [];
+      if (payloadWarnings.length) {
+        warnings.push(...payloadWarnings.map((w) => `Row ${index}: ${w}`));
+        rowWarnings.push({ index, warnings: payloadWarnings.map((w) => `Row ${index}: ${w}`) });
+      }
+    }
+
     const t = mapCardType(pick(processRow, 'CardType'));
     if (!t) {
       badRows.push({ index, errors: [`Row ${index}: [E-GENERAL-CARDTYPE] Missing or unsupported CardType`] });

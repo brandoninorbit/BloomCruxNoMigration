@@ -309,12 +309,12 @@ describe("CSV importer – Keyed Payload Mode", () => {
       'CardType,Payload',
       'Standard MCQ,"CardType((MCQ)) Question((What?)) A((A)) B((B)) C((C)) D((D)) Answer((A)) UnknownKey((value))"'
     ].join("\n");
-    const { okRows, badRows, rowWarnings } = parseCsv(csv);
-    expect(badRows.length).toBe(0);
-    expect(okRows.length).toBe(1);
-    const warnings = (rowWarnings.find(rw => rw.index === 2)?.warnings || []).join(' ');
-    expect(warnings).toMatch(/W-PAYLOAD-UNKNOWN-KEY/);
-    expect(warnings).toMatch(/UnknownKey/);
+    const { okRows, badRows } = parseCsv(csv);
+    expect(okRows.length).toBe(0);
+    expect(badRows.length).toBe(1);
+    const errs = badRows[0]?.errors.join(' ') || '';
+    expect(errs).toMatch(/E-PAYLOAD-UNKNOWN-KEY/);
+    expect(errs).toMatch(/UnknownKey/);
   });
 
   test("Payload mode: case-insensitive key matching with canonical output", () => {
@@ -396,7 +396,7 @@ describe("CSV importer – Keyed Payload Mode", () => {
   test("Payload mode: payload field takes precedence over column", () => {
     const csv = [
       'CardType,Question,Payload',
-      'Standard MCQ,"Column Question","Question((Payload Question)) A((A)) B((B)) C((C)) D((D)) Answer((A))"'
+      'Standard MCQ,"Column Question","CardType((Standard MCQ)) Question((Payload Question)) A((A)) B((B)) C((C)) D((D)) Answer((A))"'
     ].join("\n");
     const { okRows, badRows } = parseCsv(csv);
     expect(badRows.length).toBe(0);
@@ -500,12 +500,13 @@ describe("CSV importer – Keyed Payload Mode", () => {
       'CardType,Payload',
       'Standard MCQ,"CardType((MCQ)) unknownkey1((val1)) Question((Q?)) A((A)) unknownkey2((val2)) B((B)) C((C)) D((D)) Answer((A))"'
     ].join("\n");
-    const { okRows, badRows, rowWarnings } = parseCsv(csv);
-    expect(badRows.length).toBe(0);
-    expect(okRows.length).toBe(1);
-    const warnings = (rowWarnings.find(rw => rw.index === 2)?.warnings || []).join(' ');
-    expect(warnings).toMatch(/unknownkey1/);
-    expect(warnings).toMatch(/unknownkey2/);
+    const { okRows, badRows } = parseCsv(csv);
+    expect(okRows.length).toBe(0);
+    expect(badRows.length).toBe(1);
+    const errs = badRows[0]?.errors.join(' ') || '';
+    expect(errs).toMatch(/E-PAYLOAD-UNKNOWN-KEY/);
+    expect(errs).toMatch(/unknownkey1/);
+    expect(errs).toMatch(/unknownkey2/);
   });
 
   test("Payload mode: comma and semicolon delimiters between keys", () => {
