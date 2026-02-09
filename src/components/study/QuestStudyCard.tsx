@@ -250,12 +250,14 @@ function SortingQuest({ card, onAnswer, onContinue, formattingEnabled = true }: 
   const [checked, setChecked] = useState(false);
   const [showCorrect, setShowCorrect] = useState(false);
   const [allCorrect, setAllCorrect] = useState<boolean | null>(null);
+  const startRef = useRef<number>(Date.now());
 
   useEffect(() => {
     setAssignments({});
     setChecked(false);
     setShowCorrect(false);
     setAllCorrect(null);
+    startRef.current = Date.now();
   }, [card.id]);
 
   const categories = card.meta.categories;
@@ -313,8 +315,8 @@ function SortingQuest({ card, onAnswer, onContinue, formattingEnabled = true }: 
   const checkNow = () => {
     const correctByTerm: Record<string, string> = {};
     for (const it of card.meta.items) correctByTerm[it.term] = it.correctCategory;
-    const total = items.length || 1;
-    const numCorrect = items.filter((t) => assignments[t] && assignments[t] === correctByTerm[t]).length;
+    const total = card.meta.items.length || 1;
+    const numCorrect = card.meta.items.filter((t) => assignments[t.term] && assignments[t.term] === correctByTerm[t.term]).length;
     const correctness = Math.max(0, Math.min(1, numCorrect / total));
     setChecked(true);
     setAllCorrect(correctness === 1);
@@ -536,7 +538,7 @@ function CERQuest({ card, onAnswer, onContinue, formattingEnabled = true }: { ca
       onAnswer({ cardId: card.id, correctness: ftCorrectness, correct: ftCorrectness === 1 ? true : (ftCorrectness === 0 ? false : undefined), responseMs: Date.now() - ftStartRef.current, confidence: ftConfidence, guessed: ftGuessed, cardType: card.type });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ftChecked]);
+  }, [ftOverride, ftChecked]);
 
   const guidance = meta.guidanceQuestion;
 
@@ -602,7 +604,18 @@ function CERQuest({ card, onAnswer, onContinue, formattingEnabled = true }: { ca
         {!mcqChecked ? (
           <div className="mt-4"><button type="button" className="px-4 py-2 rounded-lg bg-blue-600 text-white" onClick={() => setMcqChecked(true)}>Check</button></div>
         ) : (
-          <div className="mt-4 flex items-center justify-end"><button type="button" className="px-4 py-2 rounded-lg font-medium bg-slate-900 text-white" onClick={onContinue}>Continue</button></div>
+          <div className="mt-4 space-y-3">
+            <div className={`rounded-xl border px-4 py-3 flex items-center justify-between ${(mcqCorrectness ?? 0) === 1 ? "bg-green-100 border-green-200 text-green-800" : (mcqCorrectness ?? 0) === 0 ? "bg-red-100 border-red-200 text-red-800" : "bg-yellow-100 border-yellow-200 text-yellow-800"}`}>
+              <div className="font-semibold">{(mcqCorrectness ?? 0) === 1 ? "Correct!" : (mcqCorrectness ?? 0) === 0 ? "Not quite" : `Partially correct (${Math.round((mcqCorrectness ?? 0) * 100)}%)`}</div>
+              <button type="button" className={`px-4 py-2 rounded-lg font-medium shadow-sm ${(mcqCorrectness ?? 0) === 1 ? "bg-green-600 text-white hover:bg-green-700" : (mcqCorrectness ?? 0) === 0 ? "bg-red-600 text-white hover:bg-red-700" : "bg-yellow-600 text-white hover:bg-yellow-700"}`} onClick={onContinue}>Continue</button>
+            </div>
+            {card.explanation ? (
+              <div className="rounded-lg bg-slate-50 p-4 text-slate-700">
+                <div className="font-semibold text-slate-900 mb-1">Explanation</div>
+                <div className="text-sm leading-relaxed"><FormattedText text={card.explanation || ""} enabled={formattingEnabled} /></div>
+              </div>
+            ) : null}
+          </div>
         )}
       </div>
     );
@@ -667,9 +680,9 @@ function CERQuest({ card, onAnswer, onContinue, formattingEnabled = true }: { ca
         </div>
       ) : null}
       {ftChecked ? (
-        <div className={`mt-4 rounded-xl border px-4 py-3 flex items-center justify-between ${ftCorrectness === 1 ? "bg-green-100 border-green-200 text-green-800" : "bg-red-100 border-red-200 text-red-800"}`}>
-          <div className="font-semibold">{ftCorrectness === 1 ? "Correct!" : "Not quite"}</div>
-          <button type="button" className={`px-4 py-2 rounded-lg font-medium shadow-sm ${ftCorrectness === 1 ? "bg-green-600 text-white hover:bg-green-700" : "bg-red-600 text-white hover:bg-red-700"}`} onClick={onContinue}>Continue</button>
+        <div className={`mt-4 rounded-xl border px-4 py-3 flex items-center justify-between ${(ftCorrectness ?? 0) === 1 ? "bg-green-100 border-green-200 text-green-800" : (ftCorrectness ?? 0) === 0 ? "bg-red-100 border-red-200 text-red-800" : "bg-yellow-100 border-yellow-200 text-yellow-800"}`}>
+          <div className="font-semibold">{(ftCorrectness ?? 0) === 1 ? "Correct!" : (ftCorrectness ?? 0) === 0 ? "Not quite" : `Partially correct (${Math.round((ftCorrectness ?? 0) * 100)}%)`}</div>
+          <button type="button" className={`px-4 py-2 rounded-lg font-medium shadow-sm ${(ftCorrectness ?? 0) === 1 ? "bg-green-600 text-white hover:bg-green-700" : (ftCorrectness ?? 0) === 0 ? "bg-red-600 text-white hover:bg-red-700" : "bg-yellow-600 text-white hover:bg-yellow-700"}`} onClick={onContinue}>Continue</button>
         </div>
       ) : null}
       {ftChecked && card.explanation ? (
@@ -690,6 +703,7 @@ function CompareContrastQuest({ card, onAnswer, onContinue, formattingEnabled = 
   const [ccB, setCcB] = useState<Record<number, string>>({});
   const [ccChecked, setCcChecked] = useState(false);
   const [ccOverride, setCcOverride] = useState<Record<number, "right" | "wrong" | undefined>>({});
+  const [ccCorrectness, setCcCorrectness] = useState<number | undefined>(undefined);
   const [ccAllCorrect, setCcAllCorrect] = useState<boolean | null>(null);
   const [ccConfidence, setCcConfidence] = useState<0|1|2|3|undefined>(undefined);
   const [ccGuessed, setCcGuessed] = useState(false);
@@ -702,6 +716,7 @@ function CompareContrastQuest({ card, onAnswer, onContinue, formattingEnabled = 
     setCcB({});
     setCcChecked(false);
     setCcOverride({});
+    setCcCorrectness(undefined);
     setCcAllCorrect(null);
     setCcConfidence(undefined);
     setCcGuessed(false);
@@ -767,6 +782,7 @@ function CompareContrastQuest({ card, onAnswer, onContinue, formattingEnabled = 
     let numCorrect = 0;
     for (let i = 0; i < rows.length; i++) if (effectiveRowCorrect(i)) numCorrect++;
     const correctness = total ? numCorrect / total : (all ? 1 : 0);
+    setCcCorrectness(correctness);
     onAnswer({ cardId: card.id, correctness, correct: correctness === 1 ? true : (correctness === 0 ? false : undefined), responseMs: Date.now() - startRef.current, confidence: ccConfidence, guessed: ccGuessed, cardType: card.type });
 
     // resize textareas to fit content after revealing
@@ -783,6 +799,21 @@ function CompareContrastQuest({ card, onAnswer, onContinue, formattingEnabled = 
       resizeMap(bRefs.current);
     });
   };
+
+  // When self-grading overrides change after check, recalculate correctness
+  useEffect(() => {
+    if (!ccChecked || Object.keys(ccOverride).length === 0) return;
+    const total = rows.length;
+    let numCorrect = 0;
+    for (let i = 0; i < rows.length; i++) if (effectiveRowCorrect(i)) numCorrect++;
+    const newCorrectness = total ? numCorrect / total : 0;
+    if (newCorrectness !== ccCorrectness) {
+      setCcCorrectness(newCorrectness);
+      setCcAllCorrect(newCorrectness === 1);
+      // Resubmit with updated correctness
+      onAnswer({ cardId: card.id, correctness: newCorrectness, correct: newCorrectness === 1 ? true : (newCorrectness === 0 ? false : undefined), responseMs: Date.now() - startRef.current, confidence: ccConfidence, guessed: ccGuessed, cardType: card.type });
+    }
+  }, [ccOverride, ccChecked]);
 
   return (
     <div className="w-full">
@@ -896,9 +927,9 @@ function CompareContrastQuest({ card, onAnswer, onContinue, formattingEnabled = 
         <div className="mt-3 text-sm text-slate-600"><FormattedText text={card.explanation || ""} enabled={formattingEnabled} /></div>
       ) : null}
       {ccChecked ? (
-        <div className={`mt-4 rounded-xl border px-4 py-3 flex items-center justify-between ${ccAllCorrect ? "bg-green-100 border-green-200 text-green-800" : "bg-red-100 border-red-200 text-red-800"}`}>
-          <div className="font-semibold">{ccAllCorrect ? "Correct!" : "Not quite"}</div>
-          <button type="button" className={`px-4 py-2 rounded-lg font-medium shadow-sm ${ccAllCorrect ? "bg-green-600 text-white hover:bg-green-700" : "bg-red-600 text-white hover:bg-red-700"}`} onClick={onContinue}>Continue</button>
+        <div className={`mt-4 rounded-xl border px-4 py-3 flex items-center justify-between ${(ccCorrectness ?? 0) === 1 ? "bg-green-100 border-green-200 text-green-800" : (ccCorrectness ?? 0) === 0 ? "bg-red-100 border-red-200 text-red-800" : "bg-yellow-100 border-yellow-200 text-yellow-800"}`}>
+          <div className="font-semibold">{(ccCorrectness ?? 0) === 1 ? "Correct!" : (ccCorrectness ?? 0) === 0 ? "Not quite" : `Partially correct (${Math.round((ccCorrectness ?? 0) * 100)}%)`}</div>
+          <button type="button" className={`px-4 py-2 rounded-lg font-medium shadow-sm ${(ccCorrectness ?? 0) === 1 ? "bg-green-600 text-white hover:bg-green-700" : (ccCorrectness ?? 0) === 0 ? "bg-red-600 text-white hover:bg-red-700" : "bg-yellow-600 text-white hover:bg-yellow-700"}`} onClick={onContinue}>Continue</button>
         </div>
       ) : null}
     </div>
