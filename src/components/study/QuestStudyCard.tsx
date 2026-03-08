@@ -18,6 +18,7 @@ import type {
 import MCQStudy from "@/components/cards/MCQStudy";
 import FillBlankStudy from "@/components/cards/FillBlankStudy";
 import SequencingStudy from "@/components/cards/SequencingStudy";
+import { defaultBloomForType } from "@/lib/bloom";
 import { DndContext, DragEndEvent, PointerSensor, useDroppable, useDraggable, useSensor, useSensors, rectIntersection } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import FormattedText from "@/components/ui/FormattedText";
@@ -34,27 +35,70 @@ export type StudyAnswerEvent = {
 };
 
 export default function QuestStudyCard({ card, onAnswer, onContinue, markupEnabled = true }: { card: DeckCard; onAnswer: (ev: StudyAnswerEvent & { cardId: number }) => void; onContinue: () => void; markupEnabled?: boolean }) {
+  // Local state for Create-level manual grading
+  const [pendingCreate, setPendingCreate] = useState<(StudyAnswerEvent & { cardId: number }) | null>(null);
+  const [justGradedFor, setJustGradedFor] = useState<number | null>(null);
+  const effBloom = ((card.bloomLevel ?? defaultBloomForType(card.type)) as unknown) as string;
+  const isCreate = effBloom === "Create";
+  const isCreateShortAnswer = isCreate && card.type === "Short Answer";
+
+  function handleCreateAwareAnswer(ev: StudyAnswerEvent & { cardId?: number }) {
+    const evWithId = { ...(ev as StudyAnswerEvent), cardId: ev.cardId ?? card.id } as StudyAnswerEvent & { cardId: number };
+    // Only short-answer cards are handled via manual grading for Create level
+    if (isCreateShortAnswer) {
+      setPendingCreate(evWithId);
+      setJustGradedFor(null);
+    } else {
+      onAnswer(evWithId);
+    }
+  }
+
+  function applyGrade(percent: number) {
+    if (!pendingCreate) return;
+    const frac = Math.max(0, Math.min(1, percent / 100));
+    const ev = { ...pendingCreate, correctness: frac, correct: frac === 1 } as StudyAnswerEvent & { cardId: number };
+    // Forward to real onAnswer prop so parent receives the graded value
+    onAnswer(ev);
+    setPendingCreate(null);
+    setJustGradedFor(ev.cardId);
+    // advance after grading
+    try { onContinue(); } catch {}
+  }
+
   // Simple switch to render a per-type UI that matches Quest styling/flow
   if (card.type === "Standard MCQ") {
     const mcq = card as DeckStandardMCQ;
     return (
-      <MCQStudy
-        key={card.id}
-        prompt={mcq.question}
-        options={[
-          { key: "A", text: mcq.meta.options.A },
-          { key: "B", text: mcq.meta.options.B },
-          { key: "C", text: mcq.meta.options.C },
-          { key: "D", text: mcq.meta.options.D },
-        ]}
-        answerKey={mcq.meta.answer}
-        explanation={mcq.explanation}
-        formattingEnabled={markupEnabled}
-        onAnswer={({ correct, chosen, responseMs, confidence, guessed }) => {
-          onAnswer({ cardId: card.id, correct, responseMs, confidence, guessed, payload: { choice: chosen }, cardType: card.type });
-        }}
-        onContinue={onContinue}
-      />
+      <div>
+        <MCQStudy
+          key={card.id}
+          prompt={mcq.question}
+          options={[
+            { key: "A", text: mcq.meta.options.A },
+            { key: "B", text: mcq.meta.options.B },
+            { key: "C", text: mcq.meta.options.C },
+            { key: "D", text: mcq.meta.options.D },
+          ]}
+          answerKey={mcq.meta.answer}
+          explanation={mcq.explanation}
+          formattingEnabled={markupEnabled}
+          onAnswer={({ correct, chosen, responseMs, confidence, guessed }) => {
+            handleCreateAwareAnswer({ cardId: card.id, correct, responseMs, confidence, guessed, payload: { choice: chosen }, cardType: card.type });
+          }}
+          onContinue={onContinue}
+        />
+        {card.type === "Short Answer" && pendingCreate && pendingCreate.cardId === card.id ? (
+          <div className="mt-4 rounded-lg border bg-yellow-50 p-3">
+            <div className="font-semibold mb-2">Manual grade this Create-level response</div>
+            <div className="flex gap-2">
+              {[100,90,75,50,0].map((g) => (
+                <button key={g} type="button" onClick={() => applyGrade(g)} className="px-3 py-1 rounded bg-white border">{g}%</button>
+              ))}
+            </div>
+            {card.explanation ? <div className="mt-3 text-sm text-slate-700"><FormattedText text={card.explanation} enabled={markupEnabled} /></div> : null}
+          </div>
+        ) : null}
+      </div>
     );
   }
 
@@ -97,62 +141,163 @@ export default function QuestStudyCard({ card, onAnswer, onContinue, markupEnabl
       wordBank = Array.from(uniq);
     }
     return (
-      <FillBlankStudy
-        key={card.id}
-        stem={stem}
-        blanks={blanks}
-        wordBank={wordBank}
-        explanation={(card as DeckCard).explanation}
-        formattingEnabled={markupEnabled}
-        onAnswer={({ perBlank, allCorrect, filledText, responseMs, confidence, guessed }) => {
-          const total = blanks.length || 1;
-          const numCorrect = Object.values(perBlank).filter(Boolean).length;
-          const correctness = total ? numCorrect / total : (allCorrect ? 1 : 0);
-          onAnswer({ cardId: card.id, correct: allCorrect, correctness, responseMs, confidence, guessed, payload: { perBlank, filledText }, cardType: card.type });
-        }}
-        onContinue={onContinue}
-      />
+      <div>
+        <FillBlankStudy
+          key={card.id}
+          stem={stem}
+          blanks={blanks}
+          wordBank={wordBank}
+          explanation={(card as DeckCard).explanation}
+          formattingEnabled={markupEnabled}
+          onAnswer={({ perBlank, allCorrect, filledText, responseMs, confidence, guessed }) => {
+            const total = blanks.length || 1;
+            const numCorrect = Object.values(perBlank).filter(Boolean).length;
+            const correctness = total ? numCorrect / total : (allCorrect ? 1 : 0);
+            handleCreateAwareAnswer({ cardId: card.id, correct: allCorrect, correctness, responseMs, confidence, guessed, payload: { perBlank, filledText }, cardType: card.type });
+          }}
+          onContinue={onContinue}
+        />
+        {card.type === "Short Answer" && pendingCreate && pendingCreate.cardId === card.id ? (
+          <div className="mt-4 rounded-lg border bg-yellow-50 p-3">
+            <div className="font-semibold mb-2">Manual grade this Create-level response</div>
+            <div className="flex gap-2">
+              {[100,90,75,50,0].map((g) => (
+                <button key={g} type="button" onClick={() => applyGrade(g)} className="px-3 py-1 rounded bg-white border">{g}%</button>
+              ))}
+            </div>
+            {card.explanation ? <div className="mt-3 text-sm text-slate-700"><FormattedText text={card.explanation} enabled={markupEnabled} /></div> : null}
+          </div>
+        ) : null}
+      </div>
     );
   }
 
   if (card.type === "Sequencing") {
     const seq = card as { question: string; meta: DeckSequencingMeta };
     return (
-      <SequencingStudy
-        key={card.id}
-        prompt={seq.question}
-        steps={seq.meta.steps}
-        explanation={(card as DeckCard).explanation}
-        formattingEnabled={markupEnabled}
-        onAnswer={({ wrongIndexes, allCorrect, responseMs, confidence, guessed }) => {
-          const total = seq.meta.steps.length;
-          const numCorrect = total && wrongIndexes ? Math.max(0, total - wrongIndexes.length) : (allCorrect ? total : 0);
-          const correctness = total ? numCorrect / total : (allCorrect ? 1 : 0);
-          onAnswer({ cardId: card.id, correct: allCorrect, correctness, responseMs, confidence, guessed, cardType: card.type });
-        }}
-        onContinue={onContinue}
-      />
+      <div>
+        <SequencingStudy
+          key={card.id}
+          prompt={seq.question}
+          steps={seq.meta.steps}
+          explanation={(card as DeckCard).explanation}
+          formattingEnabled={markupEnabled}
+          onAnswer={({ wrongIndexes, allCorrect, responseMs, confidence, guessed }) => {
+            const total = seq.meta.steps.length;
+            const numCorrect = total && wrongIndexes ? Math.max(0, total - wrongIndexes.length) : (allCorrect ? total : 0);
+            const correctness = total ? numCorrect / total : (allCorrect ? 1 : 0);
+            handleCreateAwareAnswer({ cardId: card.id, correct: allCorrect, correctness, responseMs, confidence, guessed, cardType: card.type });
+          }}
+          onContinue={onContinue}
+        />
+        {card.type === "Short Answer" && pendingCreate && pendingCreate.cardId === card.id ? (
+          <div className="mt-4 rounded-lg border bg-yellow-50 p-3">
+            <div className="font-semibold mb-2">Manual grade this Create-level response</div>
+            <div className="flex gap-2">
+              {[100,90,75,50,0].map((g) => (
+                <button key={g} type="button" onClick={() => applyGrade(g)} className="px-3 py-1 rounded bg-white border">{g}%</button>
+              ))}
+            </div>
+            {card.explanation ? <div className="mt-3 text-sm text-slate-700"><FormattedText text={card.explanation} enabled={markupEnabled} /></div> : null}
+          </div>
+        ) : null}
+      </div>
     );
   }
 
   if (card.type === "Short Answer") {
-    return <ShortAnswerQuest key={card.id} card={card as DeckShortAnswer} onAnswer={onAnswer} onContinue={onContinue} formattingEnabled={markupEnabled} />;
+    return (
+      <div>
+        <ShortAnswerQuest key={card.id} card={card as DeckShortAnswer} onAnswer={handleCreateAwareAnswer} onContinue={onContinue} formattingEnabled={markupEnabled} />
+        {card.type === "Short Answer" && pendingCreate && pendingCreate.cardId === card.id ? (
+          <div className="mt-4 rounded-lg border bg-yellow-50 p-3">
+            <div className="font-semibold mb-2">Manual grade this Create-level response</div>
+            <div className="flex gap-2">
+              {[100,90,75,50,0].map((g) => (
+                <button key={g} type="button" onClick={() => applyGrade(g)} className="px-3 py-1 rounded bg-white border">{g}%</button>
+              ))}
+            </div>
+            {card.explanation ? <div className="mt-3 text-sm text-slate-700"><FormattedText text={card.explanation} enabled={markupEnabled} /></div> : null}
+          </div>
+        ) : null}
+      </div>
+    );
   }
 
   if (card.type === "Sorting") {
-    return <SortingQuest key={card.id} card={card as DeckCard & { type: "Sorting"; meta: DeckSortingMeta }} onAnswer={onAnswer} onContinue={onContinue} formattingEnabled={markupEnabled} />;
+    return (
+      <div>
+        <SortingQuest key={card.id} card={card as DeckCard & { type: "Sorting"; meta: DeckSortingMeta }} onAnswer={handleCreateAwareAnswer} onContinue={onContinue} formattingEnabled={markupEnabled} />
+        {card.type === "Short Answer" && pendingCreate && pendingCreate.cardId === card.id ? (
+          <div className="mt-4 rounded-lg border bg-yellow-50 p-3">
+            <div className="font-semibold mb-2">Manual grade this Create-level response</div>
+            <div className="flex gap-2">
+              {[100,90,75,50,0].map((g) => (
+                <button key={g} type="button" onClick={() => applyGrade(g)} className="px-3 py-1 rounded bg-white border">{g}%</button>
+              ))}
+            </div>
+            {card.explanation ? <div className="mt-3 text-sm text-slate-700"><FormattedText text={card.explanation} enabled={markupEnabled} /></div> : null}
+          </div>
+        ) : null}
+      </div>
+    );
   }
 
   if (card.type === "Two-Tier MCQ") {
-    return <TwoTierQuest key={card.id} card={card as DeckTwoTierMCQ} onAnswer={onAnswer} onContinue={onContinue} formattingEnabled={markupEnabled} />;
+    return (
+      <div>
+        <TwoTierQuest key={card.id} card={card as DeckTwoTierMCQ} onAnswer={handleCreateAwareAnswer} onContinue={onContinue} formattingEnabled={markupEnabled} />
+        {card.type === "Short Answer" && pendingCreate && pendingCreate.cardId === card.id ? (
+          <div className="mt-4 rounded-lg border bg-yellow-50 p-3">
+            <div className="font-semibold mb-2">Manual grade this Create-level response</div>
+            <div className="flex gap-2">
+              {[100,90,75,50,0].map((g) => (
+                <button key={g} type="button" onClick={() => applyGrade(g)} className="px-3 py-1 rounded bg-white border">{g}%</button>
+              ))}
+            </div>
+            {card.explanation ? <div className="mt-3 text-sm text-slate-700"><FormattedText text={card.explanation} enabled={markupEnabled} /></div> : null}
+          </div>
+        ) : null}
+      </div>
+    );
   }
 
   if (card.type === "CER") {
-    return <CERQuest key={card.id} card={card as DeckCER} onAnswer={onAnswer} onContinue={onContinue} formattingEnabled={markupEnabled} />;
+    return (
+      <div>
+        <CERQuest key={card.id} card={card as DeckCER} onAnswer={handleCreateAwareAnswer} onContinue={onContinue} formattingEnabled={markupEnabled} />
+        {card.type === "Short Answer" && pendingCreate && pendingCreate.cardId === card.id ? (
+          <div className="mt-4 rounded-lg border bg-yellow-50 p-3">
+            <div className="font-semibold mb-2">Manual grade this Create-level response</div>
+            <div className="flex gap-2">
+              {[100,90,75,50,0].map((g) => (
+                <button key={g} type="button" onClick={() => applyGrade(g)} className="px-3 py-1 rounded bg-white border">{g}%</button>
+              ))}
+            </div>
+            {card.explanation ? <div className="mt-3 text-sm text-slate-700"><FormattedText text={card.explanation} enabled={markupEnabled} /></div> : null}
+          </div>
+        ) : null}
+      </div>
+    );
   }
 
   if (card.type === "Compare/Contrast") {
-    return <CompareContrastQuest key={card.id} card={card as DeckCard & { type: "Compare/Contrast"; meta: DeckCompareContrastMeta }} onAnswer={onAnswer} onContinue={onContinue} formattingEnabled={markupEnabled} />;
+    return (
+      <div>
+        <CompareContrastQuest key={card.id} card={card as DeckCard & { type: "Compare/Contrast"; meta: DeckCompareContrastMeta }} onAnswer={handleCreateAwareAnswer} onContinue={onContinue} formattingEnabled={markupEnabled} />
+        {pendingCreate && pendingCreate.cardId === card.id ? (
+          <div className="mt-4 rounded-lg border bg-yellow-50 p-3">
+            <div className="font-semibold mb-2">Manual grade this Create-level response</div>
+            <div className="flex gap-2">
+              {[100,90,75,50,0].map((g) => (
+                <button key={g} type="button" onClick={() => applyGrade(g)} className="px-3 py-1 rounded bg-white border">{g}%</button>
+              ))}
+            </div>
+            {card.explanation ? <div className="mt-3 text-sm text-slate-700"><FormattedText text={card.explanation} enabled={markupEnabled} /></div> : null}
+          </div>
+        ) : null}
+      </div>
+    );
   }
 
   return null;
@@ -783,7 +928,7 @@ function CompareContrastQuest({ card, onAnswer, onContinue, formattingEnabled = 
     for (let i = 0; i < rows.length; i++) if (effectiveRowCorrect(i)) numCorrect++;
     const correctness = total ? numCorrect / total : (all ? 1 : 0);
     setCcCorrectness(correctness);
-    onAnswer({ cardId: card.id, correctness, correct: correctness === 1 ? true : (correctness === 0 ? false : undefined), responseMs: Date.now() - startRef.current, confidence: ccConfidence, guessed: ccGuessed, cardType: card.type });
+    handleCreateAwareAnswer({ cardId: card.id, correctness, correct: correctness === 1 ? true : (correctness === 0 ? false : undefined), responseMs: Date.now() - startRef.current, confidence: ccConfidence, guessed: ccGuessed, cardType: card.type });
 
     // resize textareas to fit content after revealing
     requestAnimationFrame(() => {
@@ -811,7 +956,7 @@ function CompareContrastQuest({ card, onAnswer, onContinue, formattingEnabled = 
       setCcCorrectness(newCorrectness);
       setCcAllCorrect(newCorrectness === 1);
       // Resubmit with updated correctness
-      onAnswer({ cardId: card.id, correctness: newCorrectness, correct: newCorrectness === 1 ? true : (newCorrectness === 0 ? false : undefined), responseMs: Date.now() - startRef.current, confidence: ccConfidence, guessed: ccGuessed, cardType: card.type });
+      handleCreateAwareAnswer({ cardId: card.id, correctness: newCorrectness, correct: newCorrectness === 1 ? true : (newCorrectness === 0 ? false : undefined), responseMs: Date.now() - startRef.current, confidence: ccConfidence, guessed: ccGuessed, cardType: card.type });
     }
   }, [ccOverride, ccChecked]);
 
