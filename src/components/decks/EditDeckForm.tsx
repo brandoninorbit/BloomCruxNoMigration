@@ -8,7 +8,8 @@ import { supabaseRepo } from '@/lib/repo/supabaseRepo';
 import useFolders from "@/hooks/useFolders";
 import AddCardModal from "@/components/decks/AddCardModal";
 import * as cardsRepo from "@/lib/cardsRepo";
-import { parseCsv, type ImportPayload } from "@/lib/csvImport";
+import { parseCsv, type CsvRow, type ImportPayload, importPayloadToNewDeckCard, rowToPayload } from "@/lib/csvImport";
+import { type DeckCard } from "@/types/deck-cards";
 import { getWarningInfo } from "@/lib/csvWarningCatalog";
 import CsvRowPreview from "@/components/decks/CsvRowPreview";
 import { hasImportHash, recordImportHash } from "@/lib/cardsRepo";
@@ -84,13 +85,15 @@ export default function EditDeckForm({ deckId }: Props) {
   const [sourceMsg, setSourceMsg] = useState<string>("");
   const [showInstructions, setShowInstructions] = useState<boolean>(false);
   const [showAddCard, setShowAddCard] = useState<boolean>(false);
+  const [addCardInitial, setAddCardInitial] = useState<DeckCard | null>(null);
+  const [addCardSourceRow, setAddCardSourceRow] = useState<CsvRow | null>(null);
   const [pendingImport, setPendingImport] = useState<null | {
     fileName: string;
     fileHash: string;
     okRows: { index: number; payload: ImportPayload; warnings?: string[]; flagged?: boolean }[];
-    errRows: { index: number; errors: string[] }[];
+    errRows: { index: number; errors: string[]; row: CsvRow }[];
     warnings: string[];
-    rowWarnings?: { index: number; warnings: string[] }[];
+    rowWarnings?: { index: number; warnings: string[]; row: CsvRow }[];
   }>(null);
   const [showImportErrors, setShowImportErrors] = useState<boolean>(false);
   const [importing, setImporting] = useState<boolean>(false);
@@ -101,6 +104,18 @@ export default function EditDeckForm({ deckId }: Props) {
   const [rawCsvText, setRawCsvText] = useState<string>("");
   const [previewContext, setPreviewContext] = useState<null | { code: string; rows: number[]; idx: number }>(null);
   const [dismissedWarnings, setDismissedWarnings] = useState<Set<string>>(new Set());
+
+  const openAddCardFromPayload = (payload: ImportPayload, row?: CsvRow) => {
+    const card = importPayloadToNewDeckCard(payload, Number(deckId)) as DeckCard;
+    setAddCardInitial(card);
+    setAddCardSourceRow(row || null);
+    setShowAddCard(true);
+  };
+
+  const openAddCardFromCsvRow = (row: CsvRow) => {
+    const payload = rowToPayload(row);
+    openAddCardFromPayload(payload, row);
+  };
 
   // Map warning/error codes to the most relevant CSV columns for highlighting in the preview
   const getHighlightKeysForCode = (code?: string): string[] => {
@@ -787,20 +802,20 @@ export default function EditDeckForm({ deckId }: Props) {
               {/* Critical parsing errors (red) grouped and collapsible */}
               {pendingImport.errRows.length > 0 && (() => {
                 // Build entries of errors with optional [E-...] code extraction
-                const entries: Array<{ code: string; index: number; text: string }> = [];
+                const entries: Array<{ code: string; index: number; text: string; row?: CsvRow }> = [];
                 pendingImport.errRows.forEach(er => {
                   (er.errors || []).forEach(msg => {
                     const m = msg.match(/\[(E-[A-Z0-9-]+)]/);
                     const code = m?.[1] || 'PARSE-ERROR';
-                    entries.push({ code, index: er.index, text: msg });
+                    entries.push({ code, index: er.index, text: msg, row: er.row });
                   });
                 });
                 if (entries.length === 0) return null;
                 // Group by code
-                const groups = new Map<string, Array<{ index: number; text: string }>>();
+                const groups = new Map<string, Array<{ index: number; text: string; row?: CsvRow }>>();
                 entries.forEach(e => {
                   const arr = groups.get(e.code) || [];
-                  arr.push({ index: e.index, text: e.text });
+                  arr.push({ index: e.index, text: e.text, row: e.row });
                   groups.set(e.code, arr);
                 });
                 const codes = Array.from(groups.keys()).sort();
@@ -875,19 +890,33 @@ export default function EditDeckForm({ deckId }: Props) {
                                 {list.slice(0, 200).map((it, i) => (
                                   <li key={i} className="flex items-start justify-between gap-3">
                                     <span>Row {it.index}: {it.text.replace(/\[(E-[A-Z0-9-]+)]\s*/, '')}</span>
-                                    <button
-                                      type="button"
-                                      className="text-xs text-red-800 underline"
-                                      onClick={(e) => {
-                                        e.preventDefault();
-                                        const rows = (groups.get(code) || []).map(x => x.index);
-                                        const pos = rows.findIndex(r => r === it.index);
-                                        setPreviewRow(it.index);
-                                        setPreviewContext({ code, rows, idx: pos < 0 ? 0 : pos });
-                                      }}
-                                    >
-                                      View row
-                                    </button>
+                                    <div className="flex items-center gap-3">
+                                      <button
+                                        type="button"
+                                        className="text-xs text-red-800 underline"
+                                        onClick={(e) => {
+                                          e.preventDefault();
+                                          const rows = (groups.get(code) || []).map(x => x.index);
+                                          const pos = rows.findIndex(r => r === it.index);
+                                          setPreviewRow(it.index);
+                                          setPreviewContext({ code, rows, idx: pos < 0 ? 0 : pos });
+                                        }}
+                                      >
+                                        View row
+                                      </button>
+                                      {it.row && (
+                                        <button
+                                          type="button"
+                                          className="text-xs text-red-800 underline"
+                                          onClick={(e) => {
+                                            e.preventDefault();
+                                            openAddCardFromCsvRow(it.row!);
+                                          }}
+                                        >
+                                          Edit card
+                                        </button>
+                                      )}
+                                    </div>
                                   </li>
                                 ))}
                               </ul>
@@ -902,19 +931,19 @@ export default function EditDeckForm({ deckId }: Props) {
               {/* Grouped warnings by code with dropdowns */}
               {pendingImport.rowWarnings && pendingImport.rowWarnings.length > 0 && (() => {
                 // Flatten all row warnings and extract codes in square brackets
-                const entries: Array<{ code: string; index: number; text: string }> = [];
+                const entries: Array<{ code: string; index: number; text: string; row?: CsvRow }> = [];
                 pendingImport.rowWarnings.forEach(rw => {
                   (rw.warnings || []).forEach(w => {
                     const m = w.match(/\[(W-[A-Z0-9-]+)]/);
                     const code = m?.[1] || 'OTHER';
                     const key = `${code}::${rw.index}`;
                     if (!dismissedWarnings.has(key)) {
-                      entries.push({ code, index: rw.index, text: w });
+                      entries.push({ code, index: rw.index, text: w, row: rw.row });
                     }
                   });
                 });
                 // Group by code
-                const groups = new Map<string, Array<{ index: number; text: string }>>();
+                const groups = new Map<string, Array<{ index: number; text: string; row?: CsvRow }>>();
                 entries.forEach(e => {
                   const arr = groups.get(e.code) || [];
                   arr.push({ index: e.index, text: e.text });
@@ -1012,6 +1041,23 @@ export default function EditDeckForm({ deckId }: Props) {
                                       >
                                         View row
                                       </button>
+                                      {it.row && (
+                                        <button
+                                          type="button"
+                                          className="text-xs text-amber-800 underline"
+                                          onClick={(e) => {
+                                            e.preventDefault();
+                                            const ok = pendingImport.okRows.find((r) => r.index === it.index);
+                                            if (ok) {
+                                              openAddCardFromPayload(ok.payload, it.row!);
+                                            } else {
+                                              openAddCardFromCsvRow(it.row!);
+                                            }
+                                          }}
+                                        >
+                                          Edit card
+                                        </button>
+                                      )}
                                       <button
                                         type="button"
                                         className="text-xs text-amber-800 underline"
@@ -1293,8 +1339,15 @@ export default function EditDeckForm({ deckId }: Props) {
       {/* Add Card Modal */}
       <AddCardModal
         open={showAddCard}
-        onClose={() => setShowAddCard(false)}
-    onSubmit={async (payload) => {
+        mode="create"
+        initialCard={addCardInitial ?? undefined}
+        sourceRow={addCardSourceRow ?? undefined}
+        onClose={() => {
+          setShowAddCard(false);
+          setAddCardInitial(null);
+          setAddCardSourceRow(null);
+        }}
+        onSubmit={async (payload) => {
           const created = await cardsRepo.create({
             deckId: Number(deckId),
             type: payload.type,

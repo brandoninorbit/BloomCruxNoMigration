@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Modal from "@/components/ui/Modal";
 import type { DeckBloomLevel, DeckCard, DeckStandardMCQ, DeckShortAnswer, DeckMCQMeta, DeckShortMeta, DeckFillMeta, DeckFillBlank, DeckSortingMeta, DeckSequencingMeta, DeckCompareContrastMeta, DeckTwoTierMCQMeta, DeckCERMeta, DeckCERMode, DeckFillMode, DeckFillMetaV3, DeckFillBlankSpec } from "@/types/deck-cards";
+import type { CsvRow } from "@/lib/csvImport";
 import { CARD_TYPES_BY_BLOOM, BLOOM_LEVELS, defaultBloomFor, type CardType } from "@/types/card-catalog";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -18,11 +19,12 @@ type Props = {
   open: boolean;
   mode?: "create" | "edit";
   initialCard?: DeckCard;
+  sourceRow?: CsvRow;
   onClose: () => void;
   onSubmit: (input: SubmitPayload) => Promise<void> | void;
 };
 
-export default function AddCardModal({ open, mode = "create", initialCard, onClose, onSubmit }: Props) {
+export default function AddCardModal({ open, mode = "create", initialCard, sourceRow, onClose, onSubmit }: Props) {
   const isEdit = mode === "edit";
   type AllowedType = "Standard MCQ" | "Short Answer" | "Fill in the Blank" | "Sorting" | "Sequencing" | "Compare/Contrast" | "Two-Tier MCQ" | "CER";
   const [type, setType] = useState<AllowedType>("Standard MCQ");
@@ -74,10 +76,14 @@ export default function AddCardModal({ open, mode = "create", initialCard, onClo
   const [cerReasoningCorrect, setCerReasoningCorrect] = useState<number>(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
+  const [showSourceModal, setShowSourceModal] = useState(false);
 
   useEffect(() => {
-    if (!open) return;
-    if (isEdit && initialCard) {
+    if (!open) {
+      setShowSourceModal(false);
+      return;
+    }
+    if (initialCard) {
       setQuestion(initialCard.question ?? "");
       setType(initialCard.type as AllowedType);
       setBloomLevel(initialCard.bloomLevel);
@@ -169,7 +175,7 @@ export default function AddCardModal({ open, mode = "create", initialCard, onClo
           setCerReasoningCorrect((meta.reasoning as { correct: number }).correct ?? 0);
         }
       }
-    } else if (open && !isEdit) {
+    } else if (open && !initialCard) {
       // reset for creation
       setQuestion("");
       setType("Standard MCQ");
@@ -511,7 +517,8 @@ export default function AddCardModal({ open, mode = "create", initialCard, onClo
   };
 
   return (
-    <Modal open={open} onClose={onClose}>
+    <>
+      <Modal open={open} onClose={onClose}>
       <div className="w-full max-w-2xl mx-auto">
         <div className="bg-white w-full rounded-xl shadow-sm m-4 flex flex-col overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
@@ -1393,6 +1400,16 @@ export default function AddCardModal({ open, mode = "create", initialCard, onClo
             />
           </div>
 
+          {sourceRow && (
+            <button
+              type="button"
+              className="text-sm text-blue-600 underline mt-2"
+              onClick={() => setShowSourceModal(true)}
+            >
+              View source material for this card
+            </button>
+          )}
+
           {error && <p className="text-red-600 text-sm">{error}</p>}
           </div>
           <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-end gap-3">
@@ -1414,8 +1431,39 @@ export default function AddCardModal({ open, mode = "create", initialCard, onClo
         </div>
       </div>
     </Modal>
-  );
-}
+    {showSourceModal && sourceRow && (
+      <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+        <div className="bg-white w-full max-w-2xl rounded-xl shadow-lg overflow-hidden">
+          <div className="px-6 py-4 border-b flex items-center justify-between">
+            <h3 className="text-base font-semibold text-gray-900">CSV Source Material</h3>
+            <button className="text-gray-500 hover:text-gray-800" onClick={() => setShowSourceModal(false)} aria-label="Close">
+              <span className="material-icons">close</span>
+            </button>
+          </div>
+          <div className="px-6 py-4 text-sm text-gray-800 max-h-[65vh] overflow-auto space-y-2">
+            {Object.entries(sourceRow).length === 0 ? (
+              <p className="text-gray-600">No row data available.</p>
+            ) : (
+              <div className="grid grid-cols-1 gap-2">
+                {Object.entries(sourceRow).map(([key, value]) => (
+                  <div key={key} className="rounded border border-gray-200 bg-gray-50 p-3">
+                    <div className="text-xs uppercase tracking-wide text-gray-500">{key}</div>
+                    <div className="mt-1 text-sm text-gray-900 whitespace-pre-wrap">{value}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="px-6 py-4 border-t flex justify-end">
+            <button className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50" onClick={() => setShowSourceModal(false)}>
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>);
+  }
 
 // Inline icons
 function XIcon({ className }: { className?: string }) {

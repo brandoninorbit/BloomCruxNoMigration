@@ -413,8 +413,26 @@ function mapTwoTier(row: CsvRow, idx: number, bloom: Bloom): MapResult {
   if (!RAnswer) errors.push(`Row ${idx}: [E-2T-MISSING-RANSWER] Missing RAnswer`);
   if (errors.length) return { errors, warnings: [] };
   const ropts = { A: stripLabel(RA!), B: stripLabel(RB!), C: stripLabel(RC!), D: stripLabel(RD!) };
-  const rKey = letterToKey(RAnswer!);
-  if (!ropts[rKey]) errors.push(`Row ${idx}: [E-2T-RANSWER-EMPTY] RAnswer points to empty RA/RB/RC/RD`);
+  // RAnswer may be provided as a letter (A-D) or as the actual option text inside ((..)).
+  let rKey = undefined as 'A' | 'B' | 'C' | 'D' | undefined;
+  const tryLetter = (s?: string) => (s ? (s.trim().toUpperCase().match(/^[A-D]$/) ? (s.trim().toUpperCase() as 'A' | 'B' | 'C' | 'D') : undefined) : undefined);
+  const letter = tryLetter(RAnswer);
+  if (letter) {
+    rKey = letter;
+  } else if (RAnswer) {
+    // Attempt to match the supplied RAnswer text against RA/RB/RC/RD values (label-stripped), case-insensitive
+    const target = RAnswer.trim().toLowerCase();
+    for (const k of ['A', 'B', 'C', 'D'] as const) {
+      const v = ropts[k] || '';
+      if (v.trim().toLowerCase() === target) {
+        rKey = k;
+        break;
+      }
+    }
+  }
+  // Fallback: if no match found, try mapping single-letter content leniently
+  if (!rKey) rKey = letterToKey(RAnswer!) as 'A' | 'B' | 'C' | 'D' | undefined;
+  if (!rKey || !ropts[rKey]) errors.push(`Row ${idx}: [E-2T-RANSWER-EMPTY] RAnswer points to empty RA/RB/RC/RD`);
   if (errors.length) return { errors, warnings: [] };
   // Non-blocking warnings
   if (!/^[A-D]$/i.test(RAnswer || '')) warnings.push(`Row ${idx}: [W-2T-RANSWER-NOT-LETTER] Tier-2 answer should be one of A|B|C|D`);
@@ -432,15 +450,16 @@ function mapTwoTier(row: CsvRow, idx: number, bloom: Bloom): MapResult {
       warnings.push(`Row ${idx}: [W-2T-JUSTIF-DUP] Two or more Tier-2 options are textually identical`);
     }
   }
+  const finalRKey = rKey!;
   return {
     errors: [],
     warnings,
     payload: {
       type: 'twoTier',
-  question: t1.payload!.question,
+      question: t1.payload!.question,
       bloom,
       explanation: explanationFrom(row),
-  meta: { tier1: t1MetaLocal, tier2: { question: rq!.trim(), options: ropts, answer: rKey } },
+      meta: { tier1: t1MetaLocal, tier2: { question: rq!.trim(), options: ropts, answer: finalRKey } },
     },
   };
 }
@@ -859,15 +878,15 @@ export function rowToPayload(row: CsvRow): ImportPayload {
 
 export function parseCsv(csvText: string): {
   okRows: { index: number; payload: ImportPayload; warnings?: string[]; flagged?: boolean }[];
-  badRows: { index: number; errors: string[] }[];
+  badRows: { index: number; errors: string[]; row: CsvRow }[];
   warnings: string[];
-  rowWarnings: { index: number; warnings: string[] }[];
+  rowWarnings: { index: number; warnings: string[]; row: CsvRow }[];
 } {
   const result = Papa.parse<CsvRow>(csvText, { header: true, skipEmptyLines: true, transformHeader: (h: string) => h.trim() });
   const warnings: string[] = [];
   const okRows: { index: number; payload: ImportPayload; warnings?: string[]; flagged?: boolean }[] = [];
-  const badRows: { index: number; errors: string[] }[] = [];
-  const rowWarnings: { index: number; warnings: string[] }[] = [];
+  const badRows: { index: number; errors: string[]; row: CsvRow }[] = [];
+  const rowWarnings: { index: number; warnings: string[]; row: CsvRow }[] = [];
   if (result.errors.length > 0) {
     // Collect the first parse error as a bad row at header level
     warnings.push(`CSV parser reported ${result.errors.length} issue(s); first: ${result.errors[0].message}`);
@@ -889,7 +908,7 @@ export function parseCsv(csvText: string): {
       const strict = parsePayloadStrict(payloadCell);
       if (strict.errors.length) {
         // Treat as critical import errors for this row
-        badRows.push({ index, errors: strict.errors.map((e) => `Row ${index}: ${e}`) });
+        badRows.push({ index, errors: strict.errors.map((e) => `Row ${index}: ${e}`), row });
         return;
       }
       // Use only payload fields (do not merge with other columns)
@@ -904,13 +923,13 @@ export function parseCsv(csvText: string): {
       payloadWarnings = applied.warnings || [];
       if (payloadWarnings.length) {
         warnings.push(...payloadWarnings.map((w) => `Row ${index}: ${w}`));
-        rowWarnings.push({ index, warnings: payloadWarnings.map((w) => `Row ${index}: ${w}`) });
+        rowWarnings.push({ index, warnings: payloadWarnings.map((w) => `Row ${index}: ${w}`), row });
       }
     }
 
     const t = mapCardType(pick(processRow, 'CardType'));
     if (!t) {
-      badRows.push({ index, errors: [`Row ${index}: [E-GENERAL-CARDTYPE] Missing or unsupported CardType`] });
+      badRows.push({ index, errors: [`Row ${index}: [E-GENERAL-CARDTYPE] Missing or unsupported CardType`], row });
       return;
     }
     const rawBloom = pick(processRow, 'BloomLevel');
@@ -949,18 +968,18 @@ export function parseCsv(csvText: string): {
     // Collect payload warnings first
     if (payloadWarnings.length) {
       warnings.push(...payloadWarnings.map(w => `Row ${index}: ${w}`));
-      rowWarnings.push({ index, warnings: payloadWarnings.map(w => `Row ${index}: ${w}`) });
+      rowWarnings.push({ index, warnings: payloadWarnings.map(w => `Row ${index}: ${w}`), row });
     }
     
     if (res.warnings.length) {
       warnings.push(...res.warnings);
-      rowWarnings.push({ index, warnings: res.warnings });
+      rowWarnings.push({ index, warnings: res.warnings, row });
     }
     // Bloom invalid value provided
     if (rawBloom && !bloomNorm) {
       const msg = `Row ${index}: [W-BLOOM-INVALID] Unrecognized BloomLevel "${rawBloom}" — defaulting to ${bloom}`;
       warnings.push(msg);
-      rowWarnings.push({ index, warnings: [msg] });
+      rowWarnings.push({ index, warnings: [msg], row });
     }
     // Duplicate question detection (normalize by trimming and lowering)
     const q = questionFrom(processRow).trim().toLowerCase();
@@ -969,7 +988,7 @@ export function parseCsv(csvText: string): {
       if (prev !== undefined) {
         const msg = `Row ${index}: [W-DUP-QUESTION] Duplicate question appears (also at row ${prev})`;
         warnings.push(msg);
-        rowWarnings.push({ index, warnings: [msg] });
+        rowWarnings.push({ index, warnings: [msg], row });
       } else {
         seenQuestions.set(q, index);
       }
@@ -979,13 +998,13 @@ export function parseCsv(csvText: string): {
     if (totalLen > 5000) {
       const msg = `Row ${index}: [W-ROW-LARGE] Row content is very large (>5000 chars)`;
       warnings.push(msg);
-      rowWarnings.push({ index, warnings: [msg] });
+      rowWarnings.push({ index, warnings: [msg], row });
     }
     // Smart quotes across any cell
     if (Object.values(processRow).some((v) => hasSmartQuotesOrNbsp(String(v ?? '')))) {
       const msg = `Row ${index}: [W-ENCODING-SMART-QUOTES] Smart quotes or non-breaking spaces detected`;
       warnings.push(msg);
-      rowWarnings.push({ index, warnings: [msg] });
+      rowWarnings.push({ index, warnings: [msg], row });
     }
     if (res.payload) {
       // Determine if this row should be gently flagged (currently only for Sorting with one-letter categories)
@@ -999,7 +1018,7 @@ export function parseCsv(csvText: string): {
       }
       okRows.push({ index, payload: res.payload, warnings: res.warnings.length ? res.warnings : undefined, flagged: flagged || undefined });
     }
-    else badRows.push({ index, errors: res.errors });
+    else badRows.push({ index, errors: res.errors, row });
   });
   return { okRows, badRows, warnings, rowWarnings };
 }

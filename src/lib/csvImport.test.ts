@@ -573,3 +573,160 @@ describe("Payload mode - Additional integration tests", () => {
   });
 });
 
+// ---------- Source Row Preservation Tests (for "Edit Card" feature) ----------
+describe("CSV importer – badRows and rowWarnings preserve source row data", () => {
+  test("badRows includes original CsvRow for missing required fields", () => {
+    const csv = [
+      'CardType,Question,A,B,C,D,Answer',
+      'Standard MCQ,"What is X?",One,Two,Three,Four'  // Missing Answer
+    ].join("\n");
+    const { badRows } = parseCsv(csv);
+    expect(badRows.length).toBe(1);
+    const bad = badRows[0];
+    expect(bad?.index).toBe(2);
+    expect(bad?.errors.length).toBeGreaterThan(0);
+    // Verify the source row is preserved
+    expect(bad?.row).toBeDefined();
+    expect(bad?.row?.Question).toBe("What is X?");
+    expect(bad?.row?.A).toBe("One");
+    expect(bad?.row?.B).toBe("Two");
+    // User can now call rowToPayload with this row to salvage it
+    const salvaged = rowToPayload(bad!.row);
+    expect(salvaged.question).toBe("What is X?");
+  });
+
+  test("badRows preserves row data for cardtype parsing errors", () => {
+    const csv = [
+      'CardType,Question,A,B,C,D,Answer',
+      'UnknownCardType,"What?",A,B,C,D,A'
+    ].join("\n");
+    const { badRows } = parseCsv(csv);
+    expect(badRows.length).toBe(1);
+    const bad = badRows[0];
+    expect(bad?.row?.CardType).toBe("UnknownCardType");
+    expect(bad?.row?.Question).toBe("What?");
+    expect(bad?.errors[0]).toMatch(/E-GENERAL-CARDTYPE/);
+  });
+
+  test("rowWarnings includes original CsvRow for non-blocking issues", () => {
+    const csv = [
+      'CardType,Question,A,B,C,D,Answer',
+      'Standard MCQ,"Pick letters",One,Two,Three,Four,AB'  // Multi-letter answer
+    ].join("\n");
+    const { okRows, rowWarnings } = parseCsv(csv);
+    expect(okRows.length).toBe(1);  // Still succeeds
+    expect(rowWarnings.length).toBeGreaterThan(0);
+    const rw = rowWarnings[0];
+    expect(rw?.index).toBe(2);
+    expect(rw?.warnings.some(w => w.includes('W-MCQ-MULTI-ANS'))).toBe(true);
+    // Verify source row is preserved
+    expect(rw?.row).toBeDefined();
+    expect(rw?.row?.Question).toBe("Pick letters");
+    expect(rw?.row?.Answer).toBe("AB");
+  });
+
+  test("rowWarnings preserves row for placeholder mismatch warnings", () => {
+    const csv = [
+      'CardType,Prompt,Answer1,Answer2',
+      'Fill in the Blank,"Text with [[1]] and [[2]] and [[3]]",A,B'
+    ].join("\n");
+    const { okRows, rowWarnings } = parseCsv(csv);
+    expect(okRows.length).toBe(1);
+    const rw = rowWarnings.find(w => w.index === 2);
+    expect(rw?.warnings.some(w => w.includes('W-FILL-PLACEHOLDER-MISMATCH'))).toBe(true);
+    expect(rw?.row?.Prompt).toMatch(/\[\[3\]\]/);
+    expect(rw?.row?.Answer1).toBe("A");
+  });
+
+  test("rowWarnings preserves row for duplicate question warnings", () => {
+    const csv = [
+      'CardType,Question,A,B,C,D,Answer',
+      'Standard MCQ,"Duplicate?",A,B,C,D,A',
+      'Standard MCQ,"Duplicate?",X,Y,Z,W,B'  // Same question
+    ].join("\n");
+    const { okRows, rowWarnings } = parseCsv(csv);
+    expect(okRows.length).toBe(2);  // Both succeed
+    const dupWarnings = rowWarnings.filter(w => w.warnings.some(wm => wm.includes('W-DUP-QUESTION')));
+    expect(dupWarnings.length).toBeGreaterThan(0);
+    const secondRowWarning = dupWarnings.find(w => w.index === 3);
+    expect(secondRowWarning?.row?.A).toBe("X");
+    expect(secondRowWarning?.row?.D).toBe("W");
+  });
+
+  test("badRows preserves row for Payload mode parsing errors", () => {
+    const csv = [
+      'CardType,Payload',
+      'Standard MCQ,"CardType((MCQ)) Question((What?)) A((A)) B((B)) C((C)) UnknownField((value))"'
+    ].join("\n");
+    const { badRows } = parseCsv(csv);
+    expect(badRows.length).toBe(1);
+    const bad = badRows[0];
+    expect(bad?.row?.Payload).toMatch(/UnknownField/);
+    expect(bad?.errors[0]).toMatch(/E-PAYLOAD-UNKNOWN-KEY/);
+  });
+
+  test("Source row can be passed to rowToPayload for manual editing", () => {
+    // Simulate a failed MCQ row due to missing column
+    const failedRow = {
+      CardType: "Standard MCQ",
+      Question: "Which element?",
+      A: "Oxygen",
+      B: "Nitrogen",
+      C: "Carbon",
+      D: "Hydrogen"
+      // Missing Answer
+    };
+    
+    // Parse it to get badRows
+    const csv = 'CardType,Question,A,B,C,D,Answer\nStandard MCQ,"Which element?",Oxygen,Nitrogen,Carbon,Hydrogen';
+    const { badRows } = parseCsv(csv);
+    expect(badRows.length).toBe(1);
+    const bad = badRows[0];
+    
+    // Now manually fix and convert back using rowToPayload
+    const fixedRow = { ...bad!.row, Answer: "A" };
+    const payload = rowToPayload(fixedRow);
+    expect(payload.type).toBe("mcq");
+    expect(payload.question).toBe("Which element?");
+    expect((payload as any).meta.answer).toBe("A");
+  });
+
+  test("Multiple warnings can accumulate in rowWarnings preserving row", () => {
+    const csv = [
+      'CardType,Categories,Items,Question',
+      'Sorting,"B|r|o|a|d","Item1:B|Item1:r","Sort term",Analyze'  // One-letter categories + invalid category + invalid bloom
+    ].join("\n");
+    const { okRows, rowWarnings } = parseCsv(csv);
+    // Should still succeed (warnings are non-blocking)
+    expect(okRows.length).toBe(1);
+    const warnings = rowWarnings.find(w => w.index === 2);
+    expect(warnings?.warnings.length).toBeGreaterThan(0);
+    // Source row should still be there with all original values
+    expect(warnings?.row?.Categories).toBe("B|r|o|a|d");
+    expect(warnings?.row?.Items).toBe("Item1:B|Item1:r");
+  });
+
+  test("badRows and rowWarnings have independent row references", () => {
+    // Ensure bad and warning rows don't share references
+    const csv = [
+      'CardType,Question,A,B,C,D,Answer,Custom',
+      'Standard MCQ,"Q1",A,B,C,D,A,Val1',
+      'Standard MCQ,"Q2",X,Y,Z,W,AB,Val2'  // Multi-letter answer (warning) in row 3
+    ].join("\n");
+    const { okRows, badRows, rowWarnings } = parseCsv(csv);
+    expect(badRows.length).toBe(0);
+    expect(okRows.length).toBe(2);
+    
+    const warns = rowWarnings.filter(w => w.warnings.some(wr => wr.includes('W-MCQ-MULTI-ANS')));
+    expect(warns.length).toBeGreaterThan(0);
+    const warn = warns[0];
+    
+    // Modify the row reference and verify independence
+    const originalCustomValue = warn?.row?.Custom;
+    expect(originalCustomValue).toBe("Val2");
+    
+    // Rows should not cross-reference
+    expect(okRows[0]?.payload.question).not.toBe(warn?.row?.Question);
+  });
+});
+
