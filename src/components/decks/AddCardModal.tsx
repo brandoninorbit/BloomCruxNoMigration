@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Modal from "@/components/ui/Modal";
 import type { DeckBloomLevel, DeckCard, DeckStandardMCQ, DeckShortAnswer, DeckMCQMeta, DeckShortMeta, DeckFillMeta, DeckFillBlank, DeckSortingMeta, DeckSequencingMeta, DeckCompareContrastMeta, DeckTwoTierMCQMeta, DeckCERMeta, DeckCERMode, DeckFillMode, DeckFillMetaV3, DeckFillBlankSpec } from "@/types/deck-cards";
 import type { CsvRow } from "@/lib/csvImport";
+import { pick, mapCardType, normalizeBloom, DEFAULT_BLOOM } from "@/lib/csvImport";
 import { CARD_TYPES_BY_BLOOM, BLOOM_LEVELS, defaultBloomFor, type CardType } from "@/types/card-catalog";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -83,7 +84,95 @@ export default function AddCardModal({ open, mode = "create", initialCard, sourc
       setShowSourceModal(false);
       return;
     }
-    if (initialCard) {
+    if (sourceRow) {
+      // Populate from sourceRow for CSV import edits
+      const rawType = pick(sourceRow, 'CardType');
+      const inferredType = mapCardType(rawType) || 'mcq';
+      const typeMap: Record<string, AllowedType> = {
+        mcq: "Standard MCQ",
+        short: "Short Answer",
+        fill: "Fill in the Blank",
+        sorting: "Sorting",
+        sequencing: "Sequencing",
+        compare: "Compare/Contrast",
+        twoTier: "Two-Tier MCQ",
+        cer: "CER",
+      };
+      const cardType = typeMap[inferredType] || "Standard MCQ";
+      setType(cardType);
+      const rawBloom = pick(sourceRow, 'BloomLevel');
+      const bloom = normalizeBloom(rawBloom) || DEFAULT_BLOOM[inferredType];
+      setBloomLevel(bloom);
+      setQuestion(pick(sourceRow, 'Question', 'Prompt', 'Title', 'Scenario') || '');
+      setExplanation(pick(sourceRow, 'Explanation') || '');
+      if (cardType === "Standard MCQ") {
+        setA(pick(sourceRow, 'A', 'OptionA') || '');
+        setB(pick(sourceRow, 'B', 'OptionB') || '');
+        setC(pick(sourceRow, 'C', 'OptionC') || '');
+        setD(pick(sourceRow, 'D', 'OptionD') || '');
+        const ans = pick(sourceRow, 'Answer');
+        setAnswer(ans && ['A','B','C','D'].includes(ans.toUpperCase()) ? ans.toUpperCase() as 'A'|'B'|'C'|'D' : 'A');
+      } else if (cardType === "Short Answer") {
+        setShortSuggested(pick(sourceRow, 'SuggestedAnswer', 'Answer') || '');
+      } else if (cardType === "Fill in the Blank") {
+        // Populate first answer
+        setFillAnswer(pick(sourceRow, 'Answer1', 'Answer') || '');
+        setFillAnswers([pick(sourceRow, 'Answer1', 'Answer') || '']);
+        // TODO: populate more if needed
+      } else if (cardType === "Sorting") {
+        const cats = pick(sourceRow, 'Categories');
+        setCategories(cats ? cats.split('|').map((s: string) => s.trim()) : ["Category 1", "Category 2"]);
+        const itemsStr = pick(sourceRow, 'Items');
+        setItems(itemsStr ? itemsStr.split('|').map((s: string) => {
+          const idx = s.indexOf(':');
+          return idx === -1 ? { term: s.trim(), correctCategory: '' } : { term: s.slice(0, idx).trim(), correctCategory: s.slice(idx + 1).trim() };
+        }) : [{ term: "", correctCategory: "" }]);
+      } else if (cardType === "Sequencing") {
+        const stepsStr = pick(sourceRow, 'Steps', 'Items');
+        setSteps(stepsStr ? stepsStr.split('|').map((s: string) => s.trim()) : ["", ""]);
+      } else if (cardType === "Compare/Contrast") {
+        setCcItemA(pick(sourceRow, 'ItemA', 'A') || '');
+        setCcItemB(pick(sourceRow, 'ItemB', 'B') || '');
+        setCcPrompt(pick(sourceRow, 'Prompt') || '');
+        const pointsStr = pick(sourceRow, 'Points');
+        setCcPoints(pointsStr ? pointsStr.split('|').map((s: string) => {
+          const parts = s.split('::').map((p: string) => p.trim());
+          return parts.length === 3 ? { feature: parts[0], a: parts[1], b: parts[2] } : { feature: '', a: '', b: '' };
+        }) : [{ feature: "", a: "", b: "" }]);
+      } else if (cardType === "Two-Tier MCQ") {
+        // Tier 1
+        setA(pick(sourceRow, 'A') || '');
+        setB(pick(sourceRow, 'B') || '');
+        setC(pick(sourceRow, 'C') || '');
+        setD(pick(sourceRow, 'D') || '');
+        const ans = pick(sourceRow, 'Answer');
+        setAnswer(ans && ['A','B','C','D'].includes(ans.toUpperCase()) ? ans.toUpperCase() as 'A'|'B'|'C'|'D' : 'A');
+        // Tier 2
+        setTier2Question(pick(sourceRow, 'RQuestion', 'ReasoningQuestion', 'Tier2Question') || '');
+        setRA(pick(sourceRow, 'RA') || '');
+        setRB(pick(sourceRow, 'RB') || '');
+        setRC(pick(sourceRow, 'RC') || '');
+        setRD(pick(sourceRow, 'RD') || '');
+        const rans = pick(sourceRow, 'RAnswer');
+        setRAnswer(rans && ['A','B','C','D'].includes(rans.toUpperCase()) ? rans.toUpperCase() as 'A'|'B'|'C'|'D' : 'A');
+      } else if (cardType === "CER") {
+        const modeRaw = pick(sourceRow, 'Mode');
+        setCerMode(modeRaw && modeRaw.toLowerCase().includes('multiple') ? 'Multiple Choice' : 'Free Text');
+        setCerGuidance(pick(sourceRow, 'Guidance', 'GuidanceQuestion') || '');
+        if (modeRaw && modeRaw.toLowerCase().includes('multiple')) {
+          setCerClaimOpts((pick(sourceRow, 'ClaimOptions') || '').split('|').map((s: string) => s.trim()) || ['', '']);
+          setCerEvidenceOpts((pick(sourceRow, 'EvidenceOptions') || '').split('|').map((s: string) => s.trim()) || ['', '']);
+          setCerReasoningOpts((pick(sourceRow, 'ReasoningOptions') || '').split('|').map((s: string) => s.trim()) || ['', '']);
+          setCerClaimCorrect(parseInt(pick(sourceRow, 'ClaimCorrect') || '0') || 0);
+          setCerEvidenceCorrect(parseInt(pick(sourceRow, 'EvidenceCorrect') || '0') || 0);
+          setCerReasoningCorrect(parseInt(pick(sourceRow, 'ReasoningCorrect') || '0') || 0);
+        } else {
+          setCerClaim(pick(sourceRow, 'Claim') || '');
+          setCerEvidence(pick(sourceRow, 'Evidence') || '');
+          setCerReasoning(pick(sourceRow, 'Reasoning') || '');
+        }
+      }
+    } else if (initialCard) {
       setQuestion(initialCard.question ?? "");
       setType(initialCard.type as AllowedType);
       setBloomLevel(initialCard.bloomLevel);
@@ -210,7 +299,7 @@ export default function AddCardModal({ open, mode = "create", initialCard, sourc
   setCerClaimOpts(["", ""]); setCerEvidenceOpts(["", ""]); setCerReasoningOpts(["", ""]);
   setCerClaimCorrect(0); setCerEvidenceCorrect(0); setCerReasoningCorrect(0);
     }
-  }, [open, isEdit, initialCard]);
+  }, [open, isEdit, initialCard, sourceRow]);
 
   if (!open) return null;
 
@@ -527,6 +616,11 @@ export default function AddCardModal({ open, mode = "create", initialCard, sourc
               <XIcon className="h-5 w-5" />
             </button>
           </div>
+          {sourceRow && (
+            <div className="px-6 py-2 bg-amber-50 border-b border-amber-200">
+              <p className="text-sm text-amber-800">Content may not have loaded correctly here, double check everything.</p>
+            </div>
+          )}
           <div className="p-6 space-y-5 overflow-y-auto">
           {/* Global selectors: always visible so users can switch between any card types */}
           {/* Card Type */}

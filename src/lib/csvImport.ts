@@ -1092,3 +1092,7 @@ export function importPayloadToNewDeckCard(payload: ImportPayload, deckId: numbe
     }
   }
 }
+
+// Export utility functions for use in components
+export { pick, mapCardType, normalizeBloom };
+export { DEFAULT_BLOOM };
