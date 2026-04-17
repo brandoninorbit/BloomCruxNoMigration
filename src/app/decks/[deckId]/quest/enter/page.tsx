@@ -98,7 +98,9 @@ export default function QuestEnterPage() {
           const avgFromRaw = prevRaw && (prevRaw.accuracyCount ?? 0) > 0
             ? Math.round(((prevRaw.accuracySum ?? 0) / Math.max(1, prevRaw.accuracyCount ?? 0)) * 100)
             : 0;
-          const prevCleared = !!prevRaw?.cleared || !!prevRaw?.missionUnlocked || prevBuilt.missionsPassed > 0;
+          // Unlock only if: mastered OR all missions passed (missionsPassed >= totalMissions) OR fallback average is high
+          const allMissionsPassed = prevBuilt.missionsPassed >= prevBuilt.totalMissions && prevBuilt.totalMissions > 0;
+          const prevCleared = !!prevRaw?.cleared || !!prevRaw?.missionUnlocked || allMissionsPassed;
           const fallbackUnlock = !prevCleared && prevHasMission && avgFromRaw >= passThreshold;
           why.push({ level: builtLevels[i]!.level, prevMastered, prevCleared, prevAvg: avgFromRaw, prevHasMission });
           builtLevels[i]!.unlocked = prevMastered || prevCleared || fallbackUnlock;
@@ -378,7 +380,7 @@ export default function QuestEnterPage() {
                             <span className="text-slate-500"> • {isDone ? "Completed" : isNext ? "Available" : "Locked"}</span>
                           </div>
                           <a
-                            href={`/decks/${id}/quest?level=${encodeURIComponent(li.level)}`}
+                            href={`/decks/${id}/quest?level=${encodeURIComponent(li.level)}&missionIndex=${idx}`}
                             className={`text-sm font-medium px-3 py-1.5 rounded-[20px] ${actionable ? "bg-blue-600 text-white hover:bg-blue-700" : "bg-slate-200 text-slate-600 cursor-not-allowed"}`}
                             aria-disabled={!actionable}
                             onClick={(e) => { if (!actionable) e.preventDefault(); }}

@@ -99,8 +99,21 @@ export default function QuestClient({ deckId }: { deckId: number }) {
       
       // Try resume existing mission from server (unless restarting)
       if (!isRestart) {
-        // Mission gating: index is number of PASSED missions, not just completed attempts
-        const mi = Math.max(0, (progress?.[level]?.missionsPassed ?? progress?.[level]?.missionsCompleted ?? 0));
+        // Mission gating: check if specific mission index was requested via URL parameter
+        let mi = 0;
+        const missionIndexParam = sp?.get("missionIndex") ?? null;
+        if (missionIndexParam !== null) {
+          const parsed = parseInt(missionIndexParam, 10);
+          if (!isNaN(parsed) && parsed >= 0) {
+            mi = parsed;
+          } else {
+            // Default: use missionsPassed as the mission index
+            mi = Math.max(0, (progress?.[level]?.missionsPassed ?? progress?.[level]?.missionsCompleted ?? 0));
+          }
+        } else {
+          // Default: use missionsPassed as the mission index
+          mi = Math.max(0, (progress?.[level]?.missionsPassed ?? progress?.[level]?.missionsCompleted ?? 0));
+        }
         const existing = await fetchMission(deckId, level, mi).catch(() => null);
         if (!alive) return;
         if (existing && existing.cardOrder.length > 0) {
@@ -132,10 +145,23 @@ export default function QuestClient({ deckId }: { deckId: number }) {
       }
       
       // Compose a new mission (either no existing mission or restart requested)
-  const srs = await fetchSrs(deckId).catch(() => ({}));
-  srsRef.current = srs;
-  // For fresh composition, also use missionsPassed as the mission index
-  const mi = Math.max(0, (progress?.[level]?.missionsPassed ?? progress?.[level]?.missionsCompleted ?? 0));
+      const srs = await fetchSrs(deckId).catch(() => ({}));
+      srsRef.current = srs;
+      // Check if specific mission index was requested via URL parameter
+      let mi = 0;
+      const missionIndexParam = sp?.get("missionIndex") ?? null;
+      if (missionIndexParam !== null) {
+        const parsed = parseInt(missionIndexParam, 10);
+        if (!isNaN(parsed) && parsed >= 0) {
+          mi = parsed;
+        } else {
+          // Default: use missionsPassed as the mission index for next mission
+          mi = Math.max(0, (progress?.[level]?.missionsPassed ?? progress?.[level]?.missionsCompleted ?? 0));
+        }
+      } else {
+        // Default: use missionsPassed as the mission index for next mission
+        mi = Math.max(0, (progress?.[level]?.missionsPassed ?? progress?.[level]?.missionsCompleted ?? 0));
+      }
       const comp = composeMission({ deckId, level, allCards: cards, missionIndex: mi, srs });
       
       // Fallback: if this level has no cards for a mission, try another level that has cards
