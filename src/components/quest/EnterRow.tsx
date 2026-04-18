@@ -91,6 +91,33 @@ export default function EnterRow({ deckId, li }: { deckId: number; li: LevelInfo
             </>
           ) : (
             <div className="flex items-center gap-2 text-amber-600" aria-label="Locked">
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    const resp = await fetch(`/api/quest/${deckId}/recheck`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ level: li.level }),
+                    });
+                    const result = await resp.json();
+                    if (result.success) {
+                      alert(result.message);
+                      // Refresh the page to show updated status
+                      window.location.reload();
+                    } else {
+                      alert(result.message);
+                    }
+                  } catch (error) {
+                    console.error("Re-check failed:", error);
+                    alert("Failed to re-check mission state. Please try again.");
+                  }
+                }}
+                className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors"
+                title="Check if this level should be unlocked based on your mission performance"
+              >
+                Re-check
+              </button>
               <LockIcon className="text-amber-500" size={18} />
               <span className="text-sm font-medium">Locked</span>
             </div>
