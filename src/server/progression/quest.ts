@@ -361,11 +361,27 @@ export async function unlockNextBloomLevel(userId: string, deckId: number, level
       info('unlockNextBloomLevel.noop', { reason: 'already_cleared' }, { reqId, userId, deckId, bloom: levelJustPassed });
       return; // idempotent
     }
+    
+    // Check if all missions in this level have been completed with >= 60% accuracy
+    // Only unlock the next level if the LAST mission (mission "k") has been completed
+    const totalMissions = Number(cur.totalMissions ?? 0);
+    const missionsPassed = Number(cur.missionsPassed ?? 0);
+    
+    // Only unlock if all missions have been passed (missionsPassed >= totalMissions)
+    if (totalMissions === 0 || missionsPassed < totalMissions) {
+      info('unlockNextBloomLevel.noop', { 
+        reason: 'not_all_missions_completed',
+        totalMissions,
+        missionsPassed
+      }, { reqId, userId, deckId, bloom: levelJustPassed });
+      return; // Do not unlock yet - more missions to complete
+    }
+    
     per[levelJustPassed] = { ...cur, cleared: true };
     await sb
       .from("user_deck_quest_progress")
       .upsert({ user_id: userId, deck_id: deckId, per_bloom: per }, { onConflict: "user_id,deck_id" });
-    info('unlockNextBloomLevel.ok', { userId, deckId, level: levelJustPassed }, { reqId, userId, deckId, bloom: levelJustPassed });
+    info('unlockNextBloomLevel.ok', { userId, deckId, level: levelJustPassed, totalMissions, missionsPassed }, { reqId, userId, deckId, bloom: levelJustPassed });
   } catch (e) {
     const msg = e && typeof e === "object" && "message" in e ? (e as { message: string }).message : String(e);
     error('unlockNextBloomLevel.error', { error: msg }, { userId, deckId, bloom: levelJustPassed });
@@ -459,8 +475,14 @@ export async function updateQuestProgressOnComplete(params: {
   const denom = weights.reduce((a, b) => a + b, 0) || 1;
   const wavg = recent.reduce((s, r, i) => s + (r.percent * weights[i]), 0) / denom;
   cur.weightedAvg = Math.round(wavg);
-  // Single-pass clear flag
-  if ((params.scorePct ?? 0) >= 60) cur.cleared = true;
+  // Single-pass clear flag: only set cleared=true if ALL missions in the level have been passed
+  // This ensures users must complete the last mission ("k") to unlock the next Bloom level
+  const totalMissions = Number(cur.totalMissions ?? 0);
+  const missionsPassed = Number(cur.missionsPassed ?? 0);
+  const allMissionsPassed = totalMissions > 0 && missionsPassed >= totalMissions && (params.scorePct ?? 0) >= 60;
+  if (allMissionsPassed) {
+    cur.cleared = true;
+  }
   per[params.level] = cur;
   try {
     await sb
