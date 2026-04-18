@@ -30,9 +30,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dec
 
   const sb = supabaseAdmin();
 
-  // Find the latest quest attempt for the previous level, ordered by ended_at descending.
-  let attempts: Array<{ score_pct: any; mode?: any; ended_at: any }> | null = null;
-  let error = null;
+  type AttemptRow = { score_pct: number | string | null; mode?: string | null; ended_at: string | null };
+  let attempts: AttemptRow[] | null = null;
+  let error: unknown = null;
 
   const primary = await sb
     .from("user_deck_mission_attempts")
@@ -45,10 +45,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dec
     .order("score_pct", { ascending: false })
     .limit(1);
 
-  attempts = primary.data;
+  attempts = primary.data as AttemptRow[] | null;
   error = primary.error;
 
-  if (error && typeof error.message === 'string' && error.message.includes('mode')) {
+  const errorMessage = typeof error === 'object' && error !== null && 'message' in error ? (error as { message?: unknown }).message : undefined;
+  if (typeof errorMessage === 'string' && errorMessage.includes('mode')) {
     const fallback = await sb
       .from("user_deck_mission_attempts")
       .select("score_pct, ended_at")
@@ -58,7 +59,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dec
       .order("ended_at", { ascending: false })
       .order("score_pct", { ascending: false })
       .limit(1);
-    attempts = fallback.data;
+    attempts = fallback.data as AttemptRow[] | null;
     error = fallback.error;
   }
 
@@ -68,11 +69,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dec
   }
 
   const latestAttempt = attempts?.[0];
-  if (!latestAttempt || latestAttempt.score_pct < 60) {
+  const latestScore = latestAttempt ? Number(latestAttempt.score_pct ?? 0) : 0;
+  if (!latestAttempt || latestScore < 60) {
     return NextResponse.json({
       success: false,
       message: "Earlier missions do not demonstrate sufficient knowledge to advance, study and return later",
-      latestScore: latestAttempt?.score_pct ?? 0,
+      latestScore,
       attemptDate: latestAttempt?.ended_at ?? null
     });
   }
@@ -99,7 +101,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dec
   return NextResponse.json({
     success: true,
     message: `${prevLevel} level unlocked!`,
-    latestScore: latestAttempt.score_pct,
+    latestScore,
     attemptDate: latestAttempt.ended_at ?? null
   });
 }
