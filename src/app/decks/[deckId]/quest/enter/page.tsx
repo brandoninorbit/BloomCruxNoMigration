@@ -94,15 +94,17 @@ export default function QuestEnterPage() {
           const prevLvl = prevBuilt.level;
           const prevRaw = fetchedPer?.[prevLvl] as (BP & { missionUnlocked?: boolean }) | undefined;
           const prevMastered = !!prevRaw?.mastered;
-          const prevHasMission = (prevRaw?.missionsCompleted ?? prevRaw?.missionsPassed ?? 0) > 0 || prevBuilt.missionsPassed > 0;
-          const avgFromRaw = prevRaw && (prevRaw.accuracyCount ?? 0) > 0
+          const hasAttemptScore = typeof attemptScores[prevLvl] === 'number';
+          const prevHasMission = (prevRaw?.missionsCompleted ?? prevRaw?.missionsPassed ?? 0) > 0 || prevBuilt.missionsPassed > 0 || hasAttemptScore;
+          const rawAvg = prevRaw && (prevRaw.accuracyCount ?? 0) > 0
             ? Math.round(((prevRaw.accuracySum ?? 0) / Math.max(1, prevRaw.accuracyCount ?? 0)) * 100)
             : 0;
+          const prevAvg = rawAvg > 0 ? rawAvg : (hasAttemptScore ? attemptScores[prevLvl] : 0);
           // Unlock only if: mastered OR all missions passed (missionsPassed >= totalMissions) OR fallback average is high
           const allMissionsPassed = prevBuilt.missionsPassed >= prevBuilt.totalMissions && prevBuilt.totalMissions > 0;
           const prevCleared = !!prevRaw?.cleared || !!prevRaw?.missionUnlocked || allMissionsPassed;
-          const fallbackUnlock = !prevCleared && prevHasMission && avgFromRaw >= passThreshold;
-          why.push({ level: builtLevels[i]!.level, prevMastered, prevCleared, prevAvg: avgFromRaw, prevHasMission });
+          const fallbackUnlock = !prevCleared && prevHasMission && prevAvg >= passThreshold;
+          why.push({ level: builtLevels[i]!.level, prevMastered, prevCleared, prevAvg, prevHasMission });
           builtLevels[i]!.unlocked = prevMastered || prevCleared || fallbackUnlock;
         }
 

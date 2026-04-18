@@ -30,17 +30,37 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dec
 
   const sb = supabaseAdmin();
 
-  // Find attempts for the previous level, ordered by mission index descending, then by score descending
-  const { data: attempts, error } = await sb
+  // Find the latest quest attempt for the previous level, ordered by ended_at descending.
+  let attempts: Array<{ score_pct: any; mode?: any; ended_at: any }> | null = null;
+  let error = null;
+
+  const primary = await sb
     .from("user_deck_mission_attempts")
-    .select("score_pct, mode, mission_index")
+    .select("score_pct, mode, ended_at")
     .eq("user_id", userId)
     .eq("deck_id", deckId)
     .eq("bloom_level", prevLevel)
     .eq("mode", "quest")
-    .order("mission_index", { ascending: false })
+    .order("ended_at", { ascending: false })
     .order("score_pct", { ascending: false })
     .limit(1);
+
+  attempts = primary.data;
+  error = primary.error;
+
+  if (error && typeof error.message === 'string' && error.message.includes('mode')) {
+    const fallback = await sb
+      .from("user_deck_mission_attempts")
+      .select("score_pct, ended_at")
+      .eq("user_id", userId)
+      .eq("deck_id", deckId)
+      .eq("bloom_level", prevLevel)
+      .order("ended_at", { ascending: false })
+      .order("score_pct", { ascending: false })
+      .limit(1);
+    attempts = fallback.data;
+    error = fallback.error;
+  }
 
   if (error) {
     console.error("Error fetching attempts:", error);
@@ -53,11 +73,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dec
       success: false,
       message: "Earlier missions do not demonstrate sufficient knowledge to advance, study and return later",
       latestScore: latestAttempt?.score_pct ?? 0,
-      missionIndex: latestAttempt?.mission_index ?? 0
+      attemptDate: latestAttempt?.ended_at ?? null
     });
   }
 
-  // The highest mission has >=60% accuracy, so unlock the level
+  // The latest quest mission has >=60% accuracy, so unlock the level
   const { data: row } = await sb
     .from("user_deck_quest_progress")
     .select("id, per_bloom")
@@ -80,6 +100,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dec
     success: true,
     message: `${prevLevel} level unlocked!`,
     latestScore: latestAttempt.score_pct,
-    missionIndex: latestAttempt.mission_index
+    attemptDate: latestAttempt.ended_at ?? null
   });
 }
