@@ -101,12 +101,12 @@ export default function EnterRow({ deckId, li }: { deckId: number; li: LevelInfo
                       body: JSON.stringify({ level: li.level }),
                     });
                     const result = await resp.json();
-                    if (result.success) {
-                      alert(result.message);
+                    if (resp.ok && result.success) {
+                      alert(result.message || "Level unlocked successfully!");
                       // Refresh the page to show updated status
                       window.location.reload();
                     } else {
-                      alert(result.message);
+                      alert(result.message || result.error || "Failed to re-check mission state.");
                     }
                   } catch (error) {
                     console.error("Re-check failed:", error);
