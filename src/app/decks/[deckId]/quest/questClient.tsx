@@ -114,6 +114,9 @@ export default function QuestClient({ deckId }: { deckId: number }) {
           // Default: use missionsPassed as the mission index
           mi = Math.max(0, (progress?.[level]?.missionsPassed ?? progress?.[level]?.missionsCompleted ?? 0));
         }
+        // Clamp to prevent skipping missions
+        const maxAllowedMi = Math.max(0, (progress?.[level]?.missionsPassed ?? progress?.[level]?.missionsCompleted ?? 0));
+        mi = Math.min(mi, maxAllowedMi);
         const existing = await fetchMission(deckId, level, mi).catch(() => null);
         if (!alive) return;
         if (existing && existing.cardOrder.length > 0) {
@@ -162,6 +165,9 @@ export default function QuestClient({ deckId }: { deckId: number }) {
         // Default: use missionsPassed as the mission index for next mission
         mi = Math.max(0, (progress?.[level]?.missionsPassed ?? progress?.[level]?.missionsCompleted ?? 0));
       }
+      // Clamp to prevent skipping missions
+      const maxAllowedMi = Math.max(0, (progress?.[level]?.missionsPassed ?? progress?.[level]?.missionsCompleted ?? 0));
+      mi = Math.min(mi, maxAllowedMi);
       const comp = composeMission({ deckId, level, allCards: cards, missionIndex: mi, srs });
       
       // Fallback: if this level has no cards for a mission, try another level that has cards
@@ -178,7 +184,7 @@ export default function QuestClient({ deckId }: { deckId: number }) {
         // No more missions available for this level and no alternative level found
         // Check if this level is completed
         const levelProgress = progress?.[level];
-        if (levelProgress && levelProgress.totalMissions && levelProgress.missionsCompleted >= levelProgress.totalMissions) {
+        if (levelProgress && levelProgress.totalMissions && (levelProgress.missionsPassed ?? 0) >= levelProgress.totalMissions) {
           // Level is completed, show completion message
           setMission(null); // This will trigger the "No cards available" message, but we should make it more specific
           return;

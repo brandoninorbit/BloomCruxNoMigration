@@ -380,7 +380,7 @@ export default function QuestEnterPage() {
                             <span className="text-slate-500"> • {isDone ? "Completed" : isNext ? "Available" : "Locked"}</span>
                           </div>
                           <a
-                            href={`/decks/${id}/quest?level=${encodeURIComponent(li.level)}&missionIndex=${idx}`}
+                            href={`/decks/${id}/quest?level=${encodeURIComponent(li.level)}${actionable ? `&missionIndex=${idx}` : ''}`}
                             className={`text-sm font-medium px-3 py-1.5 rounded-[20px] ${actionable ? "bg-blue-600 text-white hover:bg-blue-700" : "bg-slate-200 text-slate-600 cursor-not-allowed"}`}
                             aria-disabled={!actionable}
                             onClick={(e) => { if (!actionable) e.preventDefault(); }}

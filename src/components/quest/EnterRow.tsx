@@ -112,7 +112,7 @@ export default function EnterRow({ deckId, li }: { deckId: number; li: LevelInfo
                   <span className="text-slate-500"> • {isDone ? "Completed" : isNext ? "Available" : "Locked"}</span>
                 </div>
                 <a
-                  href={`/decks/${deckId}/quest?level=${encodeURIComponent(li.level)}&missionIndex=${idx}`}
+                  href={`/decks/${deckId}/quest?level=${encodeURIComponent(li.level)}${actionable ? `&missionIndex=${idx}` : ''}`}
                   className={`text-sm font-medium px-3 py-1.5 rounded ${actionable ? "bg-blue-600 text-white hover:bg-blue-700" : "bg-slate-200 text-slate-600 cursor-not-allowed"}`}
                   aria-disabled={!actionable}
                   onClick={(e) => {
