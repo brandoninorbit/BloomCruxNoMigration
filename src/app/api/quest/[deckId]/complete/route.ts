@@ -63,6 +63,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dec
     hasBreakdown: !!breakdown
   });
 
+  const targetPracticeAttemptIds: Partial<Record<DeckBloomLevel, number>> = {};
   // Special handling for target_practice: record per Bloom level
   if (mode === 'target_practice' && breakdown && Object.keys(breakdown).length > 0) {
     for (const bloomKey of Object.keys(breakdown)) {
@@ -79,10 +80,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dec
           startedAt: started_at,
           endedAt: ended_at,
           mode: 'target_practice',
-          answers, // shared answers? or filter per level? for now shared
+          answers,
         });
         if (!attemptResult.ok) {
           console.error('Failed to record target_practice attempt for', lvl, attemptResult.error);
+        } else if (attemptResult.attemptId) {
+          targetPracticeAttemptIds[lvl] = attemptResult.attemptId;
         }
       }
     }
@@ -170,7 +173,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dec
           const pct = Number(part?.scorePct ?? NaN);
           const seen = Number(part?.cardsSeen ?? 0);
           if (!Number.isNaN(pct) && seen > 0) {
-            await updateBloomMastery({ userId, deckId, bloomLevel: lvl, lastScorePct: Math.max(0, Math.min(100, pct)) });
+            await updateBloomMastery({
+              userId,
+              deckId,
+              bloomLevel: lvl,
+              lastScorePct: Math.max(0, Math.min(100, pct)),
+              attemptId: targetPracticeAttemptIds[lvl],
+              attemptMode: mode ?? null,
+            });
           }
         }
       }

@@ -170,11 +170,61 @@ export async function getAttemptWeightedAccuracy(
   return calculateAttemptWeightedAccuracy(userId, deckId, bloomLevel, cardIds);
 }
 
+async function insertBloomMasteryHistoryEntry(params: {
+  userId: string;
+  deckId: number;
+  bloomLevel: DeckBloomLevel;
+  attemptId?: number;
+  attemptMode?: 'quest' | 'remix' | 'drill' | 'study' | 'starred' | 'target_practice' | null;
+  scorePct: number;
+  masteryPct: number;
+  correctnessEwma: number;
+  retentionStrength: number;
+  coverage: number;
+  updatedAt: string;
+}): Promise<void> {
+  const sb = supabaseAdmin();
+  await sb.from("user_deck_bloom_mastery_updates").insert({
+    user_id: params.userId,
+    deck_id: params.deckId,
+    bloom_level: params.bloomLevel,
+    attempt_id: params.attemptId ?? null,
+    attempt_mode: params.attemptMode ?? null,
+    score_pct: params.scorePct,
+    mastery_pct: params.masteryPct,
+    correctness_ewma: params.correctnessEwma,
+    retention_strength: params.retentionStrength,
+    coverage: params.coverage,
+    updated_at: params.updatedAt,
+  });
+}
+
+async function pruneBloomMasteryHistory(params: {
+  userId: string;
+  deckId: number;
+  bloomLevel: DeckBloomLevel;
+  keep?: number;
+}): Promise<void> {
+  const sb = supabaseAdmin();
+  try {
+    await sb.rpc("prune_user_deck_bloom_mastery_updates", {
+      p_user: params.userId,
+      p_deck: params.deckId,
+      p_bloom: params.bloomLevel,
+      p_keep: params.keep ?? 3,
+    });
+  } catch {
+    // best effort pruning, ignore failures to preserve mastery update path
+  }
+}
+
 export async function updateBloomMastery(params: {
   userId: string;
   deckId: number;
   bloomLevel: DeckBloomLevel;
   lastScorePct: number; // 0..100
+  attemptId?: number;
+  attemptMode?: 'quest' | 'remix' | 'drill' | 'study' | 'starred' | 'target_practice' | null;
 }): Promise<void> {
   const { userId, deckId, bloomLevel, lastScorePct } = params;
   const sb = supabaseAdmin();
@@ -244,6 +294,7 @@ export async function updateBloomMastery(params: {
   const alpha = 0.4;
   const correctness_ewma = alpha * lastScorePct + (1 - alpha) * prevEwma;
 
+  const updatedAt = new Date().toISOString();
   if (prev?.id) {
     await sb
       .from("user_deck_bloom_mastery")
@@ -252,7 +303,7 @@ export async function updateBloomMastery(params: {
         retention_strength,
         coverage,
         mastery_pct,
-        updated_at: new Date().toISOString()
+        updated_at: updatedAt,
       })
       .eq("id", prev.id);
   } else {
@@ -266,7 +317,26 @@ export async function updateBloomMastery(params: {
         retention_strength,
         coverage,
         mastery_pct,
-        updated_at: new Date().toISOString(),
+        updated_at: updatedAt,
       }, { onConflict: "user_id,deck_id,bloom_level" });
+  }
+
+  try {
+    await insertBloomMasteryHistoryEntry({
+      userId,
+      deckId,
+      bloomLevel,
+      attemptId: params.attemptId,
+      attemptMode: params.attemptMode ?? null,
+      scorePct: lastScorePct,
+      masteryPct: mastery_pct,
+      correctnessEwma: correctness_ewma,
+      retentionStrength: retention_strength,
+      coverage,
+      updatedAt,
+    });
+    await pruneBloomMasteryHistory({ userId, deckId, bloomLevel, keep: 3 });
+  } catch {
+    // preserve the main mastery write path even if history logging or pruning fails
   }
 }

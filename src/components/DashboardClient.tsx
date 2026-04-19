@@ -206,10 +206,13 @@ export default function DashboardClient() {
   const [explainerOpen, setExplainerOpen] = useState<{ deckId: number; level: BloomLevel } | null>(null);
   const [explainerData, setExplainerData] = useState<{
     rows: Array<{ at: string; mode?: string | null; acc: number; seen: number; correct: number }>;
+    updates: Array<{ at: string; mode?: string | null; scorePct: number; masteryPct: number; retentionStrength?: number; coverage?: number }>;
   factors?: { retentionPct: number; awaPct: number; masteryPct: number; coverageSeen?: number; coverageTotal?: number };
     note?: string;
   } | null>(null);
   const [masteryRows, setMasteryRows] = useState<MasteryRow[]>([]);
+  const [masteryUpdatesOpen, setMasteryUpdatesOpen] = useState(true);
+  const [attemptsSectionOpen, setAttemptsSectionOpen] = useState(true);
   // Per-attempt accuracy modal (new)
   const [accuracyOpen, setAccuracyOpen] = useState(false);
   const [accuracyLoading, setAccuracyLoading] = useState(false);
@@ -839,16 +842,27 @@ export default function DashboardClient() {
                                         const sb = getSupabaseClient();
                                         const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
                                         // Fetch attempts for this deck over 30 days (quest + non-quest), parse breakdown per bloom
-                                        const { data: attempts } = await sb
-                                          .from("user_deck_mission_attempts")
-                                          .select("bloom_level, score_pct, cards_seen, cards_correct, ended_at, mode, breakdown")
-                                          .eq("deck_id", Number(deck.deckId))
-                                          .gte("ended_at", cutoff)
-                                          .order("ended_at", { ascending: false })
-                                          .limit(50);
+                                        const [attemptsRes, updatesRes] = await Promise.all([
+                                          sb
+                                            .from("user_deck_mission_attempts")
+                                            .select("bloom_level, score_pct, cards_seen, cards_correct, ended_at, mode, breakdown")
+                                            .eq("deck_id", Number(deck.deckId))
+                                            .gte("ended_at", cutoff)
+                                            .order("ended_at", { ascending: false })
+                                            .limit(50),
+                                          sb
+                                            .from("user_deck_bloom_mastery_updates")
+                                            .select("updated_at, mode, score_pct, mastery_pct, retention_strength, coverage")
+                                            .eq("user_id", user?.id ?? "")
+                                            .eq("deck_id", Number(deck.deckId))
+                                            .eq("bloom_level", level)
+                                            .order("updated_at", { ascending: false })
+                                            .limit(3),
+                                        ]);
                                         const rows: Array<{ at: string; mode?: string | null; acc: number; seen: number; correct: number }> = [];
+                                        const updates: Array<{ at: string; mode?: string | null; scorePct: number; masteryPct: number; retentionStrength?: number; coverage?: number }> = [];
                                         const lvl = level as string;
-                                        for (const r of (attempts ?? []) as Array<{ bloom_level?: string | null; score_pct?: number | null; cards_seen?: number | null; cards_correct?: number | null; ended_at?: string | null; mode?: string | null; breakdown?: Record<string, { scorePct?: number; cardsSeen?: number; cardsCorrect?: number }> | null }>) {
+                                        for (const r of (attemptsRes.data ?? []) as Array<{ bloom_level?: string | null; score_pct?: number | null; cards_seen?: number | null; cards_correct?: number | null; ended_at?: string | null; mode?: string | null; breakdown?: Record<string, { scorePct?: number; cardsSeen?: number; cardsCorrect?: number }> | null }>) {
                                           const ended = r.ended_at ?? new Date().toISOString();
                                           if (r.breakdown && typeof r.breakdown === 'object' && r.breakdown[lvl]) {
                                             const b = r.breakdown[lvl]!;
@@ -857,6 +871,17 @@ export default function DashboardClient() {
                                             const acc = Number(r.score_pct ?? 0);
                                             rows.push({ at: ended, mode: r.mode ?? null, acc, seen: Number(r.cards_seen ?? 0), correct: Number(r.cards_correct ?? 0) });
                                           }
+                                        }
+                                        for (const u of (updatesRes.data ?? []) as Array<{ updated_at?: string | null; mode?: string | null; score_pct?: number | null; mastery_pct?: number | null; retention_strength?: number | null; coverage?: number | null }>) {
+                                          if (!u.updated_at) continue;
+                                          updates.push({
+                                            at: u.updated_at,
+                                            mode: u.mode ?? null,
+                                            scorePct: Number(u.score_pct ?? 0),
+                                            masteryPct: Number(u.mastery_pct ?? 0),
+                                            retentionStrength: typeof u.retention_strength === 'number' ? Number(u.retention_strength) : undefined,
+                                            coverage: typeof u.coverage === 'number' ? Number(u.coverage) : undefined,
+                                          });
                                         }
                                         // Pull current mastery factors for this deck/bloom from the cached mastery list
                                         const match = masteryRows.find((r) => String(r.deck_id) === deck.deckId && String(r.bloom_level) === level);
@@ -893,9 +918,9 @@ export default function DashboardClient() {
                                             coverageSeen = rowsSrs.filter((r) => Number(r.attempts ?? 0) > 0).length;
                                           }
                                         } catch {}
-                                        setExplainerData({ rows, factors: { retentionPct, awaPct, masteryPct, coverageSeen, coverageTotal } });
+                                        setExplainerData({ rows, updates, factors: { retentionPct, awaPct, masteryPct, coverageSeen, coverageTotal } });
                                       } catch {
-                                        setExplainerData({ rows: [], note: 'Could not load attempts. Ensure you are logged in and have recent activity.' });
+                                        setExplainerData({ rows: [], updates: [], note: 'Could not load attempts. Ensure you are logged in and have recent activity.' });
                                       }
                                     }}
                                   >
@@ -1101,17 +1126,28 @@ export default function DashboardClient() {
                                       setExplainerOpen({ deckId: Number(deck.deckId), level });
                                       const sb = getSupabaseClient();
                                       const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-                                      // Fetch attempts for this deck over 30 days (quest + non-quest), parse breakdown per bloom
-                                      const { data: attempts } = await sb
-                                        .from("user_deck_mission_attempts")
-                                        .select("bloom_level, score_pct, cards_seen, cards_correct, ended_at, mode, breakdown")
-                                        .eq("deck_id", Number(deck.deckId))
-                                        .gte("ended_at", cutoff)
-                                        .order("ended_at", { ascending: false })
-                                        .limit(50);
+                                      // Fetch attempts and mastery history for this deck/bloom
+                                      const [attemptsRes, updatesRes] = await Promise.all([
+                                        sb
+                                          .from("user_deck_mission_attempts")
+                                          .select("bloom_level, score_pct, cards_seen, cards_correct, ended_at, mode, breakdown")
+                                          .eq("deck_id", Number(deck.deckId))
+                                          .gte("ended_at", cutoff)
+                                          .order("ended_at", { ascending: false })
+                                          .limit(50),
+                                        sb
+                                          .from("user_deck_bloom_mastery_updates")
+                                          .select("updated_at, mode, score_pct, mastery_pct, retention_strength, coverage")
+                                          .eq("user_id", user?.id ?? "")
+                                          .eq("deck_id", Number(deck.deckId))
+                                          .eq("bloom_level", level)
+                                          .order("updated_at", { ascending: false })
+                                          .limit(3),
+                                      ]);
                                       const rows: Array<{ at: string; mode?: string | null; acc: number; seen: number; correct: number }> = [];
+                                      const updates: Array<{ at: string; mode?: string | null; scorePct: number; masteryPct: number; retentionStrength?: number; coverage?: number }> = [];
                                       const lvl = level as string;
-                                      for (const r of (attempts ?? []) as Array<{ bloom_level?: string | null; score_pct?: number | null; cards_seen?: number | null; cards_correct?: number | null; ended_at?: string | null; mode?: string | null; breakdown?: Record<string, { scorePct?: number; cardsSeen?: number; cardsCorrect?: number }> | null }>) {
+                                      for (const r of (attemptsRes.data ?? []) as Array<{ bloom_level?: string | null; score_pct?: number | null; cards_seen?: number | null; cards_correct?: number | null; ended_at?: string | null; mode?: string | null; breakdown?: Record<string, { scorePct?: number; cardsSeen?: number; cardsCorrect?: number }> | null }>) {
                                         const ended = r.ended_at ?? new Date().toISOString();
                                         if (r.breakdown && typeof r.breakdown === 'object' && r.breakdown[lvl]) {
                                           const b = r.breakdown[lvl]!;
@@ -1120,6 +1156,17 @@ export default function DashboardClient() {
                                           const acc = Number(r.score_pct ?? 0);
                                           rows.push({ at: ended, mode: r.mode ?? null, acc, seen: Number(r.cards_seen ?? 0), correct: Number(r.cards_correct ?? 0) });
                                         }
+                                      }
+                                      for (const u of (updatesRes.data ?? []) as Array<{ updated_at?: string | null; mode?: string | null; score_pct?: number | null; mastery_pct?: number | null; retention_strength?: number | null; coverage?: number | null }>) {
+                                        if (!u.updated_at) continue;
+                                        updates.push({
+                                          at: u.updated_at,
+                                          mode: u.mode ?? null,
+                                          scorePct: Number(u.score_pct ?? 0),
+                                          masteryPct: Number(u.mastery_pct ?? 0),
+                                          retentionStrength: typeof u.retention_strength === 'number' ? Number(u.retention_strength) : undefined,
+                                          coverage: typeof u.coverage === 'number' ? Number(u.coverage) : undefined,
+                                        });
                                       }
                                       // Pull current mastery factors for this deck/bloom from the cached mastery list
                                       const match = masteryRows.find((r) => String(r.deck_id) === deck.deckId && String(r.bloom_level) === level);
@@ -1156,9 +1203,9 @@ export default function DashboardClient() {
                                           coverageSeen = rowsSrs.filter((r) => Number(r.attempts ?? 0) > 0).length;
                                         }
                                       } catch {}
-                                      setExplainerData({ rows, factors: { retentionPct, awaPct, masteryPct, coverageSeen, coverageTotal } });
+                                      setExplainerData({ rows, updates, factors: { retentionPct, awaPct, masteryPct, coverageSeen, coverageTotal } });
                                     } catch {
-                                      setExplainerData({ rows: [], note: 'Could not load attempts. Ensure you are logged in and have recent activity.' });
+                                      setExplainerData({ rows: [], updates: [], note: 'Could not load attempts. Ensure you are logged in and have recent activity.' });
                                     }
                                   }}
                                 >
@@ -1287,24 +1334,53 @@ export default function DashboardClient() {
               <div><span className="font-medium">Current Mastery:</span> {explainerData.factors.masteryPct.toFixed(1)}%</div>
             </div>
           ) : null}
-          <div>
-            <div className="font-medium">Recent attempts for this Bloom</div>
-            <div className="mt-1 rounded border border-gray-200 bg-gray-50 max-h-56 overflow-auto">
-              {(explainerData?.rows ?? []).length === 0 ? (
-                <div className="p-3 text-gray-500">No recent attempts found for this Bloom.</div>
-              ) : (
-                <ul className="divide-y divide-gray-200">
+          <div className="space-y-3">
+            <Collapsible open={masteryUpdatesOpen} onOpenChange={setMasteryUpdatesOpen}>
+              <CollapsibleTrigger className="flex items-center justify-between w-full rounded border border-gray-200 bg-gray-50 px-3 py-2 text-left">
+                <div>
+                  <div className="font-medium">Recent mastery updates</div>
+                  <div className="text-xs text-gray-500">Most recent mastery-impacting Bloom attempts</div>
+                </div>
+                <ChevronDown className={cn("h-4 w-4 transition-transform duration-200", masteryUpdatesOpen ? "rotate-180" : "")} />
+              </CollapsibleTrigger>
+              <CollapsibleContent className="mt-2 rounded border border-gray-200 bg-gray-50 max-h-56 overflow-auto">
+                {((explainerData?.updates ?? [])).length === 0 ? (
+                  <div className="p-3 text-gray-500">No recent mastery updates found for this Bloom.</div>
+                ) : (
+                  <ul className="divide-y divide-gray-200">
+                    {(explainerData?.updates ?? []).map((r, i) => (
+                      <li key={i} className="px-3 py-2 flex items-center justify-between">
+                        <div>
+                          <div className="text-xs text-gray-500">{new Date(r.at).toLocaleString()} · {r.mode ?? 'quest'}</div>
+                          <div className="text-sm">Score {r.scorePct.toFixed(1)}% · Mastery {r.masteryPct}%</div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </CollapsibleContent>
+            </Collapsible>
+            <Collapsible open={attemptsSectionOpen} onOpenChange={setAttemptsSectionOpen}>
+              <CollapsibleTrigger className="flex items-center justify-between w-full rounded border border-gray-200 bg-gray-50 px-3 py-2 text-left">
+                <div className="font-medium">Recent attempts for this Bloom</div>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="mt-2 rounded border border-gray-200 bg-gray-50 max-h-56 overflow-auto">
+                {(explainerData?.rows ?? []).length === 0 ? (
+                  <div className="p-3 text-gray-500">No recent attempts found for this Bloom.</div>
+                ) : (
+                  <ul className="divide-y divide-gray-200">
                     {(explainerData?.rows ?? []).map((r, i) => (
-                    <li key={i} className="px-3 py-2 flex items-center justify-between">
-                      <div>
-                        <div className="text-xs text-gray-500">{new Date(r.at).toLocaleString()} · {r.mode ?? 'quest'}</div>
-                        <div className="text-sm">Accuracy {r.acc.toFixed(1)}% · Correct {r.correct} / Seen {r.seen}</div>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+                      <li key={i} className="px-3 py-2 flex items-center justify-between">
+                        <div>
+                          <div className="text-xs text-gray-500">{new Date(r.at).toLocaleString()} · {r.mode ?? 'quest'}</div>
+                          <div className="text-sm">Accuracy {r.acc.toFixed(1)}% · Correct {r.correct} / Seen {r.seen}</div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </CollapsibleContent>
+            </Collapsible>
           </div>
           {explainerData?.note && <div className="text-xs text-red-600">{explainerData.note}</div>}
           <div className="text-xs text-gray-600">
