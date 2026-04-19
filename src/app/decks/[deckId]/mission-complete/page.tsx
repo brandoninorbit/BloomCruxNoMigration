@@ -525,7 +525,7 @@ async function loadSummary(deckId: number, modeParam: string | null, hints?: { u
   const avatarUrl = (user?.user_metadata?.avatar_url as string | undefined) || (user?.user_metadata?.picture as string | undefined) || null;
 
   let modeLabel = "Quest";
-  if (modeParam) modeLabel = modeParam === "topics" ? "Topic Trek" : modeParam === "timed" ? "Timed Drill" : modeParam === "boost" ? "Boost" : modeParam === "remix" ? "Random Remix" : modeParam === "starred" ? "Starred" : modeParam === "levelup" ? "Level Up" : "Quest";
+  if (modeParam) modeLabel = modeParam === "topics" ? "Topic Trek" : modeParam === "timed" ? "Timed Drill" : modeParam === "boost" ? "Boost" : modeParam === "remix" ? "Random Remix" : modeParam === "starred" ? "Starred" : modeParam === "levelup" ? "Level Up" : modeParam === "target" ? "Target Practice" : "Quest";
 
   // Compute the next mission href using the same logic as quest enter unlocks
   let nextHref: string | null = null;

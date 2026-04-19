@@ -25,7 +25,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dec
   const started_at = typeof body?.started_at === "string" ? body.started_at : null;
   const ended_at = typeof body?.ended_at === "string" ? body.ended_at : null;
   // Normalize mode case-insensitively; older clients may send capitalized values like "Quest"
-  const allowedModes = ['quest','remix','drill','study','starred'] as const;
+  const allowedModes = ['quest','remix','drill','study','starred','target'] as const;
   const rawMode = typeof body?.mode === 'string' ? body.mode : undefined;
   const modeLower = rawMode ? rawMode.toLowerCase() : undefined;
   const mode = (allowedModes as readonly string[]).includes(modeLower ?? '') ? (modeLower as typeof allowedModes[number]) : undefined;

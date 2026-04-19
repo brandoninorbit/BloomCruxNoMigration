@@ -114,8 +114,8 @@ export default function QuestClient({ deckId }: { deckId: number }) {
           // Default: use missionsPassed as the mission index
           mi = Math.max(0, (progress?.[level]?.missionsPassed ?? progress?.[level]?.missionsCompleted ?? 0));
         }
-        // Clamp to prevent skipping missions
-        const maxAllowedMi = Math.max(0, (progress?.[level]?.missionsPassed ?? progress?.[level]?.missionsCompleted ?? 0));
+        // Clamp to prevent skipping missions, but allow accessing the next mission
+        const maxAllowedMi = Math.max(0, (progress?.[level]?.missionsPassed ?? progress?.[level]?.missionsCompleted ?? 0) + 1);
         mi = Math.min(mi, maxAllowedMi);
         const existing = await fetchMission(deckId, level, mi).catch(() => null);
         if (!alive) return;
@@ -165,13 +165,27 @@ export default function QuestClient({ deckId }: { deckId: number }) {
         // Default: use missionsPassed as the mission index for next mission
         mi = Math.max(0, (progress?.[level]?.missionsPassed ?? progress?.[level]?.missionsCompleted ?? 0));
       }
-      // Clamp to prevent skipping missions
-      const maxAllowedMi = Math.max(0, (progress?.[level]?.missionsPassed ?? progress?.[level]?.missionsCompleted ?? 0));
+      // Clamp to prevent skipping missions, but allow accessing the next mission
+      const maxAllowedMi = Math.max(0, (progress?.[level]?.missionsPassed ?? progress?.[level]?.missionsCompleted ?? 0) + 1);
       mi = Math.min(mi, maxAllowedMi);
       const comp = composeMission({ deckId, level, allCards: cards, missionIndex: mi, srs });
       
-      // Fallback: if this level has no cards for a mission, try another level that has cards
+      // Fallback: if this level has no cards for a mission, try missionIndex 0 for this level first, then other levels
       if (!comp.missionIds || comp.missionIds.length === 0) {
+        // Try missionIndex 0 for this level
+        if (mi !== 0) {
+          const comp0 = composeMission({ deckId, level, allCards: cards, missionIndex: 0, srs });
+          if (comp0.missionIds && comp0.missionIds.length > 0) {
+            const state0 = startMission({ deckId, level, missionIndex: 0, poolIds: comp0.missionIds, seed: comp0.seedUsed });
+            setMission(state0);
+            startedIsoRef.current = state0.startedAt;
+            await upsertMission(deckId, state0);
+            await logXpEvent(deckId, level, "mission_started", { missionIndex: 0, total: state0.cardOrder.length });
+            return;
+          }
+        }
+        
+        // If that didn't work, try another level that has cards
         const levels = BLOOM_LEVELS as DeckBloomLevel[];
         const alt = levels.find((lvl) => {
           const sets = computeMissionSet({ deckId, level: lvl, allCards: cards, missionIndex: 0, srs });

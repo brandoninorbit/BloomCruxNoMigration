@@ -17,7 +17,7 @@ export async function recordMissionAttempt(params: {
   startedAt?: string | null;
   endedAt?: string | null;
   contentVersion?: number;
-  mode?: 'quest' | 'remix' | 'drill' | 'study' | 'starred';
+  mode?: 'quest' | 'remix' | 'drill' | 'study' | 'starred' | 'target';
   breakdown?: Record<string, { scorePct: number; cardsSeen: number; cardsCorrect: number }>; // per-bloom summary
   answers?: Array<{ cardId: number; correct: boolean | number; response?: unknown }>; // optional raw per-card answers for persistence (includes raw response & timing)
 }): Promise<{ ok: true; attemptId?: number } | { ok: false; error: string }> {
