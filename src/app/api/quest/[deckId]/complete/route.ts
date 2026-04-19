@@ -187,7 +187,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dec
     } else if (mode !== 'target_practice') {
       // Fallback: update the attributed bloom only, but ignore 0-card attempts
       if (cards_seen > 0) {
-        await updateBloomMastery({ userId, deckId, bloomLevel: bloom_level!, lastScorePct: score_pct });
+        await updateBloomMastery({ userId, deckId, bloomLevel: bloom_level!, lastScorePct: score_pct, attemptMode: mode ?? null });
       }
     }
   } catch {}

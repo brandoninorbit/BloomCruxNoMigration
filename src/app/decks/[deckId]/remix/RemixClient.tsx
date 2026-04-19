@@ -189,6 +189,10 @@ export default function RemixClient({ deckId }: { deckId: number }) {
             breakdown[lvl] = { scorePct: Math.round(pct * 10) / 10, cardsSeen: seen, cardsCorrect: Math.round(correctFloat) };
           }
         });
+        const answers = Object.entries(perCardRef.current).map(([cardIdStr, inc]) => ({
+          cardId: Number(cardIdStr),
+          correct: inc.attempts > 0 ? Math.max(0, Math.min(1, inc.correct / inc.attempts)) : 0,
+        }));
         const resp = await fetch(`/api/quest/${deckId}/complete`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -201,6 +205,7 @@ export default function RemixClient({ deckId }: { deckId: number }) {
             started_at: startedIsoRef.current,
             ended_at: new Date().toISOString(),
             breakdown,
+            answers,
           }),
         });
         if (resp.ok) {

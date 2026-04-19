@@ -34,6 +34,25 @@ import { cn, formatPercent1 } from "@/lib/utils";
 import AgentCard from "./AgentCard";
 import { resolveUserDisplay } from "@/lib/userProfile";
 import { getSupabaseClient } from "@/lib/supabase/browserClient";
+
+const displayAttemptMode = (mode?: string | null) => {
+  switch (mode) {
+    case 'quest':
+      return 'Quest';
+    case 'remix':
+      return 'Random Remix';
+    case 'target_practice':
+      return 'Target Practice';
+    case 'drill':
+      return 'Timed Drill';
+    case 'study':
+      return 'Study';
+    case 'starred':
+      return 'Starred';
+    default:
+      return mode ? String(mode).replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : 'Quest';
+  }
+};
 import {
   LineChart as RLineChart,
   Line,
@@ -211,8 +230,8 @@ export default function DashboardClient() {
     note?: string;
   } | null>(null);
   const [masteryRows, setMasteryRows] = useState<MasteryRow[]>([]);
-  const [masteryUpdatesOpen, setMasteryUpdatesOpen] = useState(true);
-  const [attemptsSectionOpen, setAttemptsSectionOpen] = useState(true);
+  const [masteryUpdatesOpen, setMasteryUpdatesOpen] = useState(false);
+  const [attemptsSectionOpen, setAttemptsSectionOpen] = useState(false);
   // Per-attempt accuracy modal (new)
   const [accuracyOpen, setAccuracyOpen] = useState(false);
   const [accuracyLoading, setAccuracyLoading] = useState(false);
@@ -852,7 +871,7 @@ export default function DashboardClient() {
                                             .limit(50),
                                           sb
                                             .from("user_deck_bloom_mastery_updates")
-                                            .select("updated_at, mode, score_pct, mastery_pct, retention_strength, coverage")
+                                            .select("updated_at, attempt_mode, score_pct, mastery_pct, retention_strength, coverage")
                                             .eq("user_id", user?.id ?? "")
                                             .eq("deck_id", Number(deck.deckId))
                                             .eq("bloom_level", level)
@@ -872,11 +891,11 @@ export default function DashboardClient() {
                                             rows.push({ at: ended, mode: r.mode ?? null, acc, seen: Number(r.cards_seen ?? 0), correct: Number(r.cards_correct ?? 0) });
                                           }
                                         }
-                                        for (const u of (updatesRes.data ?? []) as Array<{ updated_at?: string | null; mode?: string | null; score_pct?: number | null; mastery_pct?: number | null; retention_strength?: number | null; coverage?: number | null }>) {
+                                        for (const u of (updatesRes.data ?? []) as Array<{ updated_at?: string | null; attempt_mode?: string | null; score_pct?: number | null; mastery_pct?: number | null; retention_strength?: number | null; coverage?: number | null }>) {
                                           if (!u.updated_at) continue;
                                           updates.push({
                                             at: u.updated_at,
-                                            mode: u.mode ?? null,
+                                            mode: u.attempt_mode ?? null,
                                             scorePct: Number(u.score_pct ?? 0),
                                             masteryPct: Number(u.mastery_pct ?? 0),
                                             retentionStrength: typeof u.retention_strength === 'number' ? Number(u.retention_strength) : undefined,
@@ -1137,7 +1156,7 @@ export default function DashboardClient() {
                                           .limit(50),
                                         sb
                                           .from("user_deck_bloom_mastery_updates")
-                                          .select("updated_at, mode, score_pct, mastery_pct, retention_strength, coverage")
+                                          .select("updated_at, attempt_mode, score_pct, mastery_pct, retention_strength, coverage")
                                           .eq("user_id", user?.id ?? "")
                                           .eq("deck_id", Number(deck.deckId))
                                           .eq("bloom_level", level)
@@ -1157,11 +1176,11 @@ export default function DashboardClient() {
                                           rows.push({ at: ended, mode: r.mode ?? null, acc, seen: Number(r.cards_seen ?? 0), correct: Number(r.cards_correct ?? 0) });
                                         }
                                       }
-                                      for (const u of (updatesRes.data ?? []) as Array<{ updated_at?: string | null; mode?: string | null; score_pct?: number | null; mastery_pct?: number | null; retention_strength?: number | null; coverage?: number | null }>) {
+                                      for (const u of (updatesRes.data ?? []) as Array<{ updated_at?: string | null; attempt_mode?: string | null; score_pct?: number | null; mastery_pct?: number | null; retention_strength?: number | null; coverage?: number | null }>) {
                                         if (!u.updated_at) continue;
                                         updates.push({
                                           at: u.updated_at,
-                                          mode: u.mode ?? null,
+                                          mode: u.attempt_mode ?? null,
                                           scorePct: Number(u.score_pct ?? 0),
                                           masteryPct: Number(u.mastery_pct ?? 0),
                                           retentionStrength: typeof u.retention_strength === 'number' ? Number(u.retention_strength) : undefined,
@@ -1240,7 +1259,7 @@ export default function DashboardClient() {
                                           className="w-full text-left px-2 py-1 rounded-md border border-gray-200 bg-gray-50 hover:bg-white hover:shadow-sm transition text-xs flex items-center justify-between"
                                           aria-label={`View attempt ${a.id} accuracy details`}
                                         >
-                                          <span className="truncate">{new Date(a.ended_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · {a.mode ?? 'quest'}</span>
+                                          <span className="truncate">{new Date(a.ended_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · {displayAttemptMode(a.mode)}</span>
                                           <span className="font-semibold text-blue-600">{formatPercent1(a.acc)}</span>
                                         </button>
                                       </li>
@@ -1314,14 +1333,14 @@ export default function DashboardClient() {
         </Dialog>
       {/* Mastery explainer dialog */}
       <Dialog open={!!explainerOpen} onOpenChange={(open) => { if (!open) { setExplainerOpen(null); setExplainerData(null); } }}>
-      <DialogContent className="bg-white max-w-xl">
+      <DialogContent className="bg-white max-w-xl max-h-[80vh] overflow-hidden">
         <DialogHeader>
           <DialogTitle>How this mastery is computed</DialogTitle>
           <DialogDescription>
             Mastery = 0.6 × Retention + 0.4 × Attempt‑Weighted Accuracy (AWA)
           </DialogDescription>
         </DialogHeader>
-        <div className="text-sm text-gray-700 space-y-3">
+        <div className="text-sm text-gray-700 space-y-3 overflow-y-auto max-h-[68vh] pr-1">
           {explainerData?.factors ? (
             <div className="grid grid-cols-2 gap-2 p-2 rounded border border-gray-200 bg-gray-50">
               <div><span className="font-medium">Retention:</span> {explainerData.factors.retentionPct.toFixed(1)}%</div>
@@ -1351,7 +1370,7 @@ export default function DashboardClient() {
                     {(explainerData?.updates ?? []).map((r, i) => (
                       <li key={i} className="px-3 py-2 flex items-center justify-between">
                         <div>
-                          <div className="text-xs text-gray-500">{new Date(r.at).toLocaleString()} · {r.mode ?? 'quest'}</div>
+                          <div className="text-xs text-gray-500">{new Date(r.at).toLocaleString()} · {displayAttemptMode(r.mode)}</div>
                           <div className="text-sm">Score {r.scorePct.toFixed(1)}% · Mastery {r.masteryPct}%</div>
                         </div>
                       </li>
@@ -1372,7 +1391,7 @@ export default function DashboardClient() {
                     {(explainerData?.rows ?? []).map((r, i) => (
                       <li key={i} className="px-3 py-2 flex items-center justify-between">
                         <div>
-                          <div className="text-xs text-gray-500">{new Date(r.at).toLocaleString()} · {r.mode ?? 'quest'}</div>
+                          <div className="text-xs text-gray-500">{new Date(r.at).toLocaleString()} · {displayAttemptMode(r.mode)}</div>
                           <div className="text-sm">Accuracy {r.acc.toFixed(1)}% · Correct {r.correct} / Seen {r.seen}</div>
                         </div>
                       </li>
