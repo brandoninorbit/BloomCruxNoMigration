@@ -96,8 +96,8 @@ export default function TargetClient({ deckId }: { deckId: number }) {
       return { card, weakness, accuracy, lastSeenAt };
     });
 
-    // Sort by weakness ascending (weakest first)
-    cardWeakness.sort((a, b) => a.weakness - b.weakness);
+    // Sort by weakness descending (weakest first)
+    cardWeakness.sort((a, b) => b.weakness - a.weakness);
 
     // Take up to targetN weakest
     const selected = cardWeakness.slice(0, targetN).map((cw) => cw.card);

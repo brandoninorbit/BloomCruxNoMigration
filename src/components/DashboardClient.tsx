@@ -1347,10 +1347,20 @@ export default function DashboardClient() {
               <div><span className="font-medium">Attempt‑Weighted Accuracy:</span> {explainerData.factors.awaPct.toFixed(1)}%</div>
               {typeof explainerData.factors.coverageSeen === 'number' && typeof explainerData.factors.coverageTotal === 'number' ? (
                 <div>
-                  <span className="font-medium">Unique cards seen:</span> {explainerData.factors.coverageSeen} / {explainerData.factors.coverageTotal}
+                  <span className="font-medium">Bloom coverage:</span> {explainerData.factors.coverageSeen} / {explainerData.factors.coverageTotal} unique cards
                 </div>
               ) : null}
               <div><span className="font-medium">Current Mastery:</span> {explainerData.factors.masteryPct.toFixed(1)}%</div>
+              {explainerData?.rows?.some((r) => r.mode === 'target_practice') ? (
+                <div className="col-span-2 text-xs text-gray-600">
+                  Target Practice weak-card corrections receive a modest bonus to Attempt‑Weighted Accuracy.
+                </div>
+              ) : null}
+              {explainerData.rows?.length ? (
+                <div className="col-span-2 text-xs text-gray-600">
+                  <span className="font-medium">Latest session:</span> {explainerData.rows[0].seen} cards seen in the most recent attempt
+                </div>
+              ) : null}
             </div>
           ) : null}
           <div className="space-y-3">
@@ -1407,6 +1417,7 @@ export default function DashboardClient() {
             <ul className="list-disc list-inside space-y-1">
               <li>Retention comes from per‑card SRS accuracy for this deck/Bloom.</li>
               <li>AWA weights recent sessions more (7‑day half‑life), bundles attempts within 20 minutes, and scales by coverage.</li>
+              <li>“Bloom coverage” is the number of unique cards seen in this bloom, not the size of one target practice session.</li>
               <li>If you expect an attempt to appear but don’t see it, verify it in user_deck_mission_attempts.</li>
             </ul>
           </div>

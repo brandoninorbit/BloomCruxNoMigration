@@ -7,6 +7,72 @@ export const SESSION_WINDOW_MINUTES = 20;
 const MIN_COVERAGE_THRESHOLD = 0.05;
 const MAX_COVERAGE_PER_ATTEMPT = 0.5;
 const TIME_DECAY_RATE = 0.98; // 2% decay per day
+const WEAK_SRS_ACCURACY_THRESHOLD = 0.8;
+const WEAK_SRS_ATTEMPT_CUTOFF = 3;
+const TARGET_PRACTICE_WEAK_BONUS = 0.12;
+
+function isWeakSrsEntry(attempts: number, correct: number) {
+  const safeAttempts = Math.max(0, attempts);
+  const safeCorrect = Math.max(0, Math.min(safeAttempts, correct));
+  const accuracy = safeAttempts > 0 ? safeCorrect / safeAttempts : 0;
+  return safeAttempts <= WEAK_SRS_ATTEMPT_CUTOFF || accuracy < WEAK_SRS_ACCURACY_THRESHOLD;
+}
+
+async function calculateTargetPracticeWeakCorrectionBonus(params: {
+  userId: string;
+  deckId: number;
+  bloomLevel: DeckBloomLevel;
+  attemptId: number;
+  cardIds: number[];
+}): Promise<number> {
+  const sb = supabaseAdmin();
+  const answersRes = await sb
+    .from("user_deck_mission_card_answers")
+    .select("card_id, correct_fraction")
+    .eq("attempt_id", params.attemptId);
+  if (answersRes.error || !Array.isArray(answersRes.data)) return 0;
+
+  const sessionCorrectCardIds = Array.from(
+    new Set(
+      (answersRes.data as Array<{ card_id: number; correct_fraction?: number | null }>)
+        .filter((row) => Number(row.correct_fraction ?? 0) >= 1)
+        .map((row) => Number(row.card_id))
+        .filter((cardId) => params.cardIds.includes(cardId))
+    )
+  );
+  if (sessionCorrectCardIds.length === 0) return 0;
+
+  const srsRes = await sb
+    .from("user_deck_srs")
+    .select("card_id, attempts, correct")
+    .eq("user_id", params.userId)
+    .eq("deck_id", params.deckId)
+    .in("card_id", params.cardIds);
+  if (srsRes.error || !Array.isArray(srsRes.data)) return 0;
+
+  const srsMap = new Map<number, { attempts: number; correct: number }>();
+  for (const row of srsRes.data as Array<{ card_id: number; attempts?: number | null; correct?: number | null }>) {
+    const cardId = Number(row.card_id);
+    const attempts = Math.max(0, Number(row.attempts ?? 0));
+    const correct = Math.max(0, Math.min(attempts, Number(row.correct ?? 0)));
+    srsMap.set(cardId, { attempts, correct });
+  }
+
+  const bloomWeakCount = Array.from(srsMap.values()).filter((entry) =>
+    isWeakSrsEntry(entry.attempts, entry.correct)
+  ).length;
+  if (bloomWeakCount === 0) return 0;
+
+  const weakSessionCorrectCount = sessionCorrectCardIds.filter((cardId) => {
+    const entry = srsMap.get(cardId);
+    return !entry || isWeakSrsEntry(entry.attempts, entry.correct);
+  }).length;
+
+  if (weakSessionCorrectCount === 0) return 0;
+
+  const ratio = Math.min(1, weakSessionCorrectCount / Math.max(1, bloomWeakCount));
+  return Math.min(TARGET_PRACTICE_WEAK_BONUS, ratio * TARGET_PRACTICE_WEAK_BONUS);
+}
 
 /**
  * Calculate Attempt-Weighted Accuracy (AWA) for a bloom level
@@ -281,7 +347,19 @@ export async function updateBloomMastery(params: {
   }
 
   // Calculate Attempt-Weighted Accuracy (AWA)
-  const attemptWeightedAccuracy = await calculateAttemptWeightedAccuracy(userId, deckId, bloomLevel, cardIds);
+  let attemptWeightedAccuracy = await calculateAttemptWeightedAccuracy(userId, deckId, bloomLevel, cardIds);
+  if (params.attemptMode === 'target_practice' && typeof params.attemptId === 'number') {
+    attemptWeightedAccuracy = Math.min(
+      1,
+      attemptWeightedAccuracy + await calculateTargetPracticeWeakCorrectionBonus({
+        userId,
+        deckId,
+        bloomLevel,
+        attemptId: params.attemptId,
+        cardIds,
+      })
+    );
+  }
 
   // NEW MASTERY FORMULA: 0.6 × Retention + 0.4 × AttemptWeightedAccuracy
   const retention_component = retention_strength * 100; // Convert to percentage
