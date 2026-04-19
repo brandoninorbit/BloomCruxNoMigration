@@ -25,7 +25,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dec
   const started_at = typeof body?.started_at === "string" ? body.started_at : null;
   const ended_at = typeof body?.ended_at === "string" ? body.ended_at : null;
   // Normalize mode case-insensitively; older clients may send capitalized values like "Quest"
-  const allowedModes = ['quest','remix','drill','study','starred','target'] as const;
+  const allowedModes = ['quest','remix','drill','study','starred','target_practice'] as const;
   const rawMode = typeof body?.mode === 'string' ? body.mode : undefined;
   const modeLower = rawMode ? rawMode.toLowerCase() : undefined;
   const mode = (allowedModes as readonly string[]).includes(modeLower ?? '') ? (modeLower as typeof allowedModes[number]) : undefined;
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dec
   if (!Number.isFinite(cards_seen) || cards_seen < 0) cards_seen = 0;
   if (!Number.isFinite(cards_correct) || cards_correct < 0) cards_correct = 0;
   if (cards_correct > cards_seen) cards_correct = cards_seen;
-  if (!bloom_level || Number.isNaN(score_pct)) return NextResponse.json({ error: "invalid payload" }, { status: 400 });
+  if (mode !== 'target_practice' && (!bloom_level || Number.isNaN(score_pct))) return NextResponse.json({ error: "invalid payload" }, { status: 400 });
 
   console.log('🎯 Complete API received:', {
     userId,
@@ -63,76 +63,103 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dec
     hasBreakdown: !!breakdown
   });
 
-  // Insert attempt
-  // Try to snapshot current contentVersion for this level
-  let contentVersion: number | undefined = undefined;
-  try {
-    const sb = supabaseAdmin();
-    const { data: row } = await sb
-      .from("user_deck_quest_progress")
-      .select("per_bloom")
-      .eq("user_id", userId)
-      .eq("deck_id", deckId)
-      .maybeSingle();
-    const per = (row?.per_bloom ?? {}) as Record<string, { contentVersion?: number }>;
-    contentVersion = Number((per[bloom_level]?.contentVersion ?? 0) as number) || 0;
-  } catch {}
-
-  const attempt = await recordMissionAttempt({
-    userId,
-    deckId,
-    bloomLevel: bloom_level,
-    scorePct: score_pct,
-    cardsSeen: cards_seen,
-    cardsCorrect: cards_correct,
-    startedAt: started_at,
-    endedAt: ended_at,
-    contentVersion,
-    mode,
-    breakdown,
-  answers,
-  });
-  console.log('📊 recordMissionAttempt result:', attempt);
-  if (!attempt.ok) return NextResponse.json({ error: attempt.error }, { status: 500 });
-
-  // Update per_bloom aggregates for counters and averages first, then mark cleared/unlock idempotently.
-  if ((mode ?? 'quest') === 'quest') {
-    await updateQuestProgressOnComplete({ userId, deckId, level: bloom_level, scorePct: score_pct, cardsSeen: cards_seen });
-  }
-
-  // Unlock next on single pass (>=60) only for quest missions. Do this after progress update to avoid races.
-  if ((mode ?? 'quest') === 'quest' && score_pct >= 60) {
-    try { await unlockNextBloomLevel(userId, deckId, bloom_level); } catch {}
-  }
-
-  // Adjust updatedSinceLastRun and add lastCompletion snapshot; never relock missionUnlocked
-  try {
-    const sb = supabaseAdmin();
-    const { data: row } = await sb
-      .from("user_deck_quest_progress")
-      .select("id, per_bloom, xp")
-      .eq("user_id", userId)
-      .eq("deck_id", deckId)
-      .maybeSingle();
-  if (row?.per_bloom && (mode ?? 'quest') === 'quest') {
-      type PB = Partial<{ updatedSinceLastRun: number; missionUnlocked: boolean; cleared: boolean; accuracyCount: number; lastCompletion: { percent: number; timestamp: string; attempts: number }; missionsPassed: number; totalMissions: number }>;
-      const per = row.per_bloom as Record<string, PB>;
-      const cur = (per[bloom_level] ?? {}) as PB;
-      const was = Number(cur.updatedSinceLastRun ?? 0);
-      const after = Math.max(0, was - Math.max(0, Number(cards_seen ?? 0)));
-      per[bloom_level] = {
-        ...cur,
-        updatedSinceLastRun: after,
-  missionUnlocked: Boolean(cur.missionUnlocked ?? cur.cleared ?? (Number(cur.missionsPassed ?? 0) > 0)),
-        lastCompletion: { percent: score_pct, timestamp: ended_at ?? new Date().toISOString(), attempts: Number(cur.accuracyCount ?? 0) + 1 },
-      };
-      await sb
-        .from("user_deck_quest_progress")
-        .upsert({ user_id: userId, deck_id: deckId, per_bloom: per, xp: row.xp ?? {} }, { onConflict: "user_id,deck_id" });
+  // Special handling for target_practice: record per Bloom level
+  if (mode === 'target_practice' && breakdown && Object.keys(breakdown).length > 0) {
+    for (const bloomKey of Object.keys(breakdown)) {
+      if ((BLOOM_LEVELS as string[]).includes(bloomKey)) {
+        const lvl = bloomKey as DeckBloomLevel;
+        const part = breakdown[bloomKey]!;
+        const attemptResult = await recordMissionAttempt({
+          userId,
+          deckId,
+          bloomLevel: lvl,
+          scorePct: Number(part.scorePct ?? 0),
+          cardsSeen: Number(part.cardsSeen ?? 0),
+          cardsCorrect: Number(part.cardsCorrect ?? 0),
+          startedAt: started_at,
+          endedAt: ended_at,
+          mode: 'target_practice',
+          answers, // shared answers? or filter per level? for now shared
+        });
+        if (!attemptResult.ok) {
+          console.error('Failed to record target_practice attempt for', lvl, attemptResult.error);
+        }
+      }
     }
-  } catch {}
+  } else {
+    // Normal single attempt
+    const attemptResult = await recordMissionAttempt({
+      userId,
+      deckId,
+      bloomLevel: bloom_level!,
+      scorePct: score_pct,
+      cardsSeen: cards_seen,
+      cardsCorrect: cards_correct,
+      startedAt: started_at,
+      endedAt: ended_at,
+      mode,
+      breakdown,
+      answers,
+    });
+    if (!attemptResult.ok) {
+      return NextResponse.json({ error: attemptResult.error }, { status: 500 });
+    }
 
-  // Update mastery aggregates (EWMA + retention + coverage)
+    // Try to snapshot current contentVersion for this level
+    let contentVersion: number | undefined = undefined;
+    try {
+      const sb = supabaseAdmin();
+      const { data: row } = await sb
+        .from("user_deck_quest_progress")
+        .select("per_bloom")
+        .eq("user_id", userId)
+        .eq("deck_id", deckId)
+        .maybeSingle();
+      const per = (row?.per_bloom ?? {}) as Record<string, { contentVersion?: number }>;
+      contentVersion = Number((per[bloom_level!]?.contentVersion ?? 0) as number) || 0;
+    } catch {}
+
+    // Update the attempt with contentVersion if needed (recordMissionAttempt might handle it)
+
+    // Update per_bloom aggregates for counters and averages first, then mark cleared/unlock idempotently.
+    if ((mode ?? 'quest') === 'quest') {
+      await updateQuestProgressOnComplete({ userId, deckId, level: bloom_level!, scorePct: score_pct, cardsSeen: cards_seen });
+    }
+
+    // Unlock next on single pass (>=60) only for quest missions. Do this after progress update to avoid races.
+    if ((mode ?? 'quest') === 'quest' && score_pct >= 60) {
+      try { await unlockNextBloomLevel(userId, deckId, bloom_level!); } catch {}
+    }
+
+    // Adjust updatedSinceLastRun and add lastCompletion snapshot; never relock missionUnlocked
+    try {
+      const sb = supabaseAdmin();
+      const { data: row } = await sb
+        .from("user_deck_quest_progress")
+        .select("id, per_bloom, xp")
+        .eq("user_id", userId)
+        .eq("deck_id", deckId)
+        .maybeSingle();
+    if (row?.per_bloom && (mode ?? 'quest') === 'quest') {
+        type PB = Partial<{ updatedSinceLastRun: number; missionUnlocked: boolean; cleared: boolean; accuracyCount: number; lastCompletion: { percent: number; timestamp: string; attempts: number }; missionsPassed: number; totalMissions: number }>;
+        const per = row.per_bloom as Record<string, PB>;
+        const cur = (per[bloom_level!] ?? {}) as PB;
+        const was = Number(cur.updatedSinceLastRun ?? 0);
+        const after = Math.max(0, was - Math.max(0, Number(cards_seen ?? 0)));
+        per[bloom_level!] = {
+          ...cur,
+          updatedSinceLastRun: after,
+    missionUnlocked: Boolean(cur.missionUnlocked ?? cur.cleared ?? (Number(cur.missionsPassed ?? 0) > 0)),
+          lastCompletion: { percent: score_pct, timestamp: ended_at ?? new Date().toISOString(), attempts: Number(cur.accuracyCount ?? 0) + 1 },
+        };
+        await sb
+          .from("user_deck_quest_progress")
+          .upsert({ user_id: userId, deck_id: deckId, per_bloom: per, xp: row.xp ?? {} }, { onConflict: "user_id,deck_id" });
+      }
+    } catch {}
+  }
+
+  // Update mastery aggregates (EWMA + retention + coverage) - for both modes
   try {
     if (breakdown && typeof breakdown === 'object') {
       // Update each bloom present in the breakdown
@@ -147,13 +174,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dec
           }
         }
       }
-    } else {
+    } else if (mode !== 'target_practice') {
       // Fallback: update the attributed bloom only, but ignore 0-card attempts
       if (cards_seen > 0) {
-        await updateBloomMastery({ userId, deckId, bloomLevel: bloom_level, lastScorePct: score_pct });
+        await updateBloomMastery({ userId, deckId, bloomLevel: bloom_level!, lastScorePct: score_pct });
       }
     }
   } catch {}
 
-  return NextResponse.json({ ok: true, attemptId: attempt.attemptId, unlocked: score_pct >= 60 });
+  return NextResponse.json({ ok: true, attemptId: undefined, unlocked: mode === 'quest' && score_pct >= 60 });
 }

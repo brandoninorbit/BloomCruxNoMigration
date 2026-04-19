@@ -265,7 +265,8 @@ async function loadSummary(): Promise<MissionSummary> {
     if (m) modeLabel =
       m === "topics" ? "Topic Trek" :
       m === "timed" ? "Timed Drill" :
-      m === "boost" ? "Boost" : "Quest";
+      m === "boost" ? "Boost" :
+      m === "target_practice" ? "Target Practice" : "Quest";
   } catch {}
 
   const summary: MissionSummary = {

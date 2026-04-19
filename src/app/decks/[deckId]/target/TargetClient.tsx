@@ -40,6 +40,7 @@ export default function TargetClient({ deckId }: { deckId: number }) {
   const trackAnswer = useMasteryTracker();
   const srsRef = useRef<SRSPerformance>({});
   const perCardRef = useRef<Record<number, { attempts: number; correct: number }>>({});
+  const perBloomRef = useRef<Record<string, { seen: number; correctFloat: number }>>({});
   const [correctSum, setCorrectSum] = useState(0);
   const startedIsoRef = useRef<string>(new Date().toISOString());
   const [finishing, setFinishing] = useState(false);
@@ -129,6 +130,10 @@ export default function TargetClient({ deckId }: { deckId: number }) {
       const incCorrect = typeof payload.correctness === 'number' ? Math.max(0, Math.min(1, payload.correctness)) : (payload.correct ? 1 : 0);
       const cur = perCardRef.current[payload.cardId] ?? { attempts: 0, correct: 0 };
       perCardRef.current[payload.cardId] = { attempts: cur.attempts + 1, correct: cur.correct + incCorrect };
+      // accumulate per-bloom
+      const bloomKey = payload.bloom;
+      const bloomCur = perBloomRef.current[bloomKey] ?? { seen: 0, correctFloat: 0 };
+      perBloomRef.current[bloomKey] = { seen: bloomCur.seen + 1, correctFloat: bloomCur.correctFloat + incCorrect };
     } catch {}
     return trackAnswer(payload).catch(() => {});
   }
@@ -142,11 +147,11 @@ export default function TargetClient({ deckId }: { deckId: number }) {
     const pct = total > 0 ? Math.max(0, Math.min(100, (correct / total) * 100)) : 0;
 
     const q = new URLSearchParams();
-    q.set("mode", "target");
+    q.set("mode", "target_practice");
     q.set("pct", String(Math.round(pct * 10) / 10));
     q.set("total", String(total));
     q.set("correct", String(Math.round(correct)));
-    q.set("level", "Target"); // or something
+    q.set("level", "Target"); // aggregate level for display
 
     // Fire-and-forget finalize
     (async () => {
@@ -171,22 +176,30 @@ export default function TargetClient({ deckId }: { deckId: number }) {
         const resp = await fetch(`/api/economy/finalize`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ deckId, mode: "target", correct: Math.round(correct), total, percent: Math.round(pct * 10) / 10 }),
+          body: JSON.stringify({ deckId, mode: "target_practice", correct: Math.round(correct), total, percent: Math.round(pct * 10) / 10 }),
         }).catch(() => null);
         if (resp && resp.ok) { await resp.json().catch(() => null); }
       } catch {}
 
       // Record mission attempt
       try {
-        const breakdown: Record<string, { scorePct: number; cardsSeen: number; cardsCorrect: number }> = {
-          Target: { scorePct: Math.round(pct * 10) / 10, cardsSeen: total, cardsCorrect: Math.round(correct) }
-        };
+        // Build per-bloom breakdown
+        const map = perBloomRef.current;
+        const breakdown: Record<string, { scorePct: number; cardsSeen: number; cardsCorrect: number }> = {};
+        (Object.keys(map) as DeckBloomLevel[]).forEach((lvl) => {
+          const seen = Math.max(0, Number(map[lvl]?.seen ?? 0));
+          const correctFloat = Math.max(0, Number(map[lvl]?.correctFloat ?? 0));
+          if (seen > 0) {
+            const pct = Math.max(0, Math.min(100, (correctFloat / seen) * 100));
+            breakdown[lvl] = { scorePct: Math.round(pct * 10) / 10, cardsSeen: seen, cardsCorrect: Math.round(correctFloat) };
+          }
+        });
         const resp = await fetch(`/api/quest/${deckId}/complete`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            mode: "target",
-            bloom_level: "Target", // dummy
+            mode: "target_practice",
+            // no bloom_level for target_practice, it's per level in breakdown
             score_pct: Math.round(pct * 10) / 10,
             cards_seen: total,
             cards_correct: Math.round(correct),

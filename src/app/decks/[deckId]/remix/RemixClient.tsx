@@ -117,16 +117,12 @@ export default function RemixClient({ deckId }: { deckId: number }) {
   const cur = perCardRef.current[payload.cardId] ?? { attempts: 0, correct: 0 };
   perCardRef.current[payload.cardId] = { attempts: cur.attempts + 1, correct: cur.correct + incCorrect };
       // accumulate per-bloom
-      const b = Bloom[payload.bloom] as unknown as DeckBloomLevel | undefined;
-      const bloomKey = (typeof b === 'string' ? b : undefined) as DeckBloomLevel | undefined;
-      if (bloomKey) {
-        const map = perBloomRef.current;
-        const cur = map[bloomKey] ?? { seen: 0, correctFloat: 0 };
-        cur.seen += 1;
-        cur.correctFloat += (Number.isFinite(val) ? val : 0);
-        map[bloomKey] = cur;
-        perBloomRef.current = map;
-      }
+      const bloomKey = payload.bloom as DeckBloomLevel;
+      const map = perBloomRef.current;
+      const bloomCur = map[bloomKey] ?? { seen: 0, correctFloat: 0 };
+      bloomCur.seen += 1;
+      bloomCur.correctFloat += (Number.isFinite(val) ? val : 0);
+      map[bloomKey] = bloomCur;
     } catch {}
     return trackAnswer(payload).catch(() => {});
   }
