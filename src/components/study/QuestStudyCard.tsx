@@ -23,6 +23,15 @@ import { DndContext, DragEndEvent, PointerSensor, useDroppable, useDraggable, us
 import { CSS } from "@dnd-kit/utilities";
 import FormattedText from "@/components/ui/FormattedText";
 
+function shuffleArray<T>(values: T[]): T[] {
+  const out = [...values];
+  for (let i = out.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
 export type StudyAnswerEvent = {
   // Either boolean or fractional [0,1]
   correct?: boolean;
@@ -394,12 +403,14 @@ function ShortAnswerQuest({ card, onAnswer, onContinue, formattingEnabled = true
 function SortingQuest({ card, onAnswer, onContinue, formattingEnabled = true }: { card: DeckCard & { type: "Sorting"; meta: DeckSortingMeta }; onAnswer: (ev: StudyAnswerEvent & { cardId: number }) => void; onContinue: () => void; formattingEnabled?: boolean }) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const [assignments, setAssignments] = useState<Record<string, string>>({}); // term -> category
+  const [poolOrder, setPoolOrder] = useState<string[]>([]);
   const [checked, setChecked] = useState(false);
   const [showCorrect, setShowCorrect] = useState(false);
   const [allCorrect, setAllCorrect] = useState<boolean | null>(null);
   const startRef = useRef<number>(Date.now());
 
   useEffect(() => {
+    setPoolOrder(shuffleArray(card.meta.items.map((it) => it.term)));
     setAssignments({});
     setChecked(false);
     setShowCorrect(false);
@@ -408,7 +419,7 @@ function SortingQuest({ card, onAnswer, onContinue, formattingEnabled = true }: 
   }, [card.id]);
 
   const categories = card.meta.categories;
-  const items = card.meta.items.map((it) => it.term);
+  const items = poolOrder;
 
   function DraggableChip({ id, text }: { id: string; text: string }) {
     const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id });
@@ -520,6 +531,8 @@ function SortingQuest({ card, onAnswer, onContinue, formattingEnabled = true }: 
 function TwoTierQuest({ card, onAnswer, onContinue, formattingEnabled = true }: { card: DeckTwoTierMCQ; onAnswer: (ev: StudyAnswerEvent & { cardId: number }) => void; onContinue: () => void; formattingEnabled?: boolean }) {
   const [tier1, setTier1] = useState<"A" | "B" | "C" | "D" | null>(null);
   const [tier2, setTier2] = useState<"A" | "B" | "C" | "D" | null>(null);
+  const [tier1Order, setTier1Order] = useState<Array<"A" | "B" | "C" | "D">>(() => shuffleArray(["A", "B", "C", "D"]));
+  const [tier2Order, setTier2Order] = useState<Array<"A" | "B" | "C" | "D">>(() => shuffleArray(["A", "B", "C", "D"]));
   const [checked, setChecked] = useState(false);
   const [confidence, setConfidence] = useState<0|1|2|3|undefined>(undefined);
   const [guessed, setGuessed] = useState(false);
@@ -529,6 +542,8 @@ function TwoTierQuest({ card, onAnswer, onContinue, formattingEnabled = true }: 
   useEffect(() => {
     setTier1(null);
     setTier2(null);
+    setTier1Order(shuffleArray(["A", "B", "C", "D"]));
+    setTier2Order(shuffleArray(["A", "B", "C", "D"]));
     setChecked(false);
     setConfidence(undefined);
     setGuessed(false);
@@ -540,14 +555,14 @@ function TwoTierQuest({ card, onAnswer, onContinue, formattingEnabled = true }: 
     if (tier === 1) { if (tier1 != null) return; setTier1(k); } else { if (tier2 != null) return; setTier2(k); setChecked(true); }
   };
 
-  const renderTier = (label: string, options: { A: string; B: string; C: string; D: string }, answer: "A"|"B"|"C"|"D", picked: "A"|"B"|"C"|"D"|null, disabled: boolean, onChoose: (k: "A"|"B"|"C"|"D") => void, extraQuestion?: string) => (
+  const renderTier = (label: string, order: Array<"A"|"B"|"C"|"D">, options: { A: string; B: string; C: string; D: string }, answer: "A"|"B"|"C"|"D", picked: "A"|"B"|"C"|"D"|null, disabled: boolean, onChoose: (k: "A"|"B"|"C"|"D") => void, extraQuestion?: string) => (
     <div className="w-full">
       <div className="text-sm font-medium text-slate-700 mb-2">{label}</div>
       {extraQuestion ? (
         <div className="mb-2 text-slate-800 font-medium"><FormattedText text={extraQuestion} enabled={formattingEnabled} /></div>
       ) : null}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-  {(["A","B","C","D"] as const).map((k) => {
+  {order.map((k) => {
           const text = options[k];
           let classes = "border-slate-200 hover:bg-slate-50";
           if (checked) {
@@ -598,11 +613,11 @@ function TwoTierQuest({ card, onAnswer, onContinue, formattingEnabled = true }: 
           <label className="ml-2 text-sm"><input type="checkbox" className="mr-1" checked={guessed} onChange={(e) => setGuessed(e.target.checked)} />Guessed</label>
         </div>
       ) : null}
-    {renderTier("Tier 1", meta.tier1.options, meta.tier1.answer, tier1, checked || tier1 != null, (k) => onPick(1, k))}
+    {renderTier("Tier 1", tier1Order, meta.tier1.options, meta.tier1.answer, tier1, checked || tier1 != null, (k) => onPick(1, k))}
       {tier1 != null && (
         <>
           <div className="my-4 flex items-center justify-center"><div className="h-1 w-40 bg-slate-200 rounded-full" /></div>
-      {renderTier("Tier 2", meta.tier2.options, meta.tier2.answer, tier2, checked || tier2 != null, (k) => onPick(2, k), meta.tier2.question)}
+      {renderTier("Tier 2", tier2Order, meta.tier2.options, meta.tier2.answer, tier2, checked || tier2 != null, (k) => onPick(2, k), meta.tier2.question)}
           {checked && card.explanation ? (
             <div className="mt-4 rounded-lg bg-slate-50 p-4 text-slate-700"><div className="font-semibold text-slate-900 mb-1">Explanation</div><div className="text-sm leading-relaxed"><FormattedText text={card.explanation || ""} enabled={formattingEnabled} /></div></div>
           ) : null}

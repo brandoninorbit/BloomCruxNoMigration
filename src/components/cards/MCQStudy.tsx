@@ -5,6 +5,15 @@ import FormattedText from "@/components/ui/FormattedText";
 
 export type MCQOption = { key: "A" | "B" | "C" | "D"; text: string };
 
+function shuffleArray<T>(values: T[]): T[] {
+  const out = [...values];
+  for (let i = out.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
 type Props = {
   prompt: string;
   options: MCQOption[];
@@ -19,11 +28,13 @@ type Props = {
 export default function MCQStudy({ prompt, options, answerKey, explanation, submitLabel = "Check Answer", formattingEnabled = true, onAnswer, onContinue }: Props) {
   const [chosen, setChosen] = useState<"A" | "B" | "C" | "D" | null>(null);
   const [checked, setChecked] = useState(false);
+  const [displayOptions, setDisplayOptions] = useState<MCQOption[]>(() => shuffleArray(options));
   const [confidence, setConfidence] = useState<0|1|2|3|undefined>(undefined);
   const [guessed, setGuessed] = useState(false);
   const startRef = React.useRef<number>(Date.now());
   // Reset state when the question changes (new card)
   useEffect(() => {
+    setDisplayOptions(shuffleArray(options));
     setChosen(null);
     setChecked(false);
     setConfidence(undefined);
@@ -42,7 +53,7 @@ export default function MCQStudy({ prompt, options, answerKey, explanation, subm
     <div className="w-full max-w-3xl">
   <h2 className="font-valid text-2xl font-semibold mb-4 text-slate-900"><FormattedText text={prompt} enabled={formattingEnabled} /></h2>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {options.map((o) => {
+        {displayOptions.map((o) => {
           const isSelected = chosen === o.key;
           const isCorrect = checked && o.key === answerKey;
           const isWrong = checked && isSelected && !isCorrect;

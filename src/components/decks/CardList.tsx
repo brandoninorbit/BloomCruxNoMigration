@@ -26,6 +26,15 @@ export type CardListProps = {
   onContinue?: () => void;
 };
 
+function shuffleArray<T>(values: T[]): T[] {
+  const out = [...values];
+  for (let i = out.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
 export default function CardList({ cards, onEdit, onDelete, onContinue }: CardListProps) {
   const items = useMemo(() => cards, [cards]);
   const deckId = items[0]?.deckId;
@@ -100,6 +109,7 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
   const [mcqConfidence, setMcqConfidence] = useState<0|1|2|3|undefined>(undefined);
   const [mcqGuessed, setMcqGuessed] = useState(false);
   const [mcqResponseMs, setMcqResponseMs] = useState<number | undefined>(undefined);
+  const [mcqOptionOrder, setMcqOptionOrder] = useState<Array<"A" | "B" | "C" | "D">>(() => shuffleArray(["A", "B", "C", "D"]));
   const mcqStartRef = useRef<number>(Date.now());
   const mcqTrackedRef = useRef(false);
   const [fibResult, setFibResult] = useState<{
@@ -116,6 +126,7 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
   const [saJudged, setSaJudged] = useState<null | "yes" | "no">(null);
   // Sorting state
   const [sortAssignments, setSortAssignments] = useState<Record<string, string>>({}); // term -> category (or unset => unsorted)
+  const [sortPoolOrder, setSortPoolOrder] = useState<string[]>([]);
   const [sortChecked, setSortChecked] = useState(false);
   const [sortAllCorrect, setSortAllCorrect] = useState<boolean | null>(null);
   const [sortConfidence, setSortConfidence] = useState<0|1|2|3|undefined>(undefined);
@@ -133,6 +144,8 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
   // Two-Tier MCQ state
   const [ttTier1, setTtTier1] = useState<"A" | "B" | "C" | "D" | null>(null);
   const [ttTier2, setTtTier2] = useState<"A" | "B" | "C" | "D" | null>(null);
+  const [ttTier1Order, setTtTier1Order] = useState<Array<"A" | "B" | "C" | "D">>(() => shuffleArray(["A", "B", "C", "D"]));
+  const [ttTier2Order, setTtTier2Order] = useState<Array<"A" | "B" | "C" | "D">>(() => shuffleArray(["A", "B", "C", "D"]));
   const [ttChecked, setTtChecked] = useState(false);
   // Two-Tier telemetry
   const [ttConfidence, setTtConfidence] = useState<0|1|2|3|undefined>(undefined);
@@ -171,6 +184,7 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
 
   useEffect(() => {
     // Reset interaction whenever a different card is opened/closed
+    setMcqOptionOrder(shuffleArray(["A", "B", "C", "D"]));
     setMcqChosen(null);
     setMcqChecked(false);
     setFibResult(null);
@@ -184,6 +198,7 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
   setSaJudged(null);
   // (no sequencing banner state to reset)
   // reset sorting state
+  setSortPoolOrder(studying?.type === "Sorting" ? shuffleArray(((studying as DeckSorting).meta as DeckSortingMeta).items.map((it) => it.term)) : []);
   setSortAssignments({});
   setSortChecked(false);
   setSortAllCorrect(null);
@@ -202,6 +217,8 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
   // reset two-tier mcq
   setTtTier1(null);
   setTtTier2(null);
+  setTtTier1Order(shuffleArray(["A", "B", "C", "D"]));
+  setTtTier2Order(shuffleArray(["A", "B", "C", "D"]));
   setTtChecked(false);
   setTtConfidence(undefined);
   setTtGuessed(false);
@@ -273,12 +290,8 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
   // Helper renderers to keep JSX simple (avoid IIFEs inside JSX)
   const renderMCQ = (card: DeckStandardMCQ) => {
     const answer = card.meta.answer;
-    const options: Array<["A"|"B"|"C"|"D", string]> = [
-      ["A", card.meta.options.A],
-      ["B", card.meta.options.B],
-      ["C", card.meta.options.C],
-      ["D", card.meta.options.D],
-    ];
+    const optionKeys = mcqOptionOrder.length === 4 ? mcqOptionOrder : (["A", "B", "C", "D"] as Array<"A"|"B"|"C"|"D">);
+    const options: Array<["A"|"B"|"C"|"D", string]> = optionKeys.map((k) => [k, card.meta.options[k]]);
     const hoverTint = "#4DA6FF22";
     const handlePick = (k: "A"|"B"|"C"|"D") => {
       if (mcqChecked) return;
@@ -417,12 +430,9 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
     ) => {
       const chosen = tier === 1 ? ttTier1 : ttTier2;
       const showOutcome = ttChecked; // only after both tiers answered
-      const opts: Array<["A" | "B" | "C" | "D", string]> = [
-        ["A", options.A],
-        ["B", options.B],
-        ["C", options.C],
-        ["D", options.D],
-      ];
+      const order = tier === 1 ? ttTier1Order : ttTier2Order;
+      const orderedKeys = order.length === 4 ? order : (["A", "B", "C", "D"] as Array<"A"|"B"|"C"|"D">);
+      const opts: Array<["A" | "B" | "C" | "D", string]> = orderedKeys.map((k) => [k, options[k]]);
     const onPick = (k: "A" | "B" | "C" | "D") => {
         if (tier === 1) {
           if (ttTier1 != null) return; // lock tier1 once picked
@@ -893,7 +903,7 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
   const renderSorting = (card: DeckCard & { type: "Sorting" }) => {
     const meta = card.meta as DeckSortingMeta;
     const categories = meta.categories;
-    const items = meta.items.map((it) => it.term);
+    const items = sortPoolOrder.length === meta.items.length ? sortPoolOrder : meta.items.map((it) => it.term);
     const disabled = sortChecked; // lock after check
 
     function DraggableChip({ id, text }: { id: string; text: string }) {
