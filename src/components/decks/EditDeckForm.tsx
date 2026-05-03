@@ -90,7 +90,7 @@ export default function EditDeckForm({ deckId }: Props) {
   const [pendingImport, setPendingImport] = useState<null | {
     fileName: string;
     fileHash: string;
-    okRows: { index: number; payload: ImportPayload; warnings?: string[]; flagged?: boolean }[];
+    okRows: { index: number; payload: ImportPayload; warnings?: string[]; flagged?: boolean; tags?: import('@/lib/cardTags').CardTag[] }[];
     errRows: { index: number; errors: string[]; row: CsvRow }[];
     warnings: string[];
     rowWarnings?: { index: number; warnings: string[]; row: CsvRow }[];
@@ -364,6 +364,7 @@ export default function EditDeckForm({ deckId }: Props) {
           cer: 'CER',
         } as const;
         const p = r.payload as ImportPayload;
+        const cardTags = r.tags ?? p.tags ?? null;
         if (p.type === 'short') {
           return {
             deckId: Number(deckId),
@@ -373,6 +374,7 @@ export default function EditDeckForm({ deckId }: Props) {
             explanation: p.explanation,
             meta: { suggestedAnswer: p.meta.suggestedAnswer ?? '' },
             source: filename,
+            tags: cardTags,
           } satisfies cardsRepo.NewDeckCard;
         }
         if (p.type === 'fill') {
@@ -397,6 +399,7 @@ export default function EditDeckForm({ deckId }: Props) {
               ignorePunct: p.meta.ignorePunct,
             },
             source: filename,
+            tags: cardTags,
           } satisfies cardsRepo.NewDeckCard;
         }
         if (p.type === 'sorting') {
@@ -408,6 +411,7 @@ export default function EditDeckForm({ deckId }: Props) {
             explanation: p.explanation,
             meta: { categories: p.meta.categories, items: p.meta.items.map((it) => ({ term: it.term, correctCategory: it.category })) },
             source: filename,
+            tags: cardTags,
           } satisfies cardsRepo.NewDeckCard;
         }
         if (p.type === 'cer') {
@@ -425,6 +429,7 @@ export default function EditDeckForm({ deckId }: Props) {
               reasoning: p.meta.reasoning ?? {},
             },
             source: filename,
+            tags: cardTags,
           } satisfies cardsRepo.NewDeckCard;
         }
         if (p.type === 'mcq' || p.type === 'compare' || p.type === 'sequencing' || p.type === 'twoTier') {
@@ -436,6 +441,7 @@ export default function EditDeckForm({ deckId }: Props) {
             explanation: p.explanation,
             meta: p.meta,
             source: filename,
+            tags: cardTags,
           } satisfies cardsRepo.NewDeckCard;
         }
         // Fallback should never occur due to exhaustive union above
@@ -1355,6 +1361,7 @@ export default function EditDeckForm({ deckId }: Props) {
             question: payload.question,
             explanation: payload.explanation,
             meta: payload.meta,
+            tags: payload.tags ?? null,
           });
           if (typeof window !== "undefined") {
             window.dispatchEvent(new CustomEvent("deck-card:created", { detail: { card: created } }));

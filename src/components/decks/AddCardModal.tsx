@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import Modal from "@/components/ui/Modal";
 import type { DeckBloomLevel, DeckCard, DeckStandardMCQ, DeckShortAnswer, DeckMCQMeta, DeckShortMeta, DeckFillMeta, DeckFillBlank, DeckSortingMeta, DeckSequencingMeta, DeckCompareContrastMeta, DeckTwoTierMCQMeta, DeckCERMeta, DeckCERMode, DeckFillMode, DeckFillMetaV3, DeckFillBlankSpec } from "@/types/deck-cards";
+import type { CardTag } from "@/lib/cardTags";
+import { formatCardTags, parseCardTags } from "@/lib/cardTags";
 import type { CsvRow } from "@/lib/csvImport";
 import { pick, mapCardType, normalizeBloom, DEFAULT_BLOOM } from "@/lib/csvImport";
 import { CARD_TYPES_BY_BLOOM, BLOOM_LEVELS, defaultBloomFor, type CardType } from "@/types/card-catalog";
@@ -13,6 +15,7 @@ type SubmitPayload = {
   bloomLevel?: DeckBloomLevel;
   question: string;
   explanation?: string;
+  tags?: CardTag[] | null;
   meta: DeckMCQMeta | DeckShortMeta | DeckFillMeta | DeckSortingMeta | DeckSequencingMeta | DeckCompareContrastMeta | DeckTwoTierMCQMeta | DeckCERMeta;
 };
 
@@ -75,6 +78,7 @@ export default function AddCardModal({ open, mode = "create", initialCard, sourc
   const [cerClaimCorrect, setCerClaimCorrect] = useState<number>(0);
   const [cerEvidenceCorrect, setCerEvidenceCorrect] = useState<number>(0);
   const [cerReasoningCorrect, setCerReasoningCorrect] = useState<number>(0);
+  const [tagsInput, setTagsInput] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const [showSourceModal, setShowSourceModal] = useState(false);
@@ -103,6 +107,13 @@ export default function AddCardModal({ open, mode = "create", initialCard, sourc
       const rawBloom = pick(sourceRow, 'BloomLevel');
       const bloom = normalizeBloom(rawBloom) || DEFAULT_BLOOM[inferredType];
       setBloomLevel(bloom);
+      const sourceTagsRaw = pick(sourceRow, 'Tags') || '';
+      if (sourceTagsRaw.trim()) {
+        const parsed = parseCardTags(sourceTagsRaw);
+        setTagsInput(parsed.tags.length ? formatCardTags(parsed.tags) : sourceTagsRaw.trim().toLowerCase());
+      } else {
+        setTagsInput(initialCard?.tags?.length ? formatCardTags(initialCard.tags) : "");
+      }
       setQuestion(pick(sourceRow, 'Question', 'Prompt', 'Title', 'Scenario') || '');
       setExplanation(pick(sourceRow, 'Explanation') || '');
       if (cardType === "Standard MCQ") {
@@ -177,6 +188,7 @@ export default function AddCardModal({ open, mode = "create", initialCard, sourc
       setType(initialCard.type as AllowedType);
       setBloomLevel(initialCard.bloomLevel);
       setExplanation(initialCard.explanation ?? "");
+      setTagsInput(initialCard.tags?.length ? formatCardTags(initialCard.tags) : "");
       if (initialCard.type === "Standard MCQ") {
         const meta = (initialCard as DeckStandardMCQ).meta;
         setA(meta.options.A);
@@ -298,6 +310,7 @@ export default function AddCardModal({ open, mode = "create", initialCard, sourc
   setCerClaim(""); setCerEvidence(""); setCerReasoning("");
   setCerClaimOpts(["", ""]); setCerEvidenceOpts(["", ""]); setCerReasoningOpts(["", ""]);
   setCerClaimCorrect(0); setCerEvidenceCorrect(0); setCerReasoningCorrect(0);
+  setTagsInput("");
     }
   }, [open, isEdit, initialCard, sourceRow]);
 
@@ -467,6 +480,15 @@ export default function AddCardModal({ open, mode = "create", initialCard, sourc
       if (!canSave) return;
       setSaving(true);
       setError(undefined);
+      let parsedTags: CardTag[] | null = null;
+      if (tagsInput.trim()) {
+        const { tags, errors } = parseCardTags(tagsInput);
+        if (errors.length) {
+          setError(`Tags format invalid: ${errors[0]}`);
+          return;
+        }
+        parsedTags = tags;
+      }
       let payload: SubmitPayload;
       if (type === "Standard MCQ") {
         payload = {
@@ -474,6 +496,7 @@ export default function AddCardModal({ open, mode = "create", initialCard, sourc
           bloomLevel,
           question: question.trim(),
           explanation: explanation.trim() || undefined,
+          tags: parsedTags,
           meta: { options: { A, B, C, D }, answer },
         };
       } else if (type === "Short Answer") {
@@ -482,6 +505,7 @@ export default function AddCardModal({ open, mode = "create", initialCard, sourc
           bloomLevel,
           question: question.trim(),
           explanation: explanation.trim() || undefined,
+          tags: parsedTags,
           meta: { suggestedAnswer: shortSuggested.trim() },
         };
       } else if (type === "Fill in the Blank") {
@@ -528,6 +552,7 @@ export default function AddCardModal({ open, mode = "create", initialCard, sourc
           bloomLevel,
           question: question.trim(),
           explanation: explanation.trim() || undefined,
+          tags: parsedTags,
           meta: metaOut,
         };
       } else if (type === "Sequencing") {
@@ -536,6 +561,7 @@ export default function AddCardModal({ open, mode = "create", initialCard, sourc
           bloomLevel,
           question: question.trim(),
           explanation: explanation.trim() || undefined,
+          tags: parsedTags,
           meta: { steps: steps.map((s) => s.trim()) },
         };
       } else if (type === "Two-Tier MCQ") {
@@ -544,6 +570,7 @@ export default function AddCardModal({ open, mode = "create", initialCard, sourc
           bloomLevel,
           question: question.trim(),
           explanation: explanation.trim() || undefined,
+          tags: parsedTags,
           meta: {
             tier1: { options: { A, B, C, D }, answer },
             tier2: { question: tier2Question.trim(), options: { A: rA, B: rB, C: rC, D: rD }, answer: rAnswer },
@@ -555,6 +582,7 @@ export default function AddCardModal({ open, mode = "create", initialCard, sourc
           bloomLevel,
           question: `Compare ${ccItemA.trim()} and ${ccItemB.trim()}`,
           explanation: explanation.trim() || undefined,
+          tags: parsedTags,
           meta: {
             itemA: ccItemA.trim(),
             itemB: ccItemB.trim(),
@@ -585,6 +613,7 @@ export default function AddCardModal({ open, mode = "create", initialCard, sourc
           bloomLevel,
           question: question.trim(), // Scenario/Prompt as title
           explanation: undefined,
+          tags: parsedTags,
           meta,
         };
       } else {
@@ -593,6 +622,7 @@ export default function AddCardModal({ open, mode = "create", initialCard, sourc
           bloomLevel,
           question: (question || "").trim(),
           explanation: explanation.trim() || undefined,
+          tags: parsedTags,
           meta: { categories: categories.map((c) => c.trim()).filter(Boolean), items: items.map((i) => ({ term: i.term.trim(), correctCategory: i.correctCategory.trim() })) },
         };
       }
@@ -693,6 +723,20 @@ export default function AddCardModal({ open, mode = "create", initialCard, sourc
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Tags</label>
+            <textarea
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm"
+              rows={2}
+              value={tagsInput}
+              onChange={(e) => setTagsInput(e.target.value)}
+              placeholder="topic:vertebrates>mammal|process:gas-exchange|skill:comparison"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Use format dimension:value&gt;subvalue|dimension:value. Lowercase letters, numbers, and hyphens only. Max 6 tags, depth 3.
+            </p>
           </div>
 
   {/* Prompt / Question (hidden for Sorting, Sequencing, Compare/Contrast, and CER which has its own Scenario/Prompt section) */}

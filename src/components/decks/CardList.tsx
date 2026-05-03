@@ -17,6 +17,7 @@ import CardReviewReasonChip from "@/components/decks/CardReviewReasonChip";
 import { fetchCardReasons } from "@/lib/reviewReason";
 import { supabaseRepo } from "@/lib/repo/supabaseRepo";
 import { loadDeckOptions } from "@/lib/deckOptions";
+import type { CardTag } from "@/lib/cardTags";
 // (consolidated all deck-card type imports above)
 
 export type CardListProps = {
@@ -251,6 +252,7 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
     bloomLevel?: DeckBloomLevel;
     question: string;
     explanation?: string;
+    tags?: CardTag[] | null;
   meta: DeckMCQMeta | DeckShortMeta | DeckFillMeta | DeckSortingMeta | DeckSequencingMeta | DeckCompareContrastMeta | DeckTwoTierMCQMeta | DeckCERMeta;
   };
 
@@ -265,6 +267,7 @@ export default function CardList({ cards, onEdit, onDelete, onContinue }: CardLi
       position: editing.position,
       createdAt: editing.createdAt,
       updatedAt: editing.updatedAt,
+      tags: payload.tags ?? null,
     };
 
     if (payload.type === "Standard MCQ") {

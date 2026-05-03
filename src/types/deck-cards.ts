@@ -68,6 +68,8 @@ export type DeckBaseCard = {
   position?: number;
   createdAt?: string;
   updatedAt?: string;
+  /** Dimensional topic tags, e.g. [{dimension:"topic", path:["vertebrates","mammal"]}] */
+  tags?: import('@/lib/cardTags').CardTag[] | null;
 };
 
 export type DeckStandardMCQ = Omit<DeckBaseCard, 'type' | 'meta'> & {

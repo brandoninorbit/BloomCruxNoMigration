@@ -19,6 +19,7 @@ import type {
   DeckCER,
   DeckCERMeta,
 } from "@/types/deck-cards";
+import type { CardTag } from "@/lib/cardTags";
 import { defaultBloomForType } from "@/lib/bloom";
 import { upsertDeckImport } from "@/lib/db/deckImports";
 import { getSupabaseClient } from "@/lib/supabase/browserClient";
@@ -36,6 +37,7 @@ type CardRow = {
   source?: string | null;
   created_at: string | null;
   updated_at: string | null;
+  tags: CardTag[] | null;
 };
 
 function rowToCard(row: CardRow): DeckCard {
@@ -50,6 +52,7 @@ function rowToCard(row: CardRow): DeckCard {
     position: row.position ?? undefined,
     createdAt: row.created_at ?? undefined,
     updatedAt: row.updated_at ?? undefined,
+    tags: row.tags ?? null,
   } as const;
 
   if (row.type === "Standard MCQ") {
@@ -144,7 +147,7 @@ function cardToRow(card: DeckCard): Omit<CardRow, "id" | "created_at" | "updated
     explanation: card.explanation ?? null,
     meta: card.meta,
     position: card.position ?? null,
-  // 
+    tags: card.tags ?? null,
   };
 }
 
@@ -167,6 +170,7 @@ export type NewDeckCard = {
   meta: DeckMCQMeta | DeckShortMeta | DeckFillMeta | DeckSortingMeta | DeckSequencingMeta | DeckCompareContrastMeta | DeckTwoTierMCQMeta | DeckCERMeta;
   position?: number;
   source?: string | null;
+  tags?: CardTag[] | null;
   // NOTE: CER handled by widened union below in create/update calls using DeckCard typing.
 };
 
@@ -195,10 +199,11 @@ export async function create(input: NewDeckCard): Promise<DeckCard> {
     meta: input.meta,
     position: input.position,
   } as DeckCard);
-  // Inject 'source' only at insert time with a typed object
+  // Inject 'source' and 'tags' only at insert time with a typed object
   const row: Omit<CardRow, "id" | "created_at" | "updated_at"> = {
     ...rowBase,
     source: input.source ?? null,
+    tags: input.tags ?? null,
   };
   const { error } = await supabase
     .from("cards")
@@ -236,7 +241,7 @@ export async function createMany(inputs: NewDeckCard[]): Promise<number> {
       meta: input.meta,
       position: input.position,
     } as DeckCard);
-    return { ...rowBase, source: input.source ?? null };
+    return { ...rowBase, source: input.source ?? null, tags: input.tags ?? null };
   });
   const { error, count } = await supabase
     .from("cards")

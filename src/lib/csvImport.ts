@@ -17,6 +17,7 @@ import type {
   DeckFillMode,
 } from '@/types/deck-cards';
 import type { NewDeckCard } from '@/lib/cardsRepo';
+import { parseCardTags, type CardTag } from '@/lib/cardTags';
 
 export type CsvRow = Record<string, string>;
 
@@ -105,7 +106,7 @@ type CERPayload = {
   meta: { mode: CERMode; guidance?: string; claim?: CERPart; evidence?: CERPart; reasoning?: CERPart };
 };
 
-export type ImportPayload =
+export type ImportPayload = (
   | MCQPayload
   | TwoTierPayload
   | ShortPayload
@@ -113,7 +114,8 @@ export type ImportPayload =
   | SortingPayload
   | SequencingPayload
   | ComparePayload
-  | CERPayload;
+  | CERPayload
+) & { tags?: CardTag[] };
 
 // ---------- Payload Parser (Keyed Payload Mode) ----------
 // Canonical keys for normalization
@@ -122,7 +124,8 @@ const CANONICAL_KEYS = new Set([
   'A', 'B', 'C', 'D', 'Answer', 'SuggestedAnswer', 'BloomLevel', 'Explanation',
   'ItemA', 'ItemB', 'Points', 'Categories', 'Items', 'Steps',
   'RQuestion', 'RA', 'RB', 'RC', 'RD', 'RAnswer',
-  'Mode', 'Claim', 'Evidence', 'Reasoning'
+  'Mode', 'Claim', 'Evidence', 'Reasoning',
+  'Tags',
 ]);
 
 // Map lowercase key to canonical form
@@ -865,7 +868,14 @@ export function rowToPayload(row: CsvRow): ImportPayload {
       : t === 'compare'
       ? mapCompare(finalRow, idx, bloom)
       : mapCER(finalRow, idx, bloom);
-  if (res.payload) return res.payload;
+  if (res.payload) {
+    const rawTags = pick(finalRow, 'Tags');
+    if (rawTags) {
+      const { tags } = parseCardTags(rawTags);
+      if (tags.length > 0) res.payload.tags = tags;
+    }
+    return res.payload;
+  }
   // Non-throwing fallback for standalone usage; parseCsv will validate in real flows.
   return {
     type: 'mcq',
@@ -877,14 +887,14 @@ export function rowToPayload(row: CsvRow): ImportPayload {
 }
 
 export function parseCsv(csvText: string): {
-  okRows: { index: number; payload: ImportPayload; warnings?: string[]; flagged?: boolean }[];
+  okRows: { index: number; payload: ImportPayload; warnings?: string[]; flagged?: boolean; tags?: CardTag[] }[];
   badRows: { index: number; errors: string[]; row: CsvRow }[];
   warnings: string[];
   rowWarnings: { index: number; warnings: string[]; row: CsvRow }[];
 } {
   const result = Papa.parse<CsvRow>(csvText, { header: true, skipEmptyLines: true, transformHeader: (h: string) => h.trim() });
   const warnings: string[] = [];
-  const okRows: { index: number; payload: ImportPayload; warnings?: string[]; flagged?: boolean }[] = [];
+  const okRows: { index: number; payload: ImportPayload; warnings?: string[]; flagged?: boolean; tags?: CardTag[] }[] = [];
   const badRows: { index: number; errors: string[]; row: CsvRow }[] = [];
   const rowWarnings: { index: number; warnings: string[]; row: CsvRow }[] = [];
   if (result.errors.length > 0) {
@@ -1007,6 +1017,21 @@ export function parseCsv(csvText: string): {
       rowWarnings.push({ index, warnings: [msg], row });
     }
     if (res.payload) {
+      // Parse Tags column for this row
+      const rawTags = pick(processRow, 'Tags');
+      let parsedRowTags: CardTag[] | undefined;
+      if (rawTags) {
+        const { tags: pt, errors: tagErrors } = parseCardTags(rawTags);
+        parsedRowTags = pt.length > 0 ? pt : undefined;
+        if (tagErrors.length) {
+          tagErrors.forEach((e) => {
+            const msg = `Row ${index}: [W-TAG-PARSE] ${e}`;
+            warnings.push(msg);
+            rowWarnings.push({ index, warnings: [msg], row });
+          });
+        }
+        res.payload.tags = parsedRowTags;
+      }
       // Determine if this row should be gently flagged (currently only for Sorting with one-letter categories)
       let flagged = false;
       if (res.payload.type === 'sorting') {
@@ -1016,19 +1041,20 @@ export function parseCsv(csvText: string): {
         const ratioSingles = cats.length > 0 ? letterSingles.length / cats.length : 0;
         flagged = cats.length >= 4 && ratioSingles >= 0.75 && lowerSingles.length >= 1;
       }
-      okRows.push({ index, payload: res.payload, warnings: res.warnings.length ? res.warnings : undefined, flagged: flagged || undefined });
+      okRows.push({ index, payload: res.payload, warnings: res.warnings.length ? res.warnings : undefined, flagged: flagged || undefined, tags: parsedRowTags });
     }
     else badRows.push({ index, errors: res.errors, row });
   });
   return { okRows, badRows, warnings, rowWarnings };
 }
 
-export function importPayloadToNewDeckCard(payload: ImportPayload, deckId: number): NewDeckCard {
+export function importPayloadToNewDeckCard(payload: ImportPayload, deckId: number, tags?: CardTag[] | null): NewDeckCard {
   const baseCard = {
     deckId,
     question: payload.question,
     bloomLevel: payload.bloom as DeckBloomLevel,
     explanation: payload.explanation,
+    tags: (tags !== undefined ? tags : payload.tags) ?? null,
   };
 
   switch (payload.type) {
