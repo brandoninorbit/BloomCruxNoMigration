@@ -171,6 +171,14 @@ type MasteryRow = {
   updated_at?: string;
 };
 
+type TagAccuracyRow = {
+  tag: string;
+  scorePct: number | null;
+  accuracyPct: number | null;
+  seenCards: number;
+  totalCards: number;
+};
+
 const MOCK_GLOBAL_PROGRESS: GlobalProgress = { level: 5, xpIntoLevel: 250, xpForLevel: 1000, xpToNext: 750 };
 const MOCK_SETTINGS: UserSettings = { displayName: "Mock User", tokens: 1250 };
 const MOCK_DECK_PROGRESS: DeckProgress[] = [
@@ -242,6 +250,10 @@ export default function DashboardClient() {
   const [deckAttempts, setDeckAttempts] = useState<Record<number, Array<{ id: number; acc: number; ended_at: string; mode?: string | null }>>>({});
   // Cache of answers per attempt to prevent refetching when user re-opens the modal for the same attempt
   const [attemptAnswersCache, setAttemptAnswersCache] = useState<Record<number, Record<number, MissionAnswer[]>>>({});
+  const [tagAccuracyOpen, setTagAccuracyOpen] = useState<{ deckId: number; deckName: string } | null>(null);
+  const [tagAccuracyLoading, setTagAccuracyLoading] = useState(false);
+  const [tagAccuracyRows, setTagAccuracyRows] = useState<TagAccuracyRow[]>([]);
+  const [tagAccuracyNote, setTagAccuracyNote] = useState<string | undefined>(undefined);
 
   // Load real mastery when logged in and not showing example
   useEffect(() => {
@@ -533,6 +545,110 @@ export default function DashboardClient() {
       setAccuracyAnswers([]);
     } finally {
       setAccuracyLoading(false);
+    }
+  };
+
+  const openTagAccuracyModal = async (deckId: number, deckName: string) => {
+    setTagAccuracyOpen({ deckId, deckName });
+    setTagAccuracyLoading(true);
+    setTagAccuracyRows([]);
+    setTagAccuracyNote(undefined);
+    try {
+      if (!user?.id) {
+        setTagAccuracyRows([]);
+        setTagAccuracyNote("Sign in to view tag-level metrics.");
+        return;
+      }
+
+      const sb = getSupabaseClient();
+      const [cardsRes, srsRes] = await Promise.all([
+        sb.from("cards").select("id, tags").eq("deck_id", deckId),
+        sb
+          .from("user_deck_srs")
+          .select("card_id, attempts, correct")
+          .eq("user_id", user.id)
+          .eq("deck_id", deckId),
+      ]);
+
+      type CardRowLite = {
+        id: number;
+        tags?: Array<{ dimension?: string; path?: string[] }> | null;
+      };
+      type SrsRowLite = { card_id: number; attempts?: number | null; correct?: number | null };
+
+      const cards = (cardsRes.data ?? []) as CardRowLite[];
+      const srsRows = (srsRes.data ?? []) as SrsRowLite[];
+      const srsByCard = new Map<number, { attempts: number; correct: number }>();
+      for (const row of srsRows) {
+        const attempts = Math.max(0, Number(row.attempts ?? 0));
+        const correct = Math.max(0, Math.min(attempts, Number(row.correct ?? 0)));
+        srsByCard.set(Number(row.card_id), { attempts, correct });
+      }
+
+      const buckets = new Map<
+        string,
+        { totalCards: number; seenCards: number; sumCardAccuracy: number; attemptsSum: number; correctSum: number }
+      >();
+
+      for (const card of cards) {
+        const cardId = Number(card.id);
+        const srs = srsByCard.get(cardId) ?? { attempts: 0, correct: 0 };
+        const cardAccuracy = srs.attempts > 0 ? srs.correct / srs.attempts : null;
+        const rawTags = Array.isArray(card.tags) ? card.tags : [];
+
+        for (const t of rawTags) {
+          const dim = String(t?.dimension ?? "").trim().toLowerCase();
+          const path = Array.isArray(t?.path)
+            ? t.path.map((p) => String(p ?? "").trim().toLowerCase()).filter(Boolean)
+            : [];
+          if (!dim || path.length === 0) continue;
+          const key = `${dim}:${path.join(">")}`;
+          const cur =
+            buckets.get(key) ??
+            {
+              totalCards: 0,
+              seenCards: 0,
+              sumCardAccuracy: 0,
+              attemptsSum: 0,
+              correctSum: 0,
+            };
+          cur.totalCards += 1;
+          cur.attemptsSum += srs.attempts;
+          cur.correctSum += srs.correct;
+          if (cardAccuracy !== null) {
+            cur.seenCards += 1;
+            cur.sumCardAccuracy += cardAccuracy;
+          }
+          buckets.set(key, cur);
+        }
+      }
+
+      const rows: TagAccuracyRow[] = Array.from(buckets.entries())
+        .map(([tag, b]) => ({
+          tag,
+          scorePct: b.attemptsSum > 0 ? (b.correctSum / b.attemptsSum) * 100 : null,
+          accuracyPct: b.seenCards > 0 ? (b.sumCardAccuracy / b.seenCards) * 100 : null,
+          seenCards: b.seenCards,
+          totalCards: b.totalCards,
+        }))
+        .sort((a, b) => {
+          const aHas = a.accuracyPct !== null;
+          const bHas = b.accuracyPct !== null;
+          if (aHas && bHas) return (a.accuracyPct as number) - (b.accuracyPct as number);
+          if (aHas) return -1;
+          if (bHas) return 1;
+          return a.tag.localeCompare(b.tag);
+        });
+
+      setTagAccuracyRows(rows);
+      if (rows.length === 0) {
+        setTagAccuracyNote("No tags found in this deck yet.");
+      }
+    } catch {
+      setTagAccuracyRows([]);
+      setTagAccuracyNote("Could not load topic tag metrics right now.");
+    } finally {
+      setTagAccuracyLoading(false);
     }
   };
 
@@ -948,6 +1064,14 @@ export default function DashboardClient() {
                                 </div>
                               );
                               })}
+
+                              <button
+                                type="button"
+                                className="mt-2 text-sm font-medium text-blue-600 hover:underline text-left"
+                                onClick={() => openTagAccuracyModal(Number(deck.deckId), deck.deckName)}
+                              >
+                                Score and accuracy by topic tags
+                              </button>
                             </div>
                             {/* Right column: chart + attempts */}
                             <div className="md:w-1/2 w-full relative">
@@ -1233,6 +1357,14 @@ export default function DashboardClient() {
                               </div>
                             );
                             })}
+
+                            <button
+                              type="button"
+                              className="mt-2 text-sm font-medium text-blue-600 hover:underline text-left"
+                              onClick={() => openTagAccuracyModal(Number(deck.deckId), deck.deckName)}
+                            >
+                              Score and accuracy by topic tags
+                            </button>
                           </div>
                           <div className="md:w-1/2 w-full relative">
                             <div className="absolute right-0 -top-8 md:top-0 md:translate-y-[-110%]">
@@ -1424,6 +1556,66 @@ export default function DashboardClient() {
         </div>
       </DialogContent>
       </Dialog>
+
+      <Dialog
+        open={!!tagAccuracyOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setTagAccuracyOpen(null);
+            setTagAccuracyRows([]);
+            setTagAccuracyNote(undefined);
+          }
+        }}
+      >
+        <DialogContent className="bg-white max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Score and accuracy by topic tags</DialogTitle>
+            <DialogDescription>
+              {tagAccuracyOpen ? `Deck: ${tagAccuracyOpen.deckName}` : ""}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="mt-1 text-sm text-gray-600">
+            Tag accuracy is computed from per-card accuracy and is for weak-point visibility only. It does not affect XP, mission scoring, or unlocks.
+          </div>
+
+          <div className="mt-3 max-h-[55vh] overflow-auto rounded border border-gray-200">
+            {tagAccuracyLoading ? (
+              <div className="p-4 text-sm text-gray-600">Loading topic tag metrics...</div>
+            ) : tagAccuracyRows.length === 0 ? (
+              <div className="p-4 text-sm text-gray-600">{tagAccuracyNote ?? "No tag metrics available yet."}</div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 sticky top-0">
+                  <tr className="text-left text-gray-600">
+                    <th className="px-3 py-2 font-semibold">Tag</th>
+                    <th className="px-3 py-2 font-semibold">Score</th>
+                    <th className="px-3 py-2 font-semibold">Accuracy</th>
+                    <th className="px-3 py-2 font-semibold">Coverage</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tagAccuracyRows.map((row) => (
+                    <tr key={row.tag} className="border-t border-gray-100">
+                      <td className="px-3 py-2 font-mono text-xs text-gray-800">{row.tag}</td>
+                      <td className="px-3 py-2 text-gray-700">
+                        {row.scorePct === null ? "-" : formatPercent1(row.scorePct)}
+                      </td>
+                      <td className="px-3 py-2 text-gray-700">
+                        {row.accuracyPct === null ? "-" : formatPercent1(row.accuracyPct)}
+                      </td>
+                      <td className="px-3 py-2 text-gray-700">
+                        {row.seenCards}/{row.totalCards} cards
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <AccuracyDetailsModal
         open={accuracyOpen}
         onClose={() => { setAccuracyOpen(false); setSelectedAttempt(null); }}
