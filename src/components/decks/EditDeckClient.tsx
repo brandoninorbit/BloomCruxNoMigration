@@ -4,6 +4,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import * as cardsRepo from "@/lib/cardsRepo";
 import type { DeckCard } from "@/types/deck-cards";
 import CardList from "@/components/decks/CardList";
+import {
+  buildTagHierarchyFromKeys,
+  cardTagKey,
+  expandCardTagPrefixes,
+  findTagHierarchyNode,
+} from "@/lib/cardTags";
 
 type Props = { deckId: number; title: string };
 
@@ -14,7 +20,7 @@ export default function EditDeckClient({ deckId }: Props) {
   const [error, setError] = useState<string | undefined>(undefined);
   const [sortBy, setSortBy] = useState<"Default" | "Bloom Level" | "Card Format">("Default");
   const [tagsOpen, setTagsOpen] = useState(false);
-  const [selectedTagKey, setSelectedTagKey] = useState<string | null>(null);
+  const [selectedTagTrail, setSelectedTagTrail] = useState<string[]>([]);
 
   const count = loaded ? cards.length : 0;
 
@@ -82,36 +88,53 @@ export default function EditDeckClient({ deckId }: Props) {
   }, [cards, sortBy]);
 
   const tagBuckets = useMemo(() => {
-    const byTag = new Map<string, { label: string; cards: DeckCard[] }>();
+    const byTag = new Map<string, DeckCard[]>();
     cards.forEach((card) => {
       const tags = card.tags ?? [];
+      const prefixKeys = new Set<string>();
       tags.forEach((tag) => {
-        const normalizedPath = Array.isArray(tag.path) ? tag.path : [];
-        if (!tag.dimension || normalizedPath.length === 0) return;
-        const key = `${tag.dimension}:${normalizedPath.join(">")}`;
-        const label = key;
-        const current = byTag.get(key);
-        if (!current) {
-          byTag.set(key, { label, cards: [card] });
-          return;
-        }
-        if (!current.cards.some((c) => c.id === card.id)) {
-          current.cards.push(card);
-        }
+        expandCardTagPrefixes(tag).forEach((prefix) => prefixKeys.add(cardTagKey(prefix)));
+      });
+      prefixKeys.forEach((key) => {
+        const current = byTag.get(key) ?? [];
+        if (!current.some((c) => c.id === card.id)) current.push(card);
+        byTag.set(key, current);
       });
     });
 
-    return Array.from(byTag.entries())
-      .map(([key, value]) => ({ key, label: value.label, cards: value.cards }))
-      .sort((a, b) => a.label.localeCompare(b.label));
+    return byTag;
   }, [cards]);
 
+  const tagHierarchy = useMemo(
+    () => buildTagHierarchyFromKeys(Array.from(tagBuckets.keys())),
+    [tagBuckets]
+  );
+
+  const activeTagKey = selectedTagTrail[selectedTagTrail.length - 1] ?? null;
+  const activeTagNode = useMemo(
+    () => (activeTagKey ? findTagHierarchyNode(tagHierarchy, activeTagKey) : null),
+    [activeTagKey, tagHierarchy]
+  );
+
   const selectedTagCards = useMemo(() => {
-    if (!selectedTagKey) return [] as DeckCard[];
-    const bucket = tagBuckets.find((t) => t.key === selectedTagKey);
-    if (!bucket) return [] as DeckCard[];
-    return [...bucket.cards].sort((a, b) => (a.position ?? 0) - (b.position ?? 0) || a.id - b.id);
-  }, [selectedTagKey, tagBuckets]);
+    if (!activeTagKey) return [] as DeckCard[];
+    const bucket = tagBuckets.get(activeTagKey) ?? [];
+    return [...bucket].sort((a, b) => (a.position ?? 0) - (b.position ?? 0) || a.id - b.id);
+  }, [activeTagKey, tagBuckets]);
+
+  const selectedHierarchyNodes = useMemo(
+    () => selectedTagTrail.map((key) => findTagHierarchyNode(tagHierarchy, key)).filter(Boolean),
+    [selectedTagTrail, tagHierarchy]
+  );
+
+  const selectTagAtDepth = (key: string, depth: number) => {
+    setSelectedTagTrail((prev) => {
+      if (prev[depth] === key) return prev.slice(0, depth);
+      const next = prev.slice(0, depth);
+      next[depth] = key;
+      return next;
+    });
+  };
 
   // Listen for newly created cards from the Add Card modal
   useEffect(() => {
@@ -156,41 +179,77 @@ export default function EditDeckClient({ deckId }: Props) {
         >
           <div>
             <p className="text-sm font-semibold text-gray-900">Deck Tags</p>
-            <p className="text-xs text-gray-600">{tagBuckets.length} unique tags in this deck</p>
+            <p className="text-xs text-gray-600">{tagBuckets.size} hierarchical tags in this deck</p>
           </div>
           <span className="text-gray-500 text-sm">{tagsOpen ? "Hide" : "Show"}</span>
         </button>
 
         {tagsOpen && (
           <div id="deck-tags-panel" className="px-4 pb-4">
-            {tagBuckets.length === 0 ? (
+            {tagHierarchy.length === 0 ? (
               <p className="text-sm text-gray-500">No tags found in this deck yet.</p>
             ) : (
               <>
-                <div className="flex flex-wrap gap-2">
-                  {tagBuckets.map((tag) => {
-                    const active = selectedTagKey === tag.key;
-                    return (
-                      <button
-                        key={tag.key}
-                        type="button"
-                        onClick={() => setSelectedTagKey((prev) => (prev === tag.key ? null : tag.key))}
-                        className={`px-3 py-1.5 rounded-full text-xs border transition-colors ${
-                          active
-                            ? "bg-[#2481f9] text-white border-[#2481f9]"
-                            : "bg-white text-gray-700 border-gray-300 hover:border-[#2481f9] hover:text-[#2481f9]"
-                        }`}
-                        title={`Show cards with ${tag.label}`}
-                      >
-                        {tag.label} ({tag.cards.length})
-                      </button>
-                    );
-                  })}
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Top-level tags</p>
+                  <div className="flex flex-wrap gap-2">
+                    {tagHierarchy.map((tag) => {
+                      const active = selectedTagTrail[0] === tag.key;
+                      const cardsForTag = tagBuckets.get(tag.key) ?? [];
+                      return (
+                        <button
+                          key={tag.key}
+                          type="button"
+                          onClick={() => selectTagAtDepth(tag.key, 0)}
+                          className={`px-3 py-1.5 rounded-full text-xs border transition-colors ${
+                            active
+                              ? "bg-[#2481f9] text-white border-[#2481f9]"
+                              : "bg-white text-gray-700 border-gray-300 hover:border-[#2481f9] hover:text-[#2481f9]"
+                          }`}
+                          title={`Show cards within ${tag.key}`}
+                        >
+                          {tag.key} ({cardsForTag.length})
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
 
-                {selectedTagKey && (
+                {selectedHierarchyNodes.map((node, depth) => {
+                  if (!node || node.children.length === 0) return null;
+                  return (
+                    <div key={node.key} className="mt-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
+                        Inside {node.key}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {node.children.map((child) => {
+                          const active = selectedTagTrail[depth + 1] === child.key;
+                          const cardsForChild = tagBuckets.get(child.key) ?? [];
+                          return (
+                            <button
+                              key={child.key}
+                              type="button"
+                              onClick={() => selectTagAtDepth(child.key, depth + 1)}
+                              className={`px-3 py-1.5 rounded-full text-xs border transition-colors ${
+                                active
+                                  ? "bg-[#2481f9] text-white border-[#2481f9]"
+                                  : "bg-white text-gray-700 border-gray-300 hover:border-[#2481f9] hover:text-[#2481f9]"
+                              }`}
+                              title={`Show cards within ${child.key}`}
+                            >
+                              {child.path[child.path.length - 1]} ({cardsForChild.length})
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {activeTagNode ? (
                   <div className="mt-3 rounded-md border border-blue-200 bg-blue-50 p-3">
-                    <p className="text-sm font-medium text-blue-900">Cards with tag: {selectedTagKey}</p>
+                    <p className="text-sm font-medium text-blue-900">Cards within tag: {activeTagNode.key}</p>
                     {selectedTagCards.length === 0 ? (
                       <p className="text-sm text-blue-800 mt-1">No cards currently match this tag.</p>
                     ) : (
@@ -203,6 +262,8 @@ export default function EditDeckClient({ deckId }: Props) {
                       </ul>
                     )}
                   </div>
+                ) : (
+                  <p className="mt-3 text-sm text-gray-500">Select a top-level tag to inspect all cards within it and its nested tags.</p>
                 )}
               </>
             )}

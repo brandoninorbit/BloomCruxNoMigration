@@ -68,6 +68,13 @@ import { XP_MODEL } from "@/lib/xp";
 import DeckProgressChart from "@/components/decks/DeckProgressChart";
 import AccuracyDetailsModal, { type MissionAnswer } from "@/components/AccuracyDetailsModal";
 import * as cardsRepo from "@/lib/cardsRepo";
+import {
+  buildTagHierarchyFromKeys,
+  cardTagKey,
+  expandCardTagPrefixes,
+  findTagHierarchyNode,
+  type TagHierarchyNode,
+} from "@/lib/cardTags";
 
 // Helper component for Progress Ring
 const ProgressRing = ({
@@ -253,6 +260,8 @@ export default function DashboardClient() {
   const [tagAccuracyOpen, setTagAccuracyOpen] = useState<{ deckId: number; deckName: string } | null>(null);
   const [tagAccuracyLoading, setTagAccuracyLoading] = useState(false);
   const [tagAccuracyRows, setTagAccuracyRows] = useState<TagAccuracyRow[]>([]);
+  const [tagAccuracyHierarchy, setTagAccuracyHierarchy] = useState<TagHierarchyNode[]>([]);
+  const [tagAccuracyTrail, setTagAccuracyTrail] = useState<string[]>([]);
   const [tagAccuracyNote, setTagAccuracyNote] = useState<string | undefined>(undefined);
 
   // Load real mastery when logged in and not showing example
@@ -552,6 +561,8 @@ export default function DashboardClient() {
     setTagAccuracyOpen({ deckId, deckName });
     setTagAccuracyLoading(true);
     setTagAccuracyRows([]);
+    setTagAccuracyHierarchy([]);
+    setTagAccuracyTrail([]);
     setTagAccuracyNote(undefined);
     try {
       if (!user?.id) {
@@ -596,13 +607,19 @@ export default function DashboardClient() {
         const cardAccuracy = srs.attempts > 0 ? srs.correct / srs.attempts : null;
         const rawTags = Array.isArray(card.tags) ? card.tags : [];
 
+        const prefixKeys = new Set<string>();
         for (const t of rawTags) {
           const dim = String(t?.dimension ?? "").trim().toLowerCase();
           const path = Array.isArray(t?.path)
             ? t.path.map((p) => String(p ?? "").trim().toLowerCase()).filter(Boolean)
             : [];
           if (!dim || path.length === 0) continue;
-          const key = `${dim}:${path.join(">")}`;
+          expandCardTagPrefixes({ dimension: dim, path }).forEach((prefix) => {
+            prefixKeys.add(cardTagKey(prefix));
+          });
+        }
+
+        for (const key of prefixKeys) {
           const cur =
             buckets.get(key) ??
             {
@@ -641,6 +658,7 @@ export default function DashboardClient() {
         });
 
       setTagAccuracyRows(rows);
+      setTagAccuracyHierarchy(buildTagHierarchyFromKeys(rows.map((row) => row.tag)));
       if (rows.length === 0) {
         setTagAccuracyNote("No tags found in this deck yet.");
       }
@@ -650,6 +668,26 @@ export default function DashboardClient() {
     } finally {
       setTagAccuracyLoading(false);
     }
+  };
+
+  const tagAccuracyRowMap = useMemo(
+    () => new Map(tagAccuracyRows.map((row) => [row.tag, row] as const)),
+    [tagAccuracyRows]
+  );
+
+  const activeTagAccuracyKey = tagAccuracyTrail[tagAccuracyTrail.length - 1] ?? null;
+  const activeTagAccuracyNode = useMemo(
+    () => (activeTagAccuracyKey ? findTagHierarchyNode(tagAccuracyHierarchy, activeTagAccuracyKey) : null),
+    [activeTagAccuracyKey, tagAccuracyHierarchy]
+  );
+
+  const selectTagAccuracyAtDepth = (key: string, depth: number) => {
+    setTagAccuracyTrail((prev) => {
+      if (prev[depth] === key) return prev.slice(0, depth);
+      const next = prev.slice(0, depth);
+      next[depth] = key;
+      return next;
+    });
   };
 
   return (
@@ -1563,6 +1601,8 @@ export default function DashboardClient() {
           if (!open) {
             setTagAccuracyOpen(null);
             setTagAccuracyRows([]);
+            setTagAccuracyHierarchy([]);
+            setTagAccuracyTrail([]);
             setTagAccuracyNote(undefined);
           }
         }}
@@ -1582,35 +1622,91 @@ export default function DashboardClient() {
           <div className="mt-3 max-h-[55vh] overflow-auto rounded border border-gray-200">
             {tagAccuracyLoading ? (
               <div className="p-4 text-sm text-gray-600">Loading topic tag metrics...</div>
-            ) : tagAccuracyRows.length === 0 ? (
+            ) : tagAccuracyHierarchy.length === 0 ? (
               <div className="p-4 text-sm text-gray-600">{tagAccuracyNote ?? "No tag metrics available yet."}</div>
             ) : (
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 sticky top-0">
-                  <tr className="text-left text-gray-600">
-                    <th className="px-3 py-2 font-semibold">Tag</th>
-                    <th className="px-3 py-2 font-semibold">Score</th>
-                    <th className="px-3 py-2 font-semibold">Accuracy</th>
-                    <th className="px-3 py-2 font-semibold">Coverage</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {tagAccuracyRows.map((row) => (
-                    <tr key={row.tag} className="border-t border-gray-100">
-                      <td className="px-3 py-2 font-mono text-xs text-gray-800">{row.tag}</td>
-                      <td className="px-3 py-2 text-gray-700">
-                        {row.scorePct === null ? "-" : formatPercent1(row.scorePct)}
-                      </td>
-                      <td className="px-3 py-2 text-gray-700">
-                        {row.accuracyPct === null ? "-" : formatPercent1(row.accuracyPct)}
-                      </td>
-                      <td className="px-3 py-2 text-gray-700">
-                        {row.seenCards}/{row.totalCards} cards
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="p-4 space-y-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Top-level tags</p>
+                  <div className="flex flex-wrap gap-2">
+                    {tagAccuracyHierarchy.map((node) => {
+                      const active = tagAccuracyTrail[0] === node.key;
+                      const row = tagAccuracyRowMap.get(node.key);
+                      return (
+                        <button
+                          key={node.key}
+                          type="button"
+                          onClick={() => selectTagAccuracyAtDepth(node.key, 0)}
+                          className={`px-3 py-1.5 rounded-full text-xs border transition-colors ${
+                            active
+                              ? "bg-[#2481f9] text-white border-[#2481f9]"
+                              : "bg-white text-gray-700 border-gray-300 hover:border-[#2481f9] hover:text-[#2481f9]"
+                          }`}
+                        >
+                          {node.key} ({row?.totalCards ?? 0})
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {tagAccuracyTrail.map((key, depth) => {
+                  const node = findTagHierarchyNode(tagAccuracyHierarchy, key);
+                  if (!node || node.children.length === 0) return null;
+                  return (
+                    <div key={node.key}>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Inside {node.key}</p>
+                      <div className="flex flex-wrap gap-2">
+                        {node.children.map((child) => {
+                          const active = tagAccuracyTrail[depth + 1] === child.key;
+                          const row = tagAccuracyRowMap.get(child.key);
+                          return (
+                            <button
+                              key={child.key}
+                              type="button"
+                              onClick={() => selectTagAccuracyAtDepth(child.key, depth + 1)}
+                              className={`px-3 py-1.5 rounded-full text-xs border transition-colors ${
+                                active
+                                  ? "bg-[#2481f9] text-white border-[#2481f9]"
+                                  : "bg-white text-gray-700 border-gray-300 hover:border-[#2481f9] hover:text-[#2481f9]"
+                              }`}
+                            >
+                              {child.path[child.path.length - 1]} ({row?.totalCards ?? 0})
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {activeTagAccuracyNode ? (
+                  (() => {
+                    const row = tagAccuracyRowMap.get(activeTagAccuracyNode.key);
+                    return (
+                      <div className="rounded border border-blue-200 bg-blue-50 p-3">
+                        <div className="text-sm font-medium text-blue-900">Metrics for {activeTagAccuracyNode.key}</div>
+                        <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+                          <div>
+                            <div className="text-xs uppercase tracking-wide text-blue-700">Score</div>
+                            <div className="font-semibold text-blue-900">{row?.scorePct === null || row?.scorePct === undefined ? "-" : formatPercent1(row.scorePct)}</div>
+                          </div>
+                          <div>
+                            <div className="text-xs uppercase tracking-wide text-blue-700">Accuracy</div>
+                            <div className="font-semibold text-blue-900">{row?.accuracyPct === null || row?.accuracyPct === undefined ? "-" : formatPercent1(row.accuracyPct)}</div>
+                          </div>
+                          <div>
+                            <div className="text-xs uppercase tracking-wide text-blue-700">Coverage</div>
+                            <div className="font-semibold text-blue-900">{row ? `${row.seenCards}/${row.totalCards} cards` : "-"}</div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()
+                ) : (
+                  <p className="text-sm text-gray-500">Select a top-level tag to inspect all cards and nested tag metrics within it.</p>
+                )}
+              </div>
             )}
           </div>
         </DialogContent>

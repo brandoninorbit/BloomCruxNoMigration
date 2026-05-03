@@ -148,6 +148,20 @@ describe("CSV importer – strict mapping", () => {
     });
   });
 
+  test("Compare/Contrast: missing prompt/question falls back to ItemA and ItemB", () => {
+    const csv = [
+      'CardType,ItemA,ItemB,Points',
+      'Compare/Contrast,DNA,RNA,"Sugar::deoxyribose::ribose|Strands::double::single"'
+    ].join("\n");
+    const { okRows, badRows } = parseCsv(csv);
+    expect(badRows.length).toBe(0);
+    expect(okRows.length).toBe(1);
+    const p: any = okRows[0]?.payload;
+    expect(p.type).toBe("compare");
+    expect(p.question).toBe("Compare DNA and RNA");
+    expect(p.meta.prompt).toBeUndefined();
+  });
+
   test("CER Free Text", () => {
     const r = row({
       CardType: "CER",

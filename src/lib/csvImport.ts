@@ -699,9 +699,9 @@ function mapSequencing(row: CsvRow, idx: number, bloom: Bloom): MapResult {
 }
 
 function mapCompare(row: CsvRow, idx: number, bloom: Bloom): MapResult {
-  const question = questionFrom(row);
   const itemA = pick(row, 'ItemA', 'A');
   const itemB = pick(row, 'ItemB', 'B');
+  const question = questionFrom(row) || (itemA && itemB ? `Compare ${itemA} and ${itemB}` : '');
   const prompt = pick(row, 'Prompt', 'Context', 'Scenario');
   const ptsRaw = pick(row, 'Points', 'Pairs');
   const pts = splitPipes(ptsRaw);

@@ -17,6 +17,13 @@ export type CardTag = {
   path: string[]; // e.g. ["vertebrates", "mammal", "respiratory"]
 };
 
+export type TagHierarchyNode = {
+  key: string;
+  dimension: string;
+  path: string[];
+  children: TagHierarchyNode[];
+};
+
 const TAG_CHAR_RE = /^[a-z0-9-]+$/;
 const MAX_TAGS = 6;
 const MAX_DEPTH = 3;
@@ -125,6 +132,96 @@ export function parseCardTags(raw: string): ParseTagsResult {
  */
 export function formatCardTags(tags: CardTag[]): string {
   return tags.map((t) => `${t.dimension}:${t.path.join('>')}`).join('|');
+}
+
+export function cardTagKey(tag: CardTag): string {
+  return `${tag.dimension}:${tag.path.join('>')}`;
+}
+
+export function cardTagKeyFromParts(dimension: string, path: string[]): string {
+  return `${dimension}:${path.join('>')}`;
+}
+
+export function parseCardTagKey(key: string): CardTag | null {
+  const colonIdx = key.indexOf(':');
+  if (colonIdx === -1) return null;
+  const dimension = key.slice(0, colonIdx).trim().toLowerCase();
+  const path = key
+    .slice(colonIdx + 1)
+    .split('>')
+    .map((part) => part.trim().toLowerCase())
+    .filter(Boolean);
+  if (!dimension || path.length === 0) return null;
+  return { dimension, path };
+}
+
+export function expandCardTagPrefixes(tag: CardTag): CardTag[] {
+  const prefixes: CardTag[] = [];
+  for (let depth = 1; depth <= tag.path.length; depth += 1) {
+    prefixes.push({ dimension: tag.dimension, path: tag.path.slice(0, depth) });
+  }
+  return prefixes;
+}
+
+export function buildTagHierarchyFromKeys(keys: string[]): TagHierarchyNode[] {
+  const nodeMap = new Map<string, TagHierarchyNode>();
+
+  const ensureNode = (key: string): TagHierarchyNode | null => {
+    const parsed = parseCardTagKey(key);
+    if (!parsed) return null;
+
+    const existing = nodeMap.get(key);
+    if (existing) return existing;
+
+    const node: TagHierarchyNode = {
+      key,
+      dimension: parsed.dimension,
+      path: parsed.path,
+      children: [],
+    };
+    nodeMap.set(key, node);
+
+    if (parsed.path.length > 1) {
+      const parentKey = cardTagKeyFromParts(parsed.dimension, parsed.path.slice(0, -1));
+      const parent = ensureNode(parentKey);
+      if (parent && !parent.children.some((child) => child.key === key)) {
+        parent.children.push(node);
+      }
+    }
+
+    return node;
+  };
+
+  keys.forEach((key) => {
+    ensureNode(key);
+  });
+
+  const sortNode = (node: TagHierarchyNode) => {
+    node.children.sort((a, b) => a.path[a.path.length - 1].localeCompare(b.path[b.path.length - 1]));
+    node.children.forEach(sortNode);
+  };
+
+  const roots = Array.from(nodeMap.values())
+    .filter((node) => node.path.length === 1)
+    .sort((a, b) => {
+      if (a.dimension !== b.dimension) return a.dimension.localeCompare(b.dimension);
+      return a.path[0].localeCompare(b.path[0]);
+    });
+
+  roots.forEach(sortNode);
+  return roots;
+}
+
+export function findTagHierarchyNode(
+  nodes: TagHierarchyNode[],
+  key: string
+): TagHierarchyNode | null {
+  for (const node of nodes) {
+    if (node.key === key) return node;
+    const match = findTagHierarchyNode(node.children, key);
+    if (match) return match;
+  }
+  return null;
 }
 
 /**
