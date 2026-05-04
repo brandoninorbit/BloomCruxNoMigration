@@ -17,6 +17,7 @@ export async function recordMissionAttempt(params: {
   startedAt?: string | null;
   endedAt?: string | null;
   contentVersion?: number;
+  missionIndex?: number; // 0-based mission index within the bloom level (quest mode only)
   mode?: 'quest' | 'remix' | 'drill' | 'study' | 'starred' | 'target_practice';
   breakdown?: Record<string, { scorePct: number; cardsSeen: number; cardsCorrect: number }>; // per-bloom summary
   answers?: Array<{ cardId: number; correct: boolean | number; response?: unknown }>; // optional raw per-card answers for persistence (includes raw response & timing)
@@ -94,6 +95,10 @@ export async function recordMissionAttempt(params: {
         })
     : undefined;
 
+  const missionIndexSafe = (Number.isFinite(params.missionIndex as number) && (params.missionIndex as number) >= 0)
+    ? Math.floor(params.missionIndex as number)
+    : null;
+
   const basePayload: Record<string, unknown> = {
     user_id: params.userId,
     deck_id: params.deckId,
@@ -104,6 +109,7 @@ export async function recordMissionAttempt(params: {
     started_at: params.startedAt ?? null,
     ended_at: params.endedAt ?? new Date().toISOString(),
     mode: modeSafe,
+    mission_index: missionIndexSafe,
     breakdown: params.breakdown ? (params.breakdown as unknown as object) : null,
   // Store as native JSON (jsonb) NOT stringified; legacy rows were stringified which broke retrieval
   answers_json: answersSanitized ? (answersSanitized as unknown) : null,

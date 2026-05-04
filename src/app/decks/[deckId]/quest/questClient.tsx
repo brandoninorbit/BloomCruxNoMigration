@@ -10,7 +10,7 @@ import type { MissionState, UserBloomProgress, SRSPerformance } from "@/lib/ques
 import { QuestProgress } from "@/components/QuestProgress";
 // Centered study view: no Agent sidebar, but show a small header and progress
 import QuestStudyCard from "@/components/study/QuestStudyCard";
-import { fetchProgress, saveProgressRepo, fetchMission, upsertMission, fetchSrs, logXpEvent, upsertSrs } from "@/lib/quest/repo";
+import { fetchProgress, fetchMission, upsertMission, fetchSrs, logXpEvent, upsertSrs } from "@/lib/quest/repo";
 import { Bloom } from "@/lib/bloom";
 import { useMasteryTracker } from "@/lib/useMasteryTracker";
 import { loadDeckOptions } from "@/lib/deckOptions";
@@ -369,8 +369,6 @@ export default function QuestClient({ deckId }: { deckId: number }) {
           console.error('❌ Mission complete failed:', resp.status, resp.statusText, errorText);
         }
       } catch {}
-      // Persist progress snapshot too (non-blocking)
-      try { await saveProgressRepo(deckId, progress ?? undefined, undefined); } catch {}
       router.replace(`/decks/${deckId}/mission-complete?${q.toString()}`);
       return;
     }

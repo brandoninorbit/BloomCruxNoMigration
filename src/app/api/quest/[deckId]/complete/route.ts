@@ -102,6 +102,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dec
       startedAt: started_at,
       endedAt: ended_at,
       mode,
+      missionIndex: (mode ?? 'quest') === 'quest' ? mission_index : undefined,
       breakdown,
       answers,
     });
