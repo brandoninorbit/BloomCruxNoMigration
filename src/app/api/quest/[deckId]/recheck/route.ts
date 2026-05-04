@@ -29,68 +29,37 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dec
   const prevLevel = BLOOM_LEVELS[levelIndex - 1] as DeckBloomLevel;
 
   const sb = supabaseAdmin();
-
-  type AttemptRow = { score_pct: number | string | null; mode?: string | null; ended_at: string | null };
-  let attempts: AttemptRow[] | null = null;
-  let error: unknown = null;
-
-  const primary = await sb
-    .from("user_deck_mission_attempts")
-    .select("score_pct, mode, ended_at")
-    .eq("user_id", userId)
-    .eq("deck_id", deckId)
-    .eq("bloom_level", prevLevel)
-    .eq("mode", "quest")
-    .order("ended_at", { ascending: false })
-    .order("score_pct", { ascending: false })
-    .limit(1);
-
-  attempts = primary.data as AttemptRow[] | null;
-  error = primary.error;
-
-  const errorMessage = typeof error === 'object' && error !== null && 'message' in error ? (error as { message?: unknown }).message : undefined;
-  if (typeof errorMessage === 'string' && errorMessage.includes('mode')) {
-    const fallback = await sb
-      .from("user_deck_mission_attempts")
-      .select("score_pct, ended_at")
-      .eq("user_id", userId)
-      .eq("deck_id", deckId)
-      .eq("bloom_level", prevLevel)
-      .order("ended_at", { ascending: false })
-      .order("score_pct", { ascending: false })
-      .limit(1);
-    attempts = fallback.data as AttemptRow[] | null;
-    error = fallback.error;
-  }
-
-  if (error) {
-    console.error("Error fetching attempts:", error);
-    return NextResponse.json({ error: "failed to check attempts" }, { status: 500 });
-  }
-
-  const latestAttempt = attempts?.[0];
-  const latestScore = latestAttempt ? Number(latestAttempt.score_pct ?? 0) : 0;
-  if (!latestAttempt || latestScore < 60) {
-    return NextResponse.json({
-      success: false,
-      message: "Earlier missions do not demonstrate sufficient knowledge to advance, study and return later",
-      latestScore,
-      attemptDate: latestAttempt?.ended_at ?? null
-    });
-  }
-
-  // The latest quest mission has >=60% accuracy, so unlock the level
-  const { data: row } = await sb
+  const { data: row, error } = await sb
     .from("user_deck_quest_progress")
     .select("id, per_bloom")
     .eq("user_id", userId)
     .eq("deck_id", deckId)
     .maybeSingle();
 
+  if (error) {
+    console.error("Error fetching quest progress:", error);
+    return NextResponse.json({ error: "failed to check progress" }, { status: 500 });
+  }
+
+  type PB = { totalMissions?: number; missionsPassed?: number; cleared?: boolean };
+  const per = (row?.per_bloom ?? {}) as Record<string, PB>;
+  const prevData = (per[prevLevel] ?? {}) as PB;
+  const totalMissions = Number(prevData.totalMissions ?? 0);
+  const missionsPassed = Number(prevData.missionsPassed ?? 0);
+  const isCleared = totalMissions > 0 && missionsPassed >= totalMissions;
+
+  if (!isCleared) {
+    return NextResponse.json({
+      success: false,
+      message: `Complete all ${prevLevel} missions in order with at least 60% to unlock ${levelToUnlock}.`,
+      missionsPassed,
+      totalMissions,
+    });
+  }
+
   if (row) {
-    const per = (row.per_bloom ?? {}) as Record<string, unknown>;
     const currentLevelData = (per[prevLevel] ?? {}) as Record<string, unknown>;
-    per[prevLevel] = { ...currentLevelData, cleared: true };
+    per[prevLevel] = { ...currentLevelData, cleared: true, missionsPassed, totalMissions };
     await sb
       .from("user_deck_quest_progress")
       .update({ per_bloom: per })
@@ -101,7 +70,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dec
   return NextResponse.json({
     success: true,
     message: `${prevLevel} level unlocked!`,
-    latestScore,
-    attemptDate: latestAttempt.ended_at ?? null
+    missionsPassed,
+    totalMissions,
   });
 }

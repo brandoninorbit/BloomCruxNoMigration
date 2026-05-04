@@ -23,15 +23,13 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ dec
   if (attemptsRes.error) return NextResponse.json({ error: attemptsRes.error.message }, { status: 500 });
 
   type PerBloomMinimal = {
-    mastered?: boolean;
     cleared?: boolean;
     missionsPassed?: number;
+    totalMissions?: number;
     [k: string]: unknown;
   };
   const per = (progressRow.data?.per_bloom ?? {}) as Record<string, PerBloomMinimal>;
-  type Attempt = { bloom_level: string; score_pct: number; mode?: string | null; ended_at: string };
-  const attempts: Attempt[] = (attemptsRes.data ?? []).filter((a: Attempt) => a.mode === 'quest');
-  const passThreshold = 60;
+  void attemptsRes;
 
   const reasoning: Array<{ level: string; prev?: string; unlocked: boolean; basis: string[] }> = [];
   for (let i = 0; i < BLOOM_LEVELS.length; i++) {
@@ -43,14 +41,12 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ dec
     const prev = BLOOM_LEVELS[i - 1]!;
   const prevData: PerBloomMinimal = per[prev] || {};
     const basis: string[] = [];
-    let unlocked = false;
-    if (prevData.mastered) { unlocked = true; basis.push('prev.mastered'); }
-    if (!unlocked && prevData.cleared) { unlocked = true; basis.push('prev.cleared'); }
     const missionsPassed = Number(prevData.missionsPassed ?? 0);
-    if (!unlocked && missionsPassed > 0) { unlocked = true; basis.push('prev.missionsPassed>0'); }
-  const prevAttempts = attempts.filter(a => a.bloom_level === prev);
-  const best = prevAttempts.reduce<Attempt | null>((m, a) => (a.score_pct > (m?.score_pct ?? -1) ? a : m), null);
-  if (!unlocked && best && best.score_pct >= passThreshold) { unlocked = true; basis.push('bestAttempt>=60'); }
+    const totalMissions = Number(prevData.totalMissions ?? 0);
+    const allPrevPassed = totalMissions > 0 && missionsPassed >= totalMissions;
+    let unlocked = false;
+    if (prevData.cleared) { unlocked = true; basis.push('prev.cleared'); }
+    if (!unlocked && allPrevPassed) { unlocked = true; basis.push('prev.missionsPassed>=prev.totalMissions'); }
     reasoning.push({ level: lvl, prev, unlocked, basis });
   }
 

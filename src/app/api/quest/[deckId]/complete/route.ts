@@ -19,6 +19,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dec
 
   const body = await req.json().catch(() => ({}));
   const bloom_level = body?.bloom_level as DeckBloomLevel | undefined;
+  const mission_index = Number(body?.mission_index ?? 0);
   const score_pct = Number(body?.score_pct ?? NaN);
   let cards_seen = Number(body?.cards_seen ?? 0);
   let cards_correct = Number(body?.cards_correct ?? 0);
@@ -126,7 +127,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dec
 
     // Update per_bloom aggregates for counters and averages first, then mark cleared/unlock idempotently.
     if ((mode ?? 'quest') === 'quest') {
-      await updateQuestProgressOnComplete({ userId, deckId, level: bloom_level!, scorePct: score_pct, cardsSeen: cards_seen });
+      await updateQuestProgressOnComplete({
+        userId,
+        deckId,
+        level: bloom_level!,
+        missionIndex: Number.isFinite(mission_index) ? Math.max(0, Math.floor(mission_index)) : 0,
+        scorePct: score_pct,
+        cardsSeen: cards_seen,
+      });
     }
 
     // Unlock next on single pass (>=60) only for quest missions. Do this after progress update to avoid races.

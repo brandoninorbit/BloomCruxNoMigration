@@ -1,7 +1,11 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import React from 'react';
-import { render, fireEvent } from '@testing-library/react';
+import { render, fireEvent, cleanup, within } from '@testing-library/react';
 import FillBlankStudy from '@/components/cards/FillBlankStudy';
+
+afterEach(() => {
+  cleanup();
+});
 
 describe('FillBlankStudy telemetry', () => {
   it('includes responseMs/confidence/guessed in onAnswer', async () => {
@@ -37,5 +41,23 @@ describe('FillBlankStudy telemetry', () => {
   const payload = onAnswer.mock.calls[onAnswer.mock.calls.length - 1][0];
     expect(payload).toMatchObject({ allCorrect: true, confidence: 3, guessed: true });
     expect(typeof payload.responseMs === 'number' && payload.responseMs >= 0).toBe(true);
+  });
+
+  it('does not create a word bank option when backspacing in free response mode', () => {
+    const onAnswer = vi.fn();
+    const { getByPlaceholderText, container } = render(
+      React.createElement(FillBlankStudy, {
+        stem: 'Type [[1]] here',
+        blanks: [{ id: 1, answers: ['alpha'], mode: 'free' }],
+        onAnswer,
+      })
+    );
+
+    const blank = getByPlaceholderText('[[1]]') as HTMLInputElement;
+    fireEvent.change(blank, { target: { value: 'alpha' } });
+    fireEvent.keyDown(blank, { key: 'Backspace' });
+
+    expect(within(container).queryByText('Word bank')).toBeNull();
+    expect(blank.value).toBe('alpha');
   });
 });

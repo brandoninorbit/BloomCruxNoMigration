@@ -29,7 +29,7 @@ export default function QuestEnterPage() {
     unlocked: boolean;
     updatedSinceLastRun: number;
   }>>([]);
-  const [unlockWhy, setUnlockWhy] = useState<Array<{ level: DeckBloomLevel; prevMastered: boolean; prevCleared: boolean; prevAvg: number; prevHasMission: boolean }>>([]);
+  const [unlockWhy, setUnlockWhy] = useState<Array<{ level: DeckBloomLevel; prevLevel: DeckBloomLevel | null; prevMissionsPassed: number; prevTotalMissions: number; prevCleared: boolean }>>([]);
   const [loading, setLoading] = useState(true);
   const [modalLevel, setModalLevel] = useState<DeckBloomLevel | null>(null);
   const [recentAttempt, setRecentAttempt] = useState<{ accuracy: number; date: string } | null>(null);
@@ -49,21 +49,6 @@ export default function QuestEnterPage() {
           map[lvl] = (map[lvl] ?? 0) + 1;
         });
 
-        // Fetch recent attempts (for fallback unlock inference when per_bloom data missing)
-  const attemptScores: Record<string, number> = {};
-        try {
-          const atRes = await fetch(`/api/quest/${id}/attempts`, { cache: 'no-store' });
-          if (atRes.ok) {
-            const atJson = await atRes.json().catch(() => null) as { attempts?: Array<{ bloom_level: string; score_pct: number; mode?: string }> } | null;
-            (atJson?.attempts ?? []).forEach(a => {
-              if (a?.mode === 'quest') {
-                const cur = attemptScores[a.bloom_level];
-                if (typeof cur === 'undefined' || a.score_pct > cur) attemptScores[a.bloom_level] = a.score_pct;
-              }
-            });
-          }
-        } catch {}
-
         // Build levels
         const cap = DEFAULT_QUEST_SETTINGS.missionCap;
         const builtLevels = (BLOOM_LEVELS as DeckBloomLevel[]).map((lvl) => {
@@ -74,38 +59,30 @@ export default function QuestEnterPage() {
           const totalMissions = Math.ceil(totalCards / cap) || 0;
           const mastered = !!p.mastered;
           const updatedSinceLastRun = Number((fetchedPer?.[lvl] as (BP & { updatedSinceLastRun?: number }) | undefined)?.updatedSinceLastRun ?? 0);
-          // Fallback: if missionsPassed missing (0) and we have an attempt score >= threshold, treat as passed for unlocking
-          const passThreshold = DEFAULT_QUEST_SETTINGS.passThreshold;
-          const inferredPassed = missionsPassed === 0 && (p.cleared !== true) && typeof attemptScores[lvl] === 'number' && attemptScores[lvl] >= passThreshold;
-          const effMissionsPassed = inferredPassed ? 1 : missionsPassed;
-          return { level: lvl, totalCards, missionsCompleted, missionsPassed: effMissionsPassed, totalMissions, mastered, unlocked: false, updatedSinceLastRun };
+          return { level: lvl, totalCards, missionsCompleted, missionsPassed, totalMissions, mastered, unlocked: false, updatedSinceLastRun };
         });
 
-        // Compute unlocking
-        const passThreshold = DEFAULT_QUEST_SETTINGS.passThreshold;
-        const why: Array<{ level: DeckBloomLevel; prevMastered: boolean; prevCleared: boolean; prevAvg: number; prevHasMission: boolean }> = [];
+        // Compute unlocking: strict sequential mission accuracy only.
+        const why: Array<{ level: DeckBloomLevel; prevLevel: DeckBloomLevel | null; prevMissionsPassed: number; prevTotalMissions: number; prevCleared: boolean }> = [];
         for (let i = 0; i < builtLevels.length; i++) {
           if (i === 0) {
             builtLevels[i]!.unlocked = true;
-            why.push({ level: builtLevels[i]!.level, prevMastered: false, prevCleared: true, prevAvg: 100, prevHasMission: true });
+            why.push({ level: builtLevels[i]!.level, prevLevel: null, prevMissionsPassed: 0, prevTotalMissions: 0, prevCleared: true });
             continue;
           }
           const prevBuilt = builtLevels[i - 1]!; // includes inferred missionsPassed
           const prevLvl = prevBuilt.level;
-          const prevRaw = fetchedPer?.[prevLvl] as (BP & { missionUnlocked?: boolean }) | undefined;
-          const prevMastered = !!prevRaw?.mastered;
-          const hasAttemptScore = typeof attemptScores[prevLvl] === 'number';
-          const prevHasMission = (prevRaw?.missionsCompleted ?? prevRaw?.missionsPassed ?? 0) > 0 || prevBuilt.missionsPassed > 0 || hasAttemptScore;
-          const rawAvg = prevRaw && (prevRaw.accuracyCount ?? 0) > 0
-            ? Math.round(((prevRaw.accuracySum ?? 0) / Math.max(1, prevRaw.accuracyCount ?? 0)) * 100)
-            : 0;
-          const prevAvg = rawAvg > 0 ? rawAvg : (hasAttemptScore ? attemptScores[prevLvl] : 0);
-          // Unlock only if: mastered OR all missions passed (missionsPassed >= totalMissions) OR fallback average is high
+          const prevRaw = fetchedPer?.[prevLvl] as BP | undefined;
           const allMissionsPassed = prevBuilt.missionsPassed >= prevBuilt.totalMissions && prevBuilt.totalMissions > 0;
-          const prevCleared = !!prevRaw?.cleared || !!prevRaw?.missionUnlocked || allMissionsPassed;
-          const fallbackUnlock = !prevCleared && prevHasMission && prevAvg >= passThreshold;
-          why.push({ level: builtLevels[i]!.level, prevMastered, prevCleared, prevAvg, prevHasMission });
-          builtLevels[i]!.unlocked = prevMastered || prevCleared || fallbackUnlock;
+          const prevCleared = !!prevRaw?.cleared || allMissionsPassed;
+          why.push({
+            level: builtLevels[i]!.level,
+            prevLevel: prevLvl,
+            prevMissionsPassed: prevBuilt.missionsPassed,
+            prevTotalMissions: prevBuilt.totalMissions,
+            prevCleared,
+          });
+          builtLevels[i]!.unlocked = prevCleared;
         }
 
         // Debug console log for unlocking diagnostics
@@ -113,7 +90,6 @@ export default function QuestEnterPage() {
           if (typeof window !== 'undefined') {
             console.log('[questUnlockDebug]', {
               deckId: id,
-              attemptScores,
               builtLevels: builtLevels.map(b => ({ level: b.level, missionsCompleted: b.missionsCompleted, missionsPassed: b.missionsPassed, totalMissions: b.totalMissions, mastered: b.mastered, unlocked: b.unlocked })),
               perBloomKeys: Object.keys(fetchedPer || {}),
             });
@@ -199,39 +175,10 @@ export default function QuestEnterPage() {
             const questAttempts = prevLevelAttempts.filter(attempt => attempt.mode === 'quest');
             const mostRecentQuest = questAttempts.length > 0 ? questAttempts[0] : null;
             
-            // Look for attempts with 100% coverage and 60%+ accuracy that might indicate mastery
-            const masteryAttempts = prevLevelAttempts.filter(attempt => {
-              const accuracy = attempt.score_pct; // score_pct is already a percentage
-              const cardsSeen = attempt.recomputed?.seen || attempt.stored?.seen || 0;
-              const coverage = totalCards > 0 ? (cardsSeen / totalCards) * 100 : 0;
-              
-              // Consider it a mastery attempt if coverage is 100% AND accuracy > 60%
-              return coverage >= 100 && accuracy > 60;
-            });
-            
-            let bestAttempt = mostRecentQuest;
-            
-            // If there's a 100% coverage attempt with better score than the most recent quest,
-            // use that instead (this allows unlocking based on complete coverage mastery)
-            if (masteryAttempts.length > 0 && mostRecentQuest) {
-              const bestMastery = masteryAttempts.reduce((best: typeof masteryAttempts[0], current: typeof masteryAttempts[0]) => 
-                current.score_pct > best.score_pct ? current : best
-              );
-              
-              if (bestMastery.score_pct > mostRecentQuest.score_pct) {
-                bestAttempt = bestMastery;
-              }
-            } else if (masteryAttempts.length > 0 && !mostRecentQuest) {
-              // If no quest attempts but there are 100% coverage mastery attempts, use the best one
-              bestAttempt = masteryAttempts.reduce((best: typeof masteryAttempts[0], current: typeof masteryAttempts[0]) => 
-                current.score_pct > best.score_pct ? current : best
-              );
-            }
-            
-            if (bestAttempt) {
+            if (mostRecentQuest) {
               setRecentAttempt({
-                accuracy: bestAttempt.score_pct, // score_pct is already a percentage
-                date: new Date(bestAttempt.ended_at).toLocaleDateString()
+                accuracy: mostRecentQuest.score_pct,
+                date: new Date(mostRecentQuest.ended_at).toLocaleDateString(),
               });
             } else {
               setRecentAttempt(null);
@@ -259,11 +206,10 @@ export default function QuestEnterPage() {
     const why = unlockWhy.find(w => w.level === level);
     if (!why) return null;
     return {
-      prevLevel: BLOOM_LEVELS[BLOOM_LEVELS.indexOf(level) - 1] as DeckBloomLevel,
-      prevMastered: why.prevMastered,
+      prevLevel: why.prevLevel,
       prevCleared: why.prevCleared,
-      prevAvg: why.prevAvg,
-      prevHasMission: why.prevHasMission,
+      prevMissionsPassed: why.prevMissionsPassed,
+      prevTotalMissions: why.prevTotalMissions,
     };
   };
 
@@ -437,22 +383,17 @@ export default function QuestEnterPage() {
               if (!details) return <p>Unable to determine unlock criteria.</p>;
               return (
                 <div className="space-y-3">
-                  <p>To unlock <strong>{modalLevel}</strong>, you need to complete the previous level: <strong>{details.prevLevel}</strong>.</p>
+                  <p>To unlock <strong>{modalLevel}</strong>, you must pass every mission in the previous level in order (each with at least 60% accuracy).</p>
                   
                   <div className="bg-gray-50 p-3 rounded-lg">
-                    <p className="font-medium mb-2">Current status of {details.prevLevel}:</p>
+                    <p className="font-medium mb-2">Current status of {details.prevLevel ?? "the previous level"}:</p>
                     <ul className="list-disc list-inside space-y-1 text-sm">
-                      {details.prevMastered && <li>✅ Mastered</li>}
-                      {details.prevCleared && <li>✅ Is cleared (60% or higher required)</li>}
-                      {!details.prevMastered && !details.prevCleared && (
+                      {details.prevCleared && <li>✅ Previous level cleared</li>}
+                      {!details.prevCleared && (
                         <>
-                          <li>❌ Not mastered</li>
-                          <li>❌ Not cleared</li>
-                          {details.prevHasMission ? (
-                            <li>Last attempt accuracy: {details.prevAvg}% (need ≥60% to unlock)</li>
-                          ) : (
-                            <li>No missions completed yet</li>
-                          )}
+                          <li>❌ Previous level not cleared</li>
+                          <li>Passed in order: {details.prevMissionsPassed} / {details.prevTotalMissions}</li>
+                          <li>Requirement: pass mission {details.prevTotalMissions} of {details.prevTotalMissions} to unlock {modalLevel}</li>
                         </>
                       )}
                     </ul>
@@ -468,9 +409,9 @@ export default function QuestEnterPage() {
                     </div>
                   )}
 
-                  {!details.prevMastered && !details.prevCleared && details.prevHasMission && details.prevAvg < 60 && (
+                  {!details.prevCleared && (
                     <p className="text-sm text-gray-600 mt-4">
-                      Try the {details.prevLevel} missions again to improve your accuracy and unlock {modalLevel}.
+                      Keep replaying the next locked mission in {details.prevLevel ?? "the previous level"} until it reaches 60% or higher.
                     </p>
                   )}
                 </div>

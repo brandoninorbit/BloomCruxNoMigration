@@ -114,8 +114,8 @@ export default function QuestClient({ deckId }: { deckId: number }) {
           // Default: use missionsPassed as the mission index
           mi = Math.max(0, (progress?.[level]?.missionsPassed ?? progress?.[level]?.missionsCompleted ?? 0));
         }
-        // Clamp to prevent skipping missions, but allow accessing the next mission
-        const maxAllowedMi = Math.max(0, (progress?.[level]?.missionsPassed ?? progress?.[level]?.missionsCompleted ?? 0) + 1);
+        // Clamp to prevent skipping missions; highest selectable index is the next not-yet-passed mission.
+        const maxAllowedMi = Math.max(0, (progress?.[level]?.missionsPassed ?? progress?.[level]?.missionsCompleted ?? 0));
         mi = Math.min(mi, maxAllowedMi);
         const existing = await fetchMission(deckId, level, mi).catch(() => null);
         if (!alive) return;
@@ -165,8 +165,8 @@ export default function QuestClient({ deckId }: { deckId: number }) {
         // Default: use missionsPassed as the mission index for next mission
         mi = Math.max(0, (progress?.[level]?.missionsPassed ?? progress?.[level]?.missionsCompleted ?? 0));
       }
-      // Clamp to prevent skipping missions, but allow accessing the next mission
-      const maxAllowedMi = Math.max(0, (progress?.[level]?.missionsPassed ?? progress?.[level]?.missionsCompleted ?? 0) + 1);
+      // Clamp to prevent skipping missions; highest selectable index is the next not-yet-passed mission.
+      const maxAllowedMi = Math.max(0, (progress?.[level]?.missionsPassed ?? progress?.[level]?.missionsCompleted ?? 0));
       mi = Math.min(mi, maxAllowedMi);
       const comp = composeMission({ deckId, level, allCards: cards, missionIndex: mi, srs });
       
@@ -337,6 +337,7 @@ export default function QuestClient({ deckId }: { deckId: number }) {
           body: JSON.stringify({
             mode: "quest",
             bloom_level: next.bloomLevel,
+            mission_index: next.missionIndex,
             score_pct: percent,
             cards_seen: total,
             cards_correct: Math.round(correct),

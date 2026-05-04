@@ -107,7 +107,7 @@ function BlankSlot({
       className={cls}
       tabIndex={0}
       onKeyDown={(e) => {
-        if ((e.key === "Backspace" || e.key === "Delete") && value) onClear();
+        if (mode === "bank" && (e.key === "Backspace" || e.key === "Delete") && value) onClear();
       }}
       {...commonA11y}
     >
@@ -171,6 +171,7 @@ export default function FillBlankStudy({ stem, blanks, wordBank, explanation, su
   const [confidence, setConfidence] = useState<0|1|2|3|undefined>(undefined);
   const [guessed, setGuessed] = useState(false);
   const startRef = React.useRef<number>(Date.now());
+  const initialBankSet = useMemo(() => new Set(wordBank ?? []), [wordBank]);
 
   // Check if there are any free text blanks
   const hasFreeText = blanks.some(b => b.mode === "free");
@@ -309,7 +310,7 @@ export default function FillBlankStudy({ stem, blanks, wordBank, explanation, su
                     showClear={showClear}
                     onClear={() => {
                       setPlacements((prev) => ({ ...prev, [id]: "" }));
-                      setBank((prev) => (val ? [...prev.filter((t) => t !== val), val] : prev));
+                      setBank((prev) => (val && initialBankSet.has(val) ? [...prev.filter((t) => t !== val), val] : prev));
                     }}
                     label={label}
                     hasError={hasError}

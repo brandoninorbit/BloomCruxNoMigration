@@ -393,6 +393,7 @@ export async function updateQuestProgressOnComplete(params: {
   userId: string;
   deckId: number;
   level: DeckBloomLevel;
+  missionIndex: number; // 0-based mission index completed
   scorePct: number; // 0..100
   cardsSeen: number;
 }): Promise<void> {
@@ -455,10 +456,16 @@ export async function updateQuestProgressOnComplete(params: {
   }
   // Update aggregates for the just-completed level
   const cur = (per[params.level] ?? {}) as Partial<PerBloomItem>;
-  cur.missionsCompleted = Number(cur.missionsCompleted ?? 0) + 1;
-  // Only increment missionsPassed when passing threshold
-  if ((params.scorePct ?? 0) >= 60) {
-    cur.missionsPassed = Number(cur.missionsPassed ?? 0) + 1;
+  const prevCompleted = Number(cur.missionsCompleted ?? 0);
+  const prevPassed = Number(cur.missionsPassed ?? 0);
+  const safeMissionIndex = Math.max(0, Math.floor(Number(params.missionIndex) || 0));
+  cur.missionsCompleted = Math.max(prevCompleted, safeMissionIndex + 1);
+  // Strict linear unlock: mission N+1 unlocks only when mission N was passed (>=60) at least once.
+  // `missionsPassed` tracks the highest consecutive passed mission count from mission 1 onward.
+  if ((params.scorePct ?? 0) >= 60 && safeMissionIndex === prevPassed) {
+    cur.missionsPassed = prevPassed + 1;
+  } else {
+    cur.missionsPassed = prevPassed;
   }
   const before = Number(cur.completedCards ?? 0);
   const totalCards = Number(cur.totalCards ?? 0);
@@ -475,11 +482,10 @@ export async function updateQuestProgressOnComplete(params: {
   const denom = weights.reduce((a, b) => a + b, 0) || 1;
   const wavg = recent.reduce((s, r, i) => s + (r.percent * weights[i]), 0) / denom;
   cur.weightedAvg = Math.round(wavg);
-  // Single-pass clear flag: only set cleared=true if ALL missions in the level have been passed
-  // This ensures users must complete the last mission ("k") to unlock the next Bloom level
+  // A level is cleared only when the final mission in that level has been passed in sequence.
   const totalMissions = Number(cur.totalMissions ?? 0);
   const missionsPassed = Number(cur.missionsPassed ?? 0);
-  const allMissionsPassed = totalMissions > 0 && missionsPassed >= totalMissions && (params.scorePct ?? 0) >= 60;
+  const allMissionsPassed = totalMissions > 0 && missionsPassed >= totalMissions;
   if (allMissionsPassed) {
     cur.cleared = true;
   }

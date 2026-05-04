@@ -70,7 +70,7 @@ describe('quest unlock integration (mocked supabase)', () => {
     for (const k of Object.keys(inMemoryDB)) delete inMemoryDB[k];
   });
 
-  it('marks cleared true when score >= pass threshold and all missions completed', async () => {
+  it('marks cleared true when the final required mission is passed in sequence', async () => {
     // call the functions as the route would
     // For a single-mission level (totalMissions = 1), completing with 83% should mark as cleared
     const key = `${testUser}:${deckId}`;
@@ -90,7 +90,14 @@ describe('quest unlock integration (mocked supabase)', () => {
     inMemoryDB[key] = initialData;
     
     // Complete the mission with 83% accuracy
-    await updateQuestProgressOnComplete({ userId: testUser, deckId, level: level as unknown as DeckBloomLevel, scorePct: 83, cardsSeen: 10 });
+    await updateQuestProgressOnComplete({
+      userId: testUser,
+      deckId,
+      level: level as unknown as DeckBloomLevel,
+      missionIndex: 0,
+      scorePct: 83,
+      cardsSeen: 10,
+    });
     
     const row = inMemoryDB[key] as Record<string, unknown> | undefined;
     expect(row).toBeDefined();
@@ -100,30 +107,36 @@ describe('quest unlock integration (mocked supabase)', () => {
     expect(Number(per[level]?.missionsPassed)).toBe(1);
   });
 
-  it('does NOT unlock next level when not all missions are completed', async () => {
-    // Scenario: A bloom level has 3 missions total, but only 1 mission has been passed
-    await updateQuestProgressOnComplete({ userId: testUser, deckId, level: level as unknown as DeckBloomLevel, scorePct: 83, cardsSeen: 10 });
-    
-    // Manually set totalMissions to 3 to simulate a deck with multiple missions
+  it('does NOT advance consecutive pass count when a later mission is passed out of order', async () => {
+    // Scenario: 3 missions total, but mission 2 is attempted before mission 1 is passed.
     const key = `${testUser}:${deckId}`;
-    const currentRow = inMemoryDB[key] as Record<string, unknown> | undefined;
-    if (currentRow) {
-      const per = (currentRow.per_bloom ?? {}) as Record<string, Record<string, unknown>>;
-      per[level] = {
-        ...(per[level] || {}),
-        totalMissions: 3,
-        missionsPassed: 1, // Only 1 of 3 missions passed
-      };
-      currentRow.per_bloom = per;
-      inMemoryDB[key] = currentRow;
-    }
-    
-    // Try to unlock - it should NOT unlock because not all missions are passed
+    inMemoryDB[key] = {
+      user_id: testUser,
+      deck_id: deckId,
+      per_bloom: {
+        [level]: {
+          totalMissions: 3,
+          missionsPassed: 0,
+          totalCards: 30,
+        },
+      },
+    };
+
+    await updateQuestProgressOnComplete({
+      userId: testUser,
+      deckId,
+      level: level as unknown as DeckBloomLevel,
+      missionIndex: 1,
+      scorePct: 90,
+      cardsSeen: 10,
+    });
+
+    // Out-of-order pass should not unlock anything
     await unlockNextBloomLevel(testUser, deckId, level as unknown as DeckBloomLevel);
-    
+
     const row = inMemoryDB[key] as Record<string, unknown> | undefined;
     const per = (row?.per_bloom ?? {}) as Record<string, Record<string, unknown>>;
-    // cleared should NOT be set to true
+    expect(Number(per[level]?.missionsPassed)).toBe(0);
     expect(Boolean(per[level]?.cleared)).toBeFalsy();
   });
 
@@ -148,7 +161,14 @@ describe('quest unlock integration (mocked supabase)', () => {
     inMemoryDB[key] = initialData;
     
     // Complete the third and final mission with >= 60%
-    await updateQuestProgressOnComplete({ userId: testUser, deckId, level: level as unknown as DeckBloomLevel, scorePct: 75, cardsSeen: 10 });
+    await updateQuestProgressOnComplete({
+      userId: testUser,
+      deckId,
+      level: level as unknown as DeckBloomLevel,
+      missionIndex: 2,
+      scorePct: 75,
+      cardsSeen: 10,
+    });
     
     // Now try to unlock - it should succeed because all 3 missions are passed
     await unlockNextBloomLevel(testUser, deckId, level as unknown as DeckBloomLevel);
