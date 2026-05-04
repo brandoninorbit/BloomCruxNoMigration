@@ -73,7 +73,8 @@ export async function POST(
     .select("id, bloom_level, score_pct, ended_at, mission_index")
     .eq("user_id", userId)
     .eq("deck_id", deckId)
-    .eq("mode", "quest")
+    // Include legacy rows where mode is missing/null or differently cased.
+    .or("mode.eq.quest,mode.eq.Quest,mode.is.null")
     .order("ended_at", { ascending: true });
 
   if (attemptsErr) {
@@ -95,6 +96,8 @@ export async function POST(
 
   const summary: Record<string, string> = {};
   const backfillUpdates: Array<{ id: number; mission_index: number }> = [];
+  let progressLevelsUpdated = 0;
+  let missionsPassedAdjusted = 0;
 
   // --- 3. Per-bloom: assign mission_index + compute missionsPassed ---
   for (const lvl of BLOOM_LEVELS as DeckBloomLevel[]) {
@@ -102,16 +105,18 @@ export async function POST(
     const totalCards = cardCountMap[lvl] ?? 0;
     const totalMissions = Math.ceil(totalCards / cap) || 0;
 
-    // Assign mission_index to rows that don't have one (chronological = 0,1,2,...)
+    // Assign mission_index to rows that don't have one.
+    // For legacy rows, infer the mission index from current progression state,
+    // so retries stay on the same mission until a pass advances progression.
     let missionsPassed = 0;
     for (let i = 0; i < levelAttempts.length; i++) {
       const attempt = levelAttempts[i]!;
-      const assignedIndex = attempt.mission_index ?? i;
+      const assignedIndex = attempt.mission_index ?? missionsPassed;
 
       // Queue a backfill update if mission_index was NULL
       if (attempt.mission_index === null || attempt.mission_index === undefined) {
-        backfillUpdates.push({ id: attempt.id, mission_index: i });
-        attempt.mission_index = i; // mutate locally for the pass calculation below
+        backfillUpdates.push({ id: attempt.id, mission_index: assignedIndex });
+        attempt.mission_index = assignedIndex; // mutate locally for the pass calculation below
       }
 
       // Strict consecutive unlock: index must equal current missionsPassed count
@@ -125,7 +130,22 @@ export async function POST(
 
     // Update per_bloom entry
     const cur = per[lvl] ?? {};
+    const prevMissionsPassed = Number(cur.missionsPassed ?? 0);
+    const prevMissionStatus = String(cur.missionStatus ?? "");
+    const prevTotalMissions = Number(cur.totalMissions ?? 0);
     const allPassed = totalMissions > 0 && missionsPassed >= totalMissions;
+
+    if (prevMissionsPassed !== missionsPassed) {
+      missionsPassedAdjusted += 1;
+    }
+    if (
+      prevMissionsPassed !== missionsPassed ||
+      prevMissionStatus !== missionStatus ||
+      prevTotalMissions !== totalMissions
+    ) {
+      progressLevelsUpdated += 1;
+    }
+
     per[lvl] = {
       ...cur,
       totalCards,
@@ -168,7 +188,11 @@ export async function POST(
 
   return NextResponse.json({
     ok: true,
-    repaired: backfillUpdates.length,
+    // Keep repaired for backwards compatibility; now includes both row backfills and progress fixes.
+    repaired: backfillUpdates.length + progressLevelsUpdated,
+    backfilledAttemptRows: backfillUpdates.length,
+    progressLevelsUpdated,
+    missionsPassedAdjusted,
     missionStatus: summary,
     // e.g. { Remember: "3/5", Understand: "1/3", ... }
     message:
