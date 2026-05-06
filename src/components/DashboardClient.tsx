@@ -53,6 +53,48 @@ const displayAttemptMode = (mode?: string | null) => {
       return mode ? String(mode).replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : 'Quest';
   }
 };
+
+const academicGradeForPercent = (percent?: number | null): string => {
+  if (percent === null || percent === undefined || !Number.isFinite(percent)) return "N/A";
+  if (percent > 96) return "A+";
+  if (percent > 93) return "A";
+  if (percent >= 90) return "A-";
+  if (percent > 86) return "B+";
+  if (percent > 83) return "B";
+  if (percent >= 80) return "B-";
+  if (percent > 76) return "C+";
+  if (percent > 73) return "C";
+  if (percent >= 70) return "C-";
+  if (percent > 66) return "D+";
+  if (percent > 63) return "D";
+  if (percent >= 60) return "D-";
+  return "F";
+};
+
+const academicGradeBadgeClass = (grade: string): string => {
+  switch (grade) {
+    case "A+":
+    case "A":
+    case "A-":
+      return "bg-emerald-100 text-emerald-800 border-emerald-200";
+    case "B+":
+    case "B":
+    case "B-":
+      return "bg-blue-100 text-blue-800 border-blue-200";
+    case "C+":
+    case "C":
+    case "C-":
+      return "bg-amber-100 text-amber-800 border-amber-200";
+    case "D+":
+    case "D":
+    case "D-":
+      return "bg-orange-100 text-orange-800 border-orange-200";
+    case "F":
+      return "bg-rose-100 text-rose-800 border-rose-200";
+    default:
+      return "bg-gray-100 text-gray-600 border-gray-200";
+  }
+};
 import {
   LineChart as RLineChart,
   Line,
@@ -263,6 +305,7 @@ export default function DashboardClient() {
   const [tagAccuracyHierarchy, setTagAccuracyHierarchy] = useState<TagHierarchyNode[]>([]);
   const [tagAccuracyTrail, setTagAccuracyTrail] = useState<string[]>([]);
   const [tagAccuracyNote, setTagAccuracyNote] = useState<string | undefined>(undefined);
+  const [tagSortMode, setTagSortMode] = useState<"accuracy-low" | "score-high" | "score-low">("accuracy-low");
 
   // Load real mastery when logged in and not showing example
   useEffect(() => {
@@ -688,6 +731,75 @@ export default function DashboardClient() {
       next[depth] = key;
       return next;
     });
+  };
+
+  const tagMetricForSortMode = (row?: TagAccuracyRow) => {
+    if (!row) return null;
+    return tagSortMode === "accuracy-low" ? row.accuracyPct : row.scorePct;
+  };
+
+  const renderTagChip = (params: {
+    keyValue: string;
+    active: boolean;
+    label: string;
+    count: number;
+    row?: TagAccuracyRow;
+    onClick: () => void;
+  }) => {
+    const metric = tagMetricForSortMode(params.row);
+    const grade = academicGradeForPercent(metric);
+    return (
+      <button
+        key={params.keyValue}
+        type="button"
+        onClick={params.onClick}
+        className={`px-3 py-1.5 rounded-full text-xs border transition-colors inline-flex items-center gap-2 ${
+          params.active
+            ? "bg-[#2481f9] text-white border-[#2481f9]"
+            : "bg-white text-gray-700 border-gray-300 hover:border-[#2481f9] hover:text-[#2481f9]"
+        }`}
+      >
+        <span>{params.label} ({params.count})</span>
+        <span
+          className={`rounded-full border px-1.5 py-0.5 text-[10px] font-semibold leading-none ${
+            params.active ? "bg-white/20 text-white border-white/30" : academicGradeBadgeClass(grade)
+          }`}
+        >
+          {grade}
+        </span>
+      </button>
+    );
+  };
+
+  const splitAndSortTagNodes = (nodes: TagHierarchyNode[]) => {
+    const entries = nodes.map((node) => ({ node, row: tagAccuracyRowMap.get(node.key) }));
+    const seen = entries.filter((e) => (e.row?.seenCards ?? 0) > 0);
+    const unseen = entries.filter((e) => (e.row?.seenCards ?? 0) === 0);
+
+    const byMode = (a: (typeof seen)[number], b: (typeof seen)[number]) => {
+      if (tagSortMode === "accuracy-low") {
+        const av = a.row?.accuracyPct ?? Number.POSITIVE_INFINITY;
+        const bv = b.row?.accuracyPct ?? Number.POSITIVE_INFINITY;
+        if (av !== bv) return av - bv;
+      } else if (tagSortMode === "score-high") {
+        const av = a.row?.scorePct ?? Number.NEGATIVE_INFINITY;
+        const bv = b.row?.scorePct ?? Number.NEGATIVE_INFINITY;
+        if (av !== bv) return bv - av;
+      } else {
+        const av = a.row?.scorePct ?? Number.POSITIVE_INFINITY;
+        const bv = b.row?.scorePct ?? Number.POSITIVE_INFINITY;
+        if (av !== bv) return av - bv;
+      }
+      return a.node.key.localeCompare(b.node.key);
+    };
+
+    seen.sort(byMode);
+    unseen.sort((a, b) => a.node.key.localeCompare(b.node.key));
+
+    return {
+      seen,
+      unseen,
+    };
   };
 
   return (
@@ -1619,6 +1731,20 @@ export default function DashboardClient() {
             Tag accuracy is computed from per-card accuracy and is for weak-point visibility only. It does not affect XP, mission scoring, or unlocks.
           </div>
 
+          <div className="mt-3 flex items-center gap-2">
+            <label htmlFor="tag-sort-mode" className="text-sm font-medium text-gray-700">Sort topics by</label>
+            <select
+              id="tag-sort-mode"
+              className="text-sm px-3 py-2 rounded-lg border border-gray-300 text-gray-700 bg-white hover:border-[#2481f9] focus:outline-none focus:ring-2 focus:ring-[#2481f9] focus:border-[#2481f9]"
+              value={tagSortMode}
+              onChange={(e) => setTagSortMode(e.target.value as "accuracy-low" | "score-high" | "score-low")}
+            >
+              <option value="accuracy-low">Lowest accuracy first</option>
+              <option value="score-high">Highest score first</option>
+              <option value="score-low">Lowest score first</option>
+            </select>
+          </div>
+
           <div className="mt-3 max-h-[55vh] overflow-auto rounded border border-gray-200">
             {tagAccuracyLoading ? (
               <div className="p-4 text-sm text-gray-600">Loading topic tag metrics...</div>
@@ -1628,54 +1754,88 @@ export default function DashboardClient() {
               <div className="p-4 space-y-4">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Top-level tags</p>
-                  <div className="flex flex-wrap gap-2">
-                    {tagAccuracyHierarchy.map((node) => {
-                      const active = tagAccuracyTrail[0] === node.key;
-                      const row = tagAccuracyRowMap.get(node.key);
-                      return (
-                        <button
-                          key={node.key}
-                          type="button"
-                          onClick={() => selectTagAccuracyAtDepth(node.key, 0)}
-                          className={`px-3 py-1.5 rounded-full text-xs border transition-colors ${
-                            active
-                              ? "bg-[#2481f9] text-white border-[#2481f9]"
-                              : "bg-white text-gray-700 border-gray-300 hover:border-[#2481f9] hover:text-[#2481f9]"
-                          }`}
-                        >
-                          {node.key} ({row?.totalCards ?? 0})
-                        </button>
-                      );
-                    })}
-                  </div>
+                  {(() => {
+                    const { seen, unseen } = splitAndSortTagNodes(tagAccuracyHierarchy);
+                    return (
+                      <>
+                        <div className="flex flex-wrap gap-2">
+                          {seen.map(({ node, row }) => {
+                            const active = tagAccuracyTrail[0] === node.key;
+                            return renderTagChip({
+                              keyValue: node.key,
+                              active,
+                              label: node.key,
+                              count: row?.totalCards ?? 0,
+                              row,
+                              onClick: () => selectTagAccuracyAtDepth(node.key, 0),
+                            });
+                          })}
+                        </div>
+                        {unseen.length > 0 && (
+                          <details className="mt-3 rounded border border-gray-200 bg-gray-50">
+                            <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-gray-700">
+                              Unseen topics ({unseen.length})
+                            </summary>
+                            <div className="px-3 pb-3 flex flex-wrap gap-2">
+                              {unseen.map(({ node, row }) => {
+                                const active = tagAccuracyTrail[0] === node.key;
+                                return renderTagChip({
+                                  keyValue: node.key,
+                                  active,
+                                  label: node.key,
+                                  count: row?.totalCards ?? 0,
+                                  row,
+                                  onClick: () => selectTagAccuracyAtDepth(node.key, 0),
+                                });
+                              })}
+                            </div>
+                          </details>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
 
                 {tagAccuracyTrail.map((key, depth) => {
                   const node = findTagHierarchyNode(tagAccuracyHierarchy, key);
                   if (!node || node.children.length === 0) return null;
+                  const { seen, unseen } = splitAndSortTagNodes(node.children);
                   return (
                     <div key={node.key}>
                       <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Inside {node.key}</p>
                       <div className="flex flex-wrap gap-2">
-                        {node.children.map((child) => {
+                        {seen.map(({ node: child, row }) => {
                           const active = tagAccuracyTrail[depth + 1] === child.key;
-                          const row = tagAccuracyRowMap.get(child.key);
-                          return (
-                            <button
-                              key={child.key}
-                              type="button"
-                              onClick={() => selectTagAccuracyAtDepth(child.key, depth + 1)}
-                              className={`px-3 py-1.5 rounded-full text-xs border transition-colors ${
-                                active
-                                  ? "bg-[#2481f9] text-white border-[#2481f9]"
-                                  : "bg-white text-gray-700 border-gray-300 hover:border-[#2481f9] hover:text-[#2481f9]"
-                              }`}
-                            >
-                              {child.path[child.path.length - 1]} ({row?.totalCards ?? 0})
-                            </button>
-                          );
+                          return renderTagChip({
+                            keyValue: child.key,
+                            active,
+                            label: child.path[child.path.length - 1],
+                            count: row?.totalCards ?? 0,
+                            row,
+                            onClick: () => selectTagAccuracyAtDepth(child.key, depth + 1),
+                          });
                         })}
                       </div>
+                      {unseen.length > 0 && (
+                        <details className="mt-3 rounded border border-gray-200 bg-gray-50">
+                          <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-gray-700">
+                            Unseen topics ({unseen.length})
+                          </summary>
+                          <div className="px-3 pb-3 flex flex-wrap gap-2">
+                            {unseen.map(({ node: child, row }) => {
+                              const active = tagAccuracyTrail[depth + 1] === child.key;
+                              return renderTagChip({
+                                keyValue: child.key,
+                                active,
+                                label: child.path[child.path.length - 1],
+                                count: row?.totalCards ?? 0,
+                                row,
+                                onClick: () => selectTagAccuracyAtDepth(child.key, depth + 1),
+                              });
+                            })}
+                          </div>
+                        </details>
+                      )}
                     </div>
                   );
                 })}
